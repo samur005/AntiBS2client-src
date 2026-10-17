@@ -59,6 +59,8 @@ data class AdvancedSettings(
     val pingUrl: String = DEFAULT_PING_URL,
     /** time | color */
     val pingDisplay: String = "time",
+    /** Автопинг серверов при открытии приложения и после обновления подписок. */
+    val autoPingServers: Boolean = false,
     // Interface
     val hideEmptyManual: Boolean = true,
     val logging: Boolean = true,
