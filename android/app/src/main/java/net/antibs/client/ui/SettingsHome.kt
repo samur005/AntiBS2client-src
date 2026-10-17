@@ -103,6 +103,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                             if (a.tunnelBindBlock) "Блокировка обхода" else null).joinToString(" · ").ifEmpty { "Автозапуск, работа в фоне, защита" }) { open("Vpn") }
                         NavRow("Ядра и протоколы", "Xray ${BuildConfig.XRAY_VERSION} · ${if (st.xrayTun) "Xray TUN" else "hev-tunnel"} · qWDTT") { open("SetCores") }
                         NavRow("Сеть и DNS", listOfNotNull("MTU ${a.tunMtu}", if (a.localDns) "локальный DNS" else null, if (st.bypassLan) "обход LAN" else null).joinToString(" · ")) { open("SetNet") }
+                        NavRow("Пинг", if (a.autoPingServers) "Автопинг включён" else "Автопинг выключен", subtitle = "Тип, таймаут, автопинг серверов") { open("Ping") }
                         SwitchNavRow("Использовать фрагментирование", "Дробить TLS ClientHello к серверу — обход DPI · ${a.fragPackets} · ${a.fragLength} · ${a.fragDelay} мс",
                             ui.fragmentation, { vm.setFragmentation(it) }) { open("Fragment") }
                         SwitchNavRow("Использовать Mux", "TCP ${a.muxConcurrency} · XUDP ${a.muxXudpConcurrency} · QUIC: ${a.muxXudpQuic}. Сервер должен поддерживать mux",
