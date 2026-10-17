@@ -1,0 +1,42 @@
+# Gradle / Kotlin / IDE
+.gradle/
+.kotlin/
+build/
+out/
+.idea/
+*.iml
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local toolchains / SDK / emulator
+.tools/
+android-sdk/
+sdk/
+*.avd/
+*.img
+*.qcow2
+
+# Signing secrets
+keystore.properties
+*.jks
+*.keystore
+*.p12
+
+# Build artifacts
+*.apk
+*.aab
+*.idsig
+android/tools/
+windows/build-win/
+windows/dist/
+windows/engines-dl/
+windows/launcher/*.exe
+windows/launcher/*.syso
+android/native/AndroidLibXrayLite/assets/*.dat
+
+# Misc
+node_modules/
+*.log
+.DS_Store

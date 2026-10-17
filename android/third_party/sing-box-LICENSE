@@ -1,0 +1,2 @@
+sing-box (https://github.com/sagernet/sing-box) — GPL-3.0 or later.
+Bundled as libsbx.so (trimmed outbound set: hysteria, hysteria2, tuic, anytls, ssh, snell, naive+cronet).

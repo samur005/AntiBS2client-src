@@ -1,0 +1,2 @@
+libmhx.so (native/mihomo-lite) links github.com/metacubex/mihomo v1.19.32 — GNU GPL v3.0 (text: qwdtt-LICENSE-GPL-3.0.txt, identical GPL-3.0)
+and github.com/quic-go/quic-go v0.62.0 — MIT License. Source: native/mihomo-lite.

@@ -1,0 +1,16 @@
+﻿AntiBS2client для Windows — клиент VPN/прокси (Xray-core, sing-box).
+
+Программа распространяется «как есть», без каких-либо гарантий. Файлы установщика не подписаны цифровой подписью,
+поэтому Windows SmartScreen может показать предупреждение «Windows защитила ваш компьютер» —
+нажмите «Подробнее» → «Выполнить в любом случае».
+
+В комплект входят сторонние компоненты, каждый под своей лицензией (папка licenses):
+  • Xray-core (MPL 2.0) — https://github.com/XTLS/Xray-core
+  • sing-box (GPL 3.0 или новее) — исходный код: https://github.com/SagerNet/sing-box/tree/v1.14.2
+  • Wintun (лицензия WireGuard LLC, распространение только в неизменном виде) — https://www.wintun.net
+  • Eclipse Temurin / OpenJDK 17 (GPL 2.0 с Classpath Exception) — https://adoptium.net
+  • Jetbrains Compose Multiplatform, Kotlin, OkHttp, ZXing (Apache 2.0), JSON-java (Public Domain)
+  • Карта мира: NetGuard world_map_clean (Apache 2.0) — подробности в licenses\world-map-NOTICE.txt
+  • Флаги: Noto Color Emoji (SIL OFL 1.1) — https://github.com/googlefonts/noto-emoji
+
+Настройки, подписки и ключи хранятся в %APPDATA%\AntiBS2client и при удалении программы не стираются.
