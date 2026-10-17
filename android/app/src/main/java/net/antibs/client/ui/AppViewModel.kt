@@ -200,13 +200,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 
-    // 1.0.10: no ping button in the top bar — hosts are pinged automatically on app open
-    // (stale subscriptions first refresh, then ping) and after every subscription refresh.
+    // Auto-ping on open only when enabled in settings.
     init {
         XrayCore.installCertPins()
         net.antibs.client.engine.SubscriptionSync.schedule(getApplication(), store.snapshot())
         refreshStale()
-        autoPingOnOpen()
+        if (store.snapshot().adv.autoPingServers) autoPingOnOpen()
     }
     val toast: StateFlow<String?> = _toast
     fun consumeToast() { _toast.value = null }
@@ -430,8 +429,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val f = try { net.antibs.client.engine.SubscriptionSync.fetchAndApply(store, id) } finally { _refreshing.value = _refreshing.value - id }
             if (f == null) return@launch  // the background auto-update is refreshing it right now
             val r = f.result
-            // Fresh host list → measure it right away (silent; per-host spinners show progress).
-            pingServers(UiLogic.pingTargets(store.servers(), id, _pinging.value))
+            // Fresh host list → measure only if auto-ping enabled.
+            if (store.snapshot().adv.autoPingServers) {
+                pingServers(UiLogic.pingTargets(store.servers(), id, _pinging.value))
+            }
             if (!silent || r.isFailure) _toast.value = r.fold({ r0 -> "«${r0.title ?: sub.title}»: ${UiLogic.subFooterLeft(r0.servers.count { s -> !UiLogic.isSyntheticServer(s.name) })}" }, { "Ошибка обновления: ${it.message}" })
             // after the summary so the routing message is the one the snackbar shows
             val rr = net.antibs.client.engine.SubscriptionSync.handleRouting(getApplication(), store, f.applied)
@@ -449,7 +450,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val remote = store.subscriptions().filter { it.kind != "manual" && it.url.isNotBlank() }
         remote.forEach { refresh(it.id) }
         val pending = _refreshing.value + remote.map { it.id }
-        pingServers(UiLogic.pingTargetsNotRefreshing(store.servers(), pending, _pinging.value))
+        if (store.snapshot().adv.autoPingServers) {
+            pingServers(UiLogic.pingTargetsNotRefreshing(store.servers(), pending, _pinging.value))
+        }
     }
 
     /** App open: ping every visible host whose subscription is not being refreshed right now. */
