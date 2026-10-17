@@ -103,7 +103,6 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                             if (a.tunnelBindBlock) "Блокировка обхода" else null).joinToString(" · ").ifEmpty { "Автозапуск, работа в фоне, защита" }) { open("Vpn") }
                         NavRow("Ядра и протоколы", "Xray ${BuildConfig.XRAY_VERSION} · ${if (st.xrayTun) "Xray TUN" else "hev-tunnel"} · qWDTT") { open("SetCores") }
                         NavRow("Сеть и DNS", listOfNotNull("MTU ${a.tunMtu}", if (a.localDns) "локальный DNS" else null, if (st.bypassLan) "обход LAN" else null).joinToString(" · ")) { open("SetNet") }
-                        NavRow("Пинг", if (a.autoPingServers) "Автопинг включён" else "Автопинг выключен", subtitle = "Тип, таймаут, автопинг серверов") { open("Ping") }
                         SwitchNavRow("Использовать фрагментирование", "Дробить TLS ClientHello к серверу — обход DPI · ${a.fragPackets} · ${a.fragLength} · ${a.fragDelay} мс",
                             ui.fragmentation, { vm.setFragmentation(it) }) { open("Fragment") }
                         SwitchNavRow("Использовать Mux", "TCP ${a.muxConcurrency} · XUDP ${a.muxXudpConcurrency} · QUIC: ${a.muxXudpQuic}. Сервер должен поддерживать mux",
@@ -187,7 +186,6 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         SwitchRow("Xray TUN", ui.xrayTun, subtitle = if (st.xrayTun) "TUN-интерфейс внутри Xray" else "hev-socks5-tunnel → SOCKS → Xray ${BuildConfig.XRAY_VERSION}") { vm.setXrayTun(it) }
                         SwitchRow("Сниффинг пакетов", a.sniffing, subtitle = "http/tls/quic — нужен для доменных правил и блокировки рекламы") { v -> vm.setAdvTunnel { it.copy(sniffing = v) } }
                         SwitchNavRow("Шум (Noise)", "UDP: Hysteria2 / mKCP", a.noise, { v -> vm.setAdvTunnel { it.copy(noise = v) } }) { open("Noise") }
-                        NavRow("Пинг серверов", when (a.pingType) { "head" -> "HEAD"; "tcp" -> "TCP"; "icmp" -> "ICMP"; else -> "GET" } + " · таймаут ${a.pingTimeoutSec} с") { open("Ping") }
                     }
                     SettingsCard("qWDTT (VK TURN)") {
                         Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -207,6 +205,9 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
 
                 // ───────────── «Сеть и DNS»
                 "SetNet" -> {
+                    SettingsCard("Пинг серверов") {
+                        NavRow("Настройки пинга", when (a.pingType) { "head" -> "HEAD"; "tcp" -> "TCP"; "icmp" -> "ICMP"; else -> "GET" } + " · таймаут ${a.pingTimeoutSec} с" + (if (a.autoPingServers) " · автопинг" else ""), subtitle = "Тип, таймаут, URL, автопинг") { open("Ping") }
+                    }
                     SettingsCard("Локальная сеть") {
                         SwitchRow("Обход локальной сети", st.bypassLan, subtitle = "Адреса LAN идут мимо VPN") { vm.setBypassLan(it) }
                         SwitchRow("Разрешить подключения из LAN", ui.allowLan, subtitle = "Другие устройства могут использовать локальные прокси") { vm.setAllowLan(it) }
