@@ -17,19 +17,26 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Android SDK components
+      - name: Install Android command-line tools
         run: |
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdtools.zip
+          unzip -q cmdtools.zip
+          mv cmdline-tools latest
+          export ANDROID_HOME="$HOME/android-sdk"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-36" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
 
       - name: Build release APK
         working-directory: android
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APKs
