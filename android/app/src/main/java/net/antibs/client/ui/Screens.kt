@@ -548,7 +548,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         // 1.0.9: hosts are always a single-column list (the grid toggle was removed;
                         // the legacy persisted «host_grid» flag is still read/written but ignored).
                         items(g.servers, key = { it.id }) { s ->
-                            HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx)
+                            HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name })
                         }
                     }
                 }
@@ -1784,6 +1784,7 @@ private fun HostServerRow(
     compact: Boolean,
     vm: AppViewModel,
     ctx: Context,
+    onSelected: (() -> Unit)? = null,
 ) {
     val ping = pings[s.id]
     val isAuto = UiLogic.isAutoSelectEntry(s)
@@ -1819,7 +1820,7 @@ private fun HostServerRow(
         pingBusy = pingBusy,
         selected = s.id == st.selectedServerId,
         compact = compact,
-        onClick = { vm.select(s.id) },
+        onClick = { vm.select(s.id); onSelected?.invoke() },
         onPing = { vm.pingOne(s) },
         onCopy = { copyText(ctx, s.name); vm.message("Имя скопировано") },
         onEdit = if (s.xray != null && !isAuto) ({ editing = true }) else null,
