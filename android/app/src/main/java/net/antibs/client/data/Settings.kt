@@ -19,6 +19,8 @@ data class CustomHoliday(
     val emoji: String,
     val month: Int,
     val day: Int,
+    val endMonth: Int = 0,
+    val endDay: Int = 0,
 )
 
 @Serializable

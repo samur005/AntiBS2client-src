@@ -40,8 +40,12 @@ object HolidayCalendar {
 
     fun current(date: LocalDate = LocalDate.now(), custom: List<CustomHoliday> = emptyList()): Holiday? {
         val md = MonthDay.from(date)
-        // Custom first (user overrides)
-        custom.firstOrNull { it.month == md.monthValue && it.day == md.dayOfMonth }?.let {
+        // Custom first (user overrides) — supports start..end range
+        custom.firstOrNull { c ->
+            val start = java.time.MonthDay.of(c.month, c.day)
+            val end = if (c.endMonth in 1..12 && c.endDay in 1..31) java.time.MonthDay.of(c.endMonth, c.endDay) else start
+            if (start <= end) md in start..end else md >= start || md <= end
+        }?.let {
             return Holiday(it.id, it.name, it.emoji, custom = true, month = it.month, day = it.day)
         }
         // Builtin Gregorian

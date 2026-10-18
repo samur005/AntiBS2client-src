@@ -188,15 +188,25 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
             onDismissRequest = { dialog = null },
             title = { Text("Новый праздник") },
             text = {
-                Column {
+                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
                     OutlinedTextField(name, { name = it }, label = { Text("Название") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(6.dp))
                     OutlinedTextField(emoji, { emoji = it }, label = { Text("Эмодзи") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(6.dp))
+                    Text("Начало", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row {
                         OutlinedTextField(month.toString(), { month = it.toIntOrNull()?.coerceIn(1, 12) ?: 1 }, label = { Text("Месяц") }, modifier = Modifier.weight(1f))
                         Spacer(Modifier.width(8.dp))
                         OutlinedTextField(day.toString(), { day = it.toIntOrNull()?.coerceIn(1, 31) ?: 1 }, label = { Text("День") }, modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    var endMonth by remember { mutableStateOf(month) }
+                    var endDay by remember { mutableStateOf(day) }
+                    Text("Окончание", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row {
+                        OutlinedTextField(endMonth.toString(), { endMonth = it.toIntOrNull()?.coerceIn(1, 12) ?: 1 }, label = { Text("Месяц") }, modifier = Modifier.weight(1f))
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedTextField(endDay.toString(), { endDay = it.toIntOrNull()?.coerceIn(1, 31) ?: 1 }, label = { Text("День") }, modifier = Modifier.weight(1f))
                     }
                 }
             },
@@ -204,7 +214,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                 TextButton(onClick = {
                     if (name.isNotBlank()) {
                         val id = "custom-" + java.util.UUID.randomUUID().toString().take(6)
-                        vm.setAdv { it.copy(customHolidays = it.customHolidays + net.antibs.client.data.CustomHoliday(id, name.trim(), emoji.ifBlank { "🎉" }, month, day)) }
+                        vm.setAdv { it.copy(customHolidays = it.customHolidays + net.antibs.client.data.CustomHoliday(id, name.trim(), emoji.ifBlank { "🎉" }, month, day, endMonth, endDay)) }
                     }
                     dialog = null
                 }) { Text("Добавить") }
