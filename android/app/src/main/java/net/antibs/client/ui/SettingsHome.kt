@@ -151,39 +151,38 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
             onDismissRequest = { dialog = null },
             title = { Text("Сезонные украшения") },
             text = {
-                LazyColumn(Modifier.height(360.dp)) {
-                    item {
-                        listOf("auto" to "Авто (по дате)", "off" to "Выключено").forEach { (v, l) ->
-                            Row(Modifier.fillMaxWidth().clickable { vm.setAdv { it.copy(seasonalDecor = v) }; dialog = null }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(selected = a.seasonalDecor == v, onClick = null)
-                                Text(l, Modifier.padding(start = 8.dp))
-                            }
+                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                    listOf("auto" to "Авто (по дате)", "off" to "Выключено").forEach { (v, l) ->
+                        Row(Modifier.fillMaxWidth().clickable { vm.setAdv { it.copy(seasonalDecor = v) }; dialog = null }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = a.seasonalDecor == v, onClick = null)
+                            Text(l, Modifier.padding(start = 8.dp))
                         }
-                        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                        Text("Выбрать праздник", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
                     }
-                    items(net.antibs.client.data.HolidayCalendar.all(a.customHolidays), key = { it.id }) { h ->
+                    HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                    Text("Выбрать праздник", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+                    net.antibs.client.data.HolidayCalendar.all(a.customHolidays).forEach { h ->
                         Row(Modifier.fillMaxWidth().clickable { vm.setAdv { it.copy(seasonalDecor = h.id) }; dialog = null }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = a.seasonalDecor == h.id, onClick = null)
                             Text("${h.emoji}  ${h.name}" + if (h.custom) " (${h.day}.${h.month})" else "", Modifier.padding(start = 8.dp).weight(1f), fontSize = 14.sp)
-                            if (h.custom) IconButton(onClick = { vm.setAdv { it.copy(customHolidays = it.customHolidays.filterNot { c -> c.id == h.id }) } }) {
+                            if (h.custom) IconButton(onClick = { vm.setAdv { adv -> adv.copy(customHolidays = adv.customHolidays.filterNot { c -> c.id == h.id }) } }) {
                                 Icon(Icons.Filled.Delete, "Удалить", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }
-                    item { TextButton(onClick = { dialog = "addHoliday" }) { Text("+ Добавить свой праздник") } }
+                    TextButton(onClick = { dialog = "addHoliday" }) { Text("+ Добавить свой праздник") }
                 }
             },
             confirmButton = { TextButton(onClick = { dialog = null }) { Text("Закрыть") } },
         )
     }
 
-                    
     if (dialog == "addHoliday") {
         var name by remember { mutableStateOf("") }
         var emoji by remember { mutableStateOf("🎉") }
         var month by remember { mutableStateOf(1) }
         var day by remember { mutableStateOf(1) }
+        var endMonth by remember { mutableStateOf(1) }
+        var endDay by remember { mutableStateOf(1) }
         AlertDialog(
             onDismissRequest = { dialog = null },
             title = { Text("Новый праздник") },
@@ -200,8 +199,6 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         OutlinedTextField(day.toString(), { day = it.toIntOrNull()?.coerceIn(1, 31) ?: 1 }, label = { Text("День") }, modifier = Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(6.dp))
-                    var endMonth by remember { mutableStateOf(month) }
-                    var endDay by remember { mutableStateOf(day) }
                     Text("Окончание", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row {
                         OutlinedTextField(endMonth.toString(), { endMonth = it.toIntOrNull()?.coerceIn(1, 12) ?: 1 }, label = { Text("Месяц") }, modifier = Modifier.weight(1f))
