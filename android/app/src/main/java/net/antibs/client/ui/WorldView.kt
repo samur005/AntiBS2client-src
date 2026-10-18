@@ -393,7 +393,7 @@ fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.
             val scale by infinite.animateFloat(0.94f, 1.06f, androidx.compose.animation.core.infiniteRepeatable(
                 androidx.compose.animation.core.tween(1000), androidx.compose.animation.core.RepeatMode.Reverse), label = "hs")
             Row(
-                Modifier.align(Alignment.TopCenter).padding(top = iconsBottom - PILL_H + 2.dp),
+                Modifier.align(Alignment.TopCenter).padding(top = iconsBottom - PILL_H - 28.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(holiday.emoji, fontSize = 18.sp, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })

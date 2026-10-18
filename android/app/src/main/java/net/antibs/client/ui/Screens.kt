@@ -456,15 +456,13 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         PowerToggle(state = vpn.state, since = vpn.since, onClick = ::toggle)
                     }
                 }
-                if (vpn.state == ConnState.ERROR || (vpn.state == ConnState.CONNECTING && vpn.message.isNotEmpty())) {
-                    run {
-                        Text(
-                            vpn.message.ifEmpty { "Ошибка" },
-                            color = if (vpn.state == ConnState.ERROR) AntiBSColors.Err else AntiBSColors.Warn,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp),
-                        )
-                    }
+                if (vpn.state == ConnState.ERROR) {
+                    Text(
+                        vpn.message.ifEmpty { "Ошибка" },
+                        color = AntiBSColors.Err,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp),
+                    )
                 }
                 if (captcha != null) {
                     run { CaptchaCard(captcha!!) }
