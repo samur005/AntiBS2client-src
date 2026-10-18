@@ -1838,17 +1838,44 @@ private fun HostServerRow(
 internal fun SeasonalBanner(vm: AppViewModel, st: net.antibs.client.engine.AppState) {
     val mode = st.adv.seasonalDecor
     if (mode == "off") return
-    val holiday = if (mode == "auto") net.antibs.client.data.HolidayCalendar.current() else null
-    if (holiday == null) return
+    val holiday = when {
+        mode == "auto" -> net.antibs.client.data.HolidayCalendar.current()
+        else -> net.antibs.client.data.HolidayCalendar.byId(mode)
+    } ?: return
+    val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "season")
+    val scale by infinite.animateFloat(
+        initialValue = 0.92f, targetValue = 1.08f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            androidx.compose.animation.core.RepeatMode.Reverse,
+        ), label = "pulse",
+    )
+    val alpha by infinite.animateFloat(
+        initialValue = 0.75f, targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(1200),
+            androidx.compose.animation.core.RepeatMode.Reverse,
+        ), label = "glow",
+    )
     androidx.compose.material3.Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(holiday.emoji, fontSize = 20.sp)
-            Spacer(Modifier.width(8.dp))
-            Text(holiday.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                holiday.emoji,
+                fontSize = 26.sp,
+                modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale; this.alpha = alpha },
+            )
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(holiday.name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(if (holiday.isMuslim) "Мусульманский праздник" else "Праздник", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
+            }
         }
     }
 }

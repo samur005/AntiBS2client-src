@@ -144,14 +144,19 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
             onDismissRequest = { dialog = null },
             title = { Text("Сезонные украшения") },
             text = {
-                Column {
-                    listOf("auto" to "Авто (по дате устройства)", "off" to "Выключено").forEach { (v, l) ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable { vm.setAdv { it.copy(seasonalDecor = v) }; dialog = null }.padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                Column(Modifier.verticalScroll(rememberScrollState()).heightIn(max = 420.dp)) {
+                    listOf("auto" to "Авто (по дате)", "off" to "Выключено").forEach { (v, l) ->
+                        Row(Modifier.fillMaxWidth().clickable { vm.setAdv { it.copy(seasonalDecor = v) }; dialog = null }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = a.seasonalDecor == v, onClick = null)
                             Text(l, Modifier.padding(start = 8.dp))
+                        }
+                    }
+                    HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                    Text("Выбрать праздник", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+                    net.antibs.client.data.HolidayCalendar.allHolidays().forEach { h ->
+                        Row(Modifier.fillMaxWidth().clickable { vm.setAdv { it.copy(seasonalDecor = h.id) }; dialog = null }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = a.seasonalDecor == h.id, onClick = null)
+                            Text("${h.emoji}  ${h.name}", Modifier.padding(start = 8.dp), fontSize = 14.sp)
                         }
                     }
                 }
