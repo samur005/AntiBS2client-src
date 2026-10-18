@@ -389,14 +389,11 @@ fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.
             modifier = Modifier.align(Alignment.TopEnd).padding(top = iconsBottom - PILL_H))
         if (onPing != null) PingPill(ping, onPing, Modifier.align(Alignment.TopStart).padding(top = iconsBottom - PILL_H))
         if (holiday != null) {
-            val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "hol")
-            val scale by infinite.animateFloat(0.94f, 1.06f, androidx.compose.animation.core.infiniteRepeatable(
-                androidx.compose.animation.core.tween(1000), androidx.compose.animation.core.RepeatMode.Reverse), label = "hs")
             Row(
-                Modifier.align(Alignment.TopCenter).padding(top = iconsBottom - PILL_H - 56.dp),
+                Modifier.align(Alignment.TopCenter).padding(top = (iconsBottom - PILL_H - 40.dp).coerceAtLeast(4.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(holiday.emoji, fontSize = 18.sp, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
+                Text(holiday.emoji, fontSize = 18.sp)
                 Spacer(Modifier.width(6.dp))
                 Text(holiday.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.92f))
             }

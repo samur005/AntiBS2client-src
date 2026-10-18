@@ -38,7 +38,7 @@ object HolidayCalendar {
     fun byId(id: String, custom: List<CustomHoliday> = emptyList()): Holiday? =
         all(custom).firstOrNull { it.id == id }
 
-    fun current(date: LocalDate = LocalDate.now(), custom: List<CustomHoliday> = emptyList()): Holiday? {
+    fun current(date: LocalDate = LocalDate.now(), custom: List<CustomHoliday> = emptyList()): Holiday? = try {
         val md = MonthDay.from(date)
         // Custom first (user overrides) — supports start..end range
         custom.firstOrNull { c ->
@@ -72,5 +72,5 @@ object HolidayCalendar {
                 else -> null
             }
         } catch (_: Exception) { null }
-    }
+    } catch (_: Exception) { null }
 }

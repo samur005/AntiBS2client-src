@@ -469,12 +469,12 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 }
                             val liveName = if (connected || vpn.state == ConnState.CONNECTING) UiLogic.liveHostName(vpn.serverName, vpn.pickName, connected).ifEmpty { server?.name.orEmpty() } else server?.name.orEmpty()
                             HomeWorld(
-                                holiday = run {
+                                holiday = runCatching {
                                     val mode = st.adv.seasonalDecor
                                     if (mode == "off") null
                                     else if (mode == "auto") net.antibs.client.data.HolidayCalendar.current(custom = st.adv.customHolidays)
                                     else net.antibs.client.data.HolidayCalendar.byId(mode, st.adv.customHolidays)
-                                },
+                                }.getOrNull(),
                                 input = WorldInput(
                                     connected = connected,
                                     connecting = vpn.state == ConnState.CONNECTING,
