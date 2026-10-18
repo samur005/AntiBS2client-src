@@ -138,6 +138,28 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         SwitchRow("Автопроверка обновлений", st.autoUpdateCheck) { vm.setAutoUpdateCheck(it) }
                         NavRow("О приложении", subtitle = "Версии ядер, лицензии") { dialog = "about" }
                     }
+                    
+    if (dialog == "seasonal") {
+        AlertDialog(
+            onDismissRequest = { dialog = null },
+            title = { Text("Сезонные украшения") },
+            text = {
+                Column {
+                    listOf("auto" to "Авто (по дате устройства)", "off" to "Выключено").forEach { (v, l) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { vm.setAdv { it.copy(seasonalDecor = v) }; dialog = null }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = a.seasonalDecor == v, onClick = null)
+                            Text(l, Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { dialog = null }) { Text("Закрыть") } },
+        )
+    }
+
                     HintText("AntiBS2client не логирует ваш трафик. Настройки DNS, исключений и маршрутизации меняют то, что идёт мимо VPN — неверные значения могут раскрыть реальный IP.")
                 }
 
