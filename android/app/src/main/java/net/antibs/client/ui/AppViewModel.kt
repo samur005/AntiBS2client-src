@@ -13,6 +13,10 @@ import net.antibs.client.engine.ConnState
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import net.antibs.client.data.Hwid
 import net.antibs.client.data.ImportOutcome
 import net.antibs.client.data.ImportText
@@ -982,4 +986,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _toast.value = "Изменения сброшены"
         if (store.snapshot().selectedServerId == id && VpnState.status.value.state == ConnState.CONNECTED) AntiBSVpnService.connect(getApplication())
     }
+
+    fun refreshMuslimHolidays() {
+        viewModelScope.launch {
+            try {
+                val year = java.time.LocalDate.now().year
+                // Fetch special days (Hijri month/day)
+                val url = java.net.URL("https://api.aladhan.com/v1/specialDays")
+                val json = url.openStream().bufferedReader().readText()
+                val arr = kotlinx.serialization.json.Json.parseToJsonElement(json)
+                    .jsonObject["data"]?.jsonArray ?: return@launch
+                val map = mutableMapOf<String, Pair<Int, Int>>()
+                // Map known holidays
+                val wanted = mapOf(
+                    "Ashura" to "ashura",
+                    "Eid al-Fitr" to "eid_fitr",
+                    "Eid al-Adha" to "eid_adha",
+                    "Mawlid" to "mawlid",
+                )
+                for (el in arr) {
+                    val o = el.jsonObject
+                    val name = o["name"]?.jsonPrimitive?.content ?: continue
+                    val hMonth = o["month"]?.jsonPrimitive?.intOrNull ?: continue
+                    val hDay = o["day"]?.jsonPrimitive?.intOrNull ?: continue
+                    val id = wanted.entries.firstOrNull { name.contains(it.key, true) }?.value ?: continue
+                    // Convert Hijri to Gregorian for current year using Aladhan
+                    val conv = java.net.URL("https://api.aladhan.com/v1/hToG?date=$hDay-$hMonth-${year - 579}").openStream().bufferedReader().readText()
+                    val g = kotlinx.serialization.json.Json.parseToJsonElement(conv).jsonObject["data"]?.jsonObject
+                    val gDate = g?.get("gregorian")?.jsonObject?.get("date")?.jsonPrimitive?.content ?: continue
+                    val parts = gDate.split("-")
+                    if (parts.size == 3) {
+                        map[id] = parts[1].toInt() to parts[0].toInt() // month to day
+                    }
+                }
+                if (map.isNotEmpty()) {
+                    net.antibs.client.data.HolidayCalendar.applyMuslimDates(map)
+                    message("Мусульманские праздники обновлены")
+                }
+            } catch (e: Exception) {
+                message("Не удалось обновить: ${e.message?.take(40)}")
+            }
+        }
+    }
+
 }

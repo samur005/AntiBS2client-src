@@ -35,6 +35,11 @@ object HolidayCalendar {
     fun all(custom: List<CustomHoliday>): List<Holiday> =
         builtin + custom.map { Holiday(it.id, it.name, it.emoji, custom = true, month = it.month, day = it.day) }
 
+    /** Override dates for Muslim holidays (set by "Обновить праздники"). */
+    private var muslimOverrides: Map<String, Pair<Int, Int>> = emptyMap()
+
+    fun applyMuslimDates(overrides: Map<String, Pair<Int, Int>>) { muslimOverrides = overrides }
+
     fun byId(id: String, custom: List<CustomHoliday> = emptyList()): Holiday? =
         all(custom).firstOrNull { it.id == id }
 
@@ -58,6 +63,10 @@ object HolidayCalendar {
                 MonthDay.of(6, 12) -> return byId("russia")
                 MonthDay.of(11, 4) -> return byId("unity")
                 else -> {}
+            }
+            // Check overrides first
+            muslimOverrides.forEach { (id, md) ->
+                if (md.first == date.monthValue && md.second == date.dayOfMonth) return byId(id)
             }
             try {
                 val hijri = HijrahDate.from(date)

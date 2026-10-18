@@ -174,6 +174,8 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         }
                     }
                     TextButton(onClick = { dialog = "addHoliday" }) { Text("+ Добавить свой праздник") }
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    TextButton(onClick = { vm.refreshMuslimHolidays() }) { Text("🔄 Обновить мусульманские праздники") }
                 }
             },
             confirmButton = { TextButton(onClick = { dialog = null }) { Text("Закрыть") } },
