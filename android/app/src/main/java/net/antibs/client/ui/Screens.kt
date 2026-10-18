@@ -477,8 +477,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                     else if (mode == "auto") net.antibs.client.data.HolidayCalendar.current(custom = st.adv.customHolidays)
                                     else net.antibs.client.data.HolidayCalendar.byId(mode, st.adv.customHolidays)
                                 },
-                                
-                                WorldInput(
+                                input = WorldInput(
                                     connected = connected,
                                     connecting = vpn.state == ConnState.CONNECTING,
                                     liveName = liveName,
