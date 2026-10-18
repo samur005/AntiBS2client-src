@@ -1839,8 +1839,8 @@ internal fun SeasonalBanner(vm: AppViewModel, st: net.antibs.client.engine.AppSt
     val mode = st.adv.seasonalDecor
     if (mode == "off") return
     val holiday = when {
-        mode == "auto" -> net.antibs.client.data.HolidayCalendar.current()
-        else -> net.antibs.client.data.HolidayCalendar.byId(mode)
+        mode == "auto" -> net.antibs.client.data.HolidayCalendar.current(custom = st.adv.customHolidays)
+        else -> net.antibs.client.data.HolidayCalendar.byId(mode, st.adv.customHolidays)
     } ?: return
     val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "season")
     val scale by infinite.animateFloat(

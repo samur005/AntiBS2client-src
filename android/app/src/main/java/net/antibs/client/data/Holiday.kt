@@ -10,10 +10,13 @@ data class Holiday(
     val name: String,
     val emoji: String,
     val isMuslim: Boolean = false,
+    val custom: Boolean = false,
+    val month: Int = 0,
+    val day: Int = 0,
 )
 
 object HolidayCalendar {
-    private val all = listOf(
+    private val builtin = listOf(
         Holiday("ny", "Новый год", "🎄"),
         Holiday("xmas", "Рождество", "⭐"),
         Holiday("defender", "День защитника Отечества", "🎖️"),
@@ -27,13 +30,21 @@ object HolidayCalendar {
         Holiday("ashura", "День Ашура", "🕯️", isMuslim = true),
     )
 
-    fun byId(id: String): Holiday? = all.firstOrNull { it.id == id }
-    fun allHolidays(): List<Holiday> = all
+    fun builtins(): List<Holiday> = builtin
 
-    /** Active holiday on [date]. Muslim holidays use HijrahDate. */
-    fun current(date: LocalDate = LocalDate.now()): Holiday? {
+    fun all(custom: List<CustomHoliday>): List<Holiday> =
+        builtin + custom.map { Holiday(it.id, it.name, it.emoji, custom = true, month = it.month, day = it.day) }
+
+    fun byId(id: String, custom: List<CustomHoliday> = emptyList()): Holiday? =
+        all(custom).firstOrNull { it.id == id }
+
+    fun current(date: LocalDate = LocalDate.now(), custom: List<CustomHoliday> = emptyList()): Holiday? {
         val md = MonthDay.from(date)
-        // Fixed Gregorian
+        // Custom first (user overrides)
+        custom.firstOrNull { it.month == md.monthValue && it.day == md.dayOfMonth }?.let {
+            return Holiday(it.id, it.name, it.emoji, custom = true, month = it.month, day = it.day)
+        }
+        // Builtin Gregorian
         when (md) {
             MonthDay.of(12, 31), MonthDay.of(1, 1), MonthDay.of(1, 2), MonthDay.of(1, 3),
             MonthDay.of(1, 4), MonthDay.of(1, 5), MonthDay.of(1, 6), MonthDay.of(1, 7), MonthDay.of(1, 8) -> return byId("ny")
@@ -44,16 +55,16 @@ object HolidayCalendar {
             MonthDay.of(6, 12) -> return byId("russia")
             MonthDay.of(11, 4) -> return byId("unity")
         }
-        // Hijri-based
+        // Hijri
         return try {
             val hijri = HijrahDate.from(date)
             val m = hijri.get(ChronoField.MONTH_OF_YEAR)
             val d = hijri.get(ChronoField.DAY_OF_MONTH)
             when {
-                m == 10 && d in 1..3 -> byId("eid_fitr")      // Shawwal 1-3
-                m == 12 && d in 10..13 -> byId("eid_adha")    // Dhul-Hijjah 10-13
-                m == 3 && d == 12 -> byId("mawlid")           // Rabi al-awwal 12
-                m == 1 && d == 10 -> byId("ashura")           // Muharram 10
+                m == 10 && d in 1..3 -> byId("eid_fitr")
+                m == 12 && d in 10..13 -> byId("eid_adha")
+                m == 3 && d == 12 -> byId("mawlid")
+                m == 1 && d == 10 -> byId("ashura")
                 else -> null
             }
         } catch (_: Exception) { null }

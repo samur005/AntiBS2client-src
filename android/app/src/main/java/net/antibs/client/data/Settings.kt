@@ -13,6 +13,15 @@ import kotlinx.serialization.json.jsonPrimitive
  * Persisted inside AppState (SharedPreferences, read synchronously by the VPN service) and mirrored to DataStore.
  */
 @Serializable
+data class CustomHoliday(
+    val id: String,
+    val name: String,
+    val emoji: String,
+    val month: Int,
+    val day: Int,
+)
+
+@Serializable
 data class AdvancedSettings(
     // Fragment (Xray finalmask "fragment", TCP)
     val fragType: String = "xray",
@@ -96,6 +105,8 @@ data class AdvancedSettings(
     val hideServerIp: Boolean = false,
     /** off | auto | specific-id */
     val seasonalDecor: String = "auto",
+    /** User-defined holidays: id, name, emoji, month, day (Gregorian). */
+    val customHolidays: List<CustomHoliday> = emptyList(),
 ) {
     val perAppSelected: List<String> get() = if (perAppMode == "bypass") perAppBypass else perAppInclude
 

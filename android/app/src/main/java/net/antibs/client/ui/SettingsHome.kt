@@ -153,15 +153,54 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                     }
                     HorizontalDivider(Modifier.padding(vertical = 6.dp))
                     Text("Выбрать праздник", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
-                    net.antibs.client.data.HolidayCalendar.allHolidays().forEach { h ->
+                    net.antibs.client.data.HolidayCalendar.all(a.customHolidays).forEach { h ->
                         Row(Modifier.fillMaxWidth().clickable { vm.setAdv { it.copy(seasonalDecor = h.id) }; dialog = null }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = a.seasonalDecor == h.id, onClick = null)
-                            Text("${h.emoji}  ${h.name}", Modifier.padding(start = 8.dp), fontSize = 14.sp)
+                            Text("${h.emoji}  ${h.name}" + if (h.custom) " (${h.day}.${h.month})" else "", Modifier.padding(start = 8.dp).weight(1f), fontSize = 14.sp)
+                            if (h.custom) IconButton(onClick = { vm.setAdv { it.copy(customHolidays = it.customHolidays.filterNot { c -> c.id == h.id }) } }) {
+                                Icon(Icons.Filled.Delete, "Удалить", tint = MaterialTheme.colorScheme.error)
+                            }
                         }
                     }
+                    TextButton(onClick = { dialog = "addHoliday" }) { Text("+ Добавить свой праздник") }
                 }
             },
             confirmButton = { TextButton(onClick = { dialog = null }) { Text("Закрыть") } },
+        )
+    }
+
+                    
+    if (dialog == "addHoliday") {
+        var name by remember { mutableStateOf("") }
+        var emoji by remember { mutableStateOf("🎉") }
+        var month by remember { mutableStateOf(1) }
+        var day by remember { mutableStateOf(1) }
+        AlertDialog(
+            onDismissRequest = { dialog = null },
+            title = { Text("Новый праздник") },
+            text = {
+                Column {
+                    OutlinedTextField(name, { name = it }, label = { Text("Название") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(emoji, { emoji = it }, label = { Text("Эмодзи") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(6.dp))
+                    Row {
+                        OutlinedTextField(month.toString(), { month = it.toIntOrNull()?.coerceIn(1, 12) ?: 1 }, label = { Text("Месяц") }, modifier = Modifier.weight(1f))
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedTextField(day.toString(), { day = it.toIntOrNull()?.coerceIn(1, 31) ?: 1 }, label = { Text("День") }, modifier = Modifier.weight(1f))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (name.isNotBlank()) {
+                        val id = "custom-" + java.util.UUID.randomUUID().toString().take(6)
+                        vm.setAdv { it.copy(customHolidays = it.customHolidays + net.antibs.client.data.CustomHoliday(id, name.trim(), emoji.ifBlank { "🎉" }, month, day)) }
+                    }
+                    dialog = null
+                }) { Text("Добавить") }
+            },
+            dismissButton = { TextButton(onClick = { dialog = null }) { Text("Отмена") } },
         )
     }
 
