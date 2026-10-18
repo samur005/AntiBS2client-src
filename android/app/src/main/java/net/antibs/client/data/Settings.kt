@@ -94,6 +94,8 @@ data class AdvancedSettings(
     val notifTraffic: String = "both",
     val notifRefreshSec: Int = 2,
     val hideServerIp: Boolean = false,
+    /** off | auto | specific-id */
+    val seasonalDecor: String = "auto",
 ) {
     val perAppSelected: List<String> get() = if (perAppMode == "bypass") perAppBypass else perAppInclude
 

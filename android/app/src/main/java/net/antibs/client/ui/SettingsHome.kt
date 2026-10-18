@@ -90,6 +90,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                 // ───────────── main screen: only the most important items, details behind «>»
                 "Settings" -> {
                     SettingsCard("Настройки интерфейса") {
+                        NavRow("Сезонные украшения", when (a.seasonalDecor) { "off" -> "Выключено"; else -> "Авто" }, subtitle = "Праздники РФ и мусульманские") { dialog = "seasonal" }
                         NavRow("Язык", "Русский", dropdown = true, subtitle = "Язык интерфейса приложения") { vm.message("Пока доступен только русский язык") }
                         NavRow("Тема оформления", themeLabel(ui.theme), dropdown = true, subtitle = "Светлая, тёмная, чёрная или как в системе") { dialog = "theme" }
                         NavRow("Настройки интерфейса", subtitle = "Акцент, список серверов, главный экран, уведомление") { open("Interface") }

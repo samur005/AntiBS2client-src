@@ -401,6 +401,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
         }
         // 1.0.46: «Главная» = speed card, power button and the globe / map filling the rest (no list).
         if (shown == MainTab.Home) {
+            SeasonalBanner(vm, st)
             PullToRefreshBox(
                 isRefreshing = refreshing.isNotEmpty(),
                 onRefresh = { vm.refreshAll() },
@@ -1829,6 +1830,26 @@ private fun HostServerRow(
         autoExcluded = excludedAuto,
         onToggleAuto = if (ownAuto && !isAuto) ({ vm.toggleAutoExclude(s.id) }) else null,
     )
+    }
+}
+
+
+@Composable
+internal fun SeasonalBanner(vm: AppViewModel, st: net.antibs.client.engine.AppState) {
+    val mode = st.adv.seasonalDecor
+    if (mode == "off") return
+    val holiday = if (mode == "auto") net.antibs.client.data.HolidayCalendar.current() else null
+    if (holiday == null) return
+    androidx.compose.material3.Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(holiday.emoji, fontSize = 20.sp)
+            Spacer(Modifier.width(8.dp))
+            Text(holiday.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
     }
 }
 
