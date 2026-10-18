@@ -288,7 +288,7 @@ data class WorldPing(val busy: Boolean = false, val ms: Long? = null, val stamp:
 /** «Глобус» / «Карта» block of «Главная». [onServers]: tap on the bubble opens «Серверы». */
 @Composable
 fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.compose.ui.unit.Dp = 0.dp, onServers: () -> Unit = {},
-              ping: WorldPing = WorldPing(), onPing: (() -> Unit)? = null) {
+              ping: WorldPing = WorldPing(), onPing: (() -> Unit)? = null, holiday: net.antibs.client.data.Holiday? = null) {
     val ctx = LocalContext.current
     remember { WorldOpacity.init(ctx); 0 }
     var panel by remember { mutableStateOf<String?>(null) }
@@ -388,6 +388,19 @@ fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.
             onLong = { k -> mode = k; prefs.edit().putString("mode", k).apply(); panel = k },
             modifier = Modifier.align(Alignment.TopEnd).padding(top = iconsBottom - PILL_H))
         if (onPing != null) PingPill(ping, onPing, Modifier.align(Alignment.TopStart).padding(top = iconsBottom - PILL_H))
+        if (holiday != null) {
+            val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label = "hol")
+            val scale by infinite.animateFloat(0.94f, 1.06f, androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(1000), androidx.compose.animation.core.RepeatMode.Reverse), label = "hs")
+            Row(
+                Modifier.align(Alignment.TopCenter).padding(top = iconsBottom - PILL_H + 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(holiday.emoji, fontSize = 18.sp, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
+                Spacer(Modifier.width(6.dp))
+                Text(holiday.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.92f))
+            }
+        }
         panel?.let { k -> OpacityPanel(k == "map", iconsBottom + 4.dp) { panel = null } }
     }
 }
