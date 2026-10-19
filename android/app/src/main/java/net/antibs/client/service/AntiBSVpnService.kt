@@ -65,6 +65,7 @@ class AntiBSVpnService : VpnService() {
     private val sessionGate = Any()
     private var session = 0
 
+    @Volatile private var watchdog: net.antibs.client.engine.ConnectWatchdog? = null
     private fun bumpSession(): Int = synchronized(sessionGate) { ++session }
     private fun isCurrent(gen: Int): Boolean = synchronized(sessionGate) { gen == session }
 
@@ -117,6 +118,17 @@ class AntiBSVpnService : VpnService() {
         pinSetup = null
         VpnState.set(VpnStatus(ConnState.CONNECTING, serverName = entry.name, protocol = protocol, message = if (switching) "Переключение…" else "Подключение…"))
         VpnState.log("подключение к «${entry.name}» ($protocol)")
+        // 1.0.53: no connection within 5 s (e.g. no network) → stop everything, «Ошибка подключения»
+        watchdog = net.antibs.client.engine.ConnectWatchdog {
+            if (!isCurrent(gen)) return@ConnectWatchdog
+            bumpSession()
+            VpnState.log("нет подключения за ${net.antibs.client.engine.ConnectWatchdog.TIMEOUT_MS / 1000} с — попытка прервана")
+            stopAll()
+            VpnState.set(VpnStatus(ConnState.ERROR, serverName = entry.name, message = net.antibs.client.engine.ConnectWatchdog.MESSAGE))
+            try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
+            stopSelf()
+            VpnTileService.refresh(this)
+        }.start()
         try {
             when (entry.engine) {
                 EngineKind.XRAY -> {
@@ -429,7 +441,7 @@ class AntiBSVpnService : VpnService() {
             if (!TProxyService.TProxyStartService(cfg.absolutePath, pfd.fd)) throw IllegalStateException("hev-socks5-tunnel не запустился")
         }
         val stale = synchronized(sessionGate) {
-            if (gen != session) true else {
+            if (gen != session || watchdog?.established() == false) true else {
                 running = true
                 false
             }
@@ -660,6 +672,7 @@ class AntiBSVpnService : VpnService() {
 
     private fun stopAll() {
         running = false
+        watchdog?.cancel()
         statsThread?.interrupt()
         autoThread?.interrupt(); autoThread = null
         try { TProxyService.TProxyStopService() } catch (_: Throwable) {}

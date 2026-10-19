@@ -70,7 +70,7 @@ data class AppState(
     /** 1.0.19: «Автопроверка обновлений» (GitHub releases, at most once per 24 h on launch). */
     val autoUpdateCheck: Boolean = true,
     val lastUpdateCheck: Long = 0,
-    /** Empty = github.com/samur005/antibs-client-apk; "owner/repo" or an API URL otherwise. */
+    /** Empty = github.com/samur005/AntiBS2client-releases; "owner/repo" or an API URL otherwise. */
     val updateUrl: String = "",
     /** 1.0.25: «Автообновление подписок». Missing in older saves → defaults (ON, every 6 h). */
     val subAutoUpdate: Boolean = true,
@@ -101,7 +101,7 @@ class AppStore(context: Context) {
 
     private fun save(p: AppState) = synchronized(LOCK) {
         // 1.0.32: never persist sendHwid=false
-        // 1.0.38: the update source is fixed (samur005/antibs-client-apk) — any saved override is dropped
+        // 1.0.38: the update source is fixed (samur005/AntiBS2client-releases) — any saved override is dropped
         val next = UiLogic.normalizeSelection(pruneManualGroup(p.copy(sendHwid = true, updateUrl = "")))
         prefs.edit().putString("state", json.encodeToString(next)).apply()
         _state.value = next

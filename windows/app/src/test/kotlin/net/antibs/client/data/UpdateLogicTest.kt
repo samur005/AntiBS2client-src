@@ -48,7 +48,7 @@ class UpdateLogicTest {
 
     @Test fun urlsIntervalAndRateLimit() {
         assertEquals(UpdateLogic.DEFAULT_URL, UpdateLogic.apiUrl(""))
-        assertEquals("https://api.github.com/repos/samur005/antibs-client-apk/releases/latest", UpdateLogic.DEFAULT_URL)
+        assertEquals("https://api.github.com/repos/samur005/AntiBS2client-releases/releases/latest", UpdateLogic.DEFAULT_URL)
         assertEquals("https://api.github.com/repos/a/b/releases/latest", UpdateLogic.apiUrl("a/b"))
         assertEquals("https://api.github.com/repos/a/b/releases/latest", UpdateLogic.apiUrl("https://github.com/a/b/"))
         assertEquals("https://x.example/latest.json", UpdateLogic.apiUrl("https://x.example/latest.json"))

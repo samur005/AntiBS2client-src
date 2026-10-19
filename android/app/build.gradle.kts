@@ -28,7 +28,7 @@ android {
         applicationId = "fun.antibs.client"
         minSdk = 26
         targetSdk = 36
-        versionCode = 53
+        versionCode = 54
         versionName = "1.0.53"
         ndk { abiFilters += targetAbis }
         vectorDrawables { useSupportLibrary = true }

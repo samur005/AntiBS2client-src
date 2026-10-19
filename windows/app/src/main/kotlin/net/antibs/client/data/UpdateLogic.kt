@@ -8,11 +8,11 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
 /**
- * 1.0.19: app updates from the public GitHub repo samur005/antibs-client-apk (releases/latest, no auth).
+ * 1.0.19: app updates from the public GitHub repo samur005/AntiBS2client-releases (releases/latest, no auth).
  * Pure logic — version compare, release / SHA256SUMS parsing, asset choice, rate-limit messages.
  */
 object UpdateLogic {
-    const val DEFAULT_REPO = "samur005/antibs-client-apk"
+    const val DEFAULT_REPO = "samur005/AntiBS2client-releases"
     const val DEFAULT_URL = "https://api.github.com/repos/$DEFAULT_REPO/releases/latest"
     const val AUTO_INTERVAL_MS = 24L * 60 * 60 * 1000
 

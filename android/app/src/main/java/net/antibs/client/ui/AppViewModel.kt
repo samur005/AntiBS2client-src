@@ -562,7 +562,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (_update.value is UpdateUi.Checking || _update.value is UpdateUi.Downloading) return
         if (manual) _update.value = UpdateUi.Checking
         viewModelScope.launch {
-            val r = runCatching { net.antibs.client.engine.Updater.check(net.antibs.client.BuildConfig.VERSION_NAME, "") /* 1.0.38: always samur005/antibs-client-apk */ }
+            val r = runCatching { net.antibs.client.engine.Updater.check(net.antibs.client.BuildConfig.VERSION_NAME, "") /* 1.0.38: always samur005/AntiBS2client-releases */ }
             push { it.copy(lastUpdateCheck = System.currentTimeMillis()) }
             r.fold({ u ->
                 when {

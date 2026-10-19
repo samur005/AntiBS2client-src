@@ -497,6 +497,10 @@ internal fun PingPage(vm: AppViewModel, st: AppState, onBack: () -> Unit) {
     var timeout by remember(a.pingTimeoutSec) { mutableFloatStateOf(a.pingTimeoutSec.toFloat()) }
     SettingsScaffold("Пинг", onBack) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
+            SwitchRow("Автопинг серверов", a.autoPingServers, subtitle = "При открытии приложения и после обновления подписок") { v ->
+                vm.setPingSettings { it.copy(autoPingServers = v) }
+            }
+            HintText("Выключено по умолчанию. Ручной пинг (кнопки «Пинговать все» и на карточках) работает всегда.")
             SectionLabel("Тип пинга")
             listOf(
                 "get" to "GET-запрос через прокси", "head" to "HEAD-запрос через прокси",

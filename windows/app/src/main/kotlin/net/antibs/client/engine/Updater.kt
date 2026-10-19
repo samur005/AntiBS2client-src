@@ -10,7 +10,7 @@ import java.net.URL
 import java.security.MessageDigest
 
 /**
- * Desktop updates from GitHub releases of samur005/antibs-client-apk: a release counts for Windows only when it carries
+ * Desktop updates from GitHub releases of samur005/AntiBS2client-releases: a release counts for Windows only when it carries
  * a «…windows…setup.exe» asset (SHA256SUMS verified when present). Installing = starting the downloaded setup.
  */
 object Updater {

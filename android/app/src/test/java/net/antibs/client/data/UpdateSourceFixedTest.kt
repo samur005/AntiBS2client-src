@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.io.File
 
-/** 1.0.38: no «Источник обновлений» setting; updates always come from samur005/antibs-client-apk. */
+/** 1.0.38: no «Источник обновлений» setting; updates always come from samur005/AntiBS2client-releases. */
 class UpdateSourceFixedTest {
     private fun src(rel: String) = listOf(File("src/main/java/net/antibs/client/$rel"), File("app/src/main/java/net/antibs/client/$rel")).first { it.exists() }.readText()
 
@@ -17,7 +17,7 @@ class UpdateSourceFixedTest {
     }
 
     @Test fun checkUsesDefaultRepo() {
-        assertEquals("https://api.github.com/repos/samur005/antibs-client-apk/releases/latest", UpdateLogic.apiUrl(""))
+        assertEquals("https://api.github.com/repos/samur005/AntiBS2client-releases/releases/latest", UpdateLogic.apiUrl(""))
         val vm = src("ui/AppViewModel.kt")
         assertFalse(vm.contains("snapshot().updateUrl"))
         // any previously saved override is dropped on save / seeding

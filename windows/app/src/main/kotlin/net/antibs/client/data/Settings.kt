@@ -56,6 +56,8 @@ data class AdvancedSettings(
     /** default | double | keepalive */
     val pingMode: String = "default",
     val pingTimeoutSec: Int = 5,
+    /** Ping hosts automatically on app open and after subscription refresh (default off). */
+    val autoPingServers: Boolean = false,
     val pingUrl: String = DEFAULT_PING_URL,
     /** time | color */
     val pingDisplay: String = "time",

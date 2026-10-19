@@ -183,7 +183,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         XrayCore.installCertPins()
         net.antibs.client.engine.SubscriptionSync.schedule(getApplication(), store.snapshot())
         refreshStale()
-        autoPingOnOpen()
+        if (store.snapshot().adv.autoPingServers) autoPingOnOpen()
     }
     val toast: StateFlow<String?> = _toast
     fun consumeToast() { _toast.value = null }
@@ -391,7 +391,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (f == null) return@launch  // the background auto-update is refreshing it right now
             val r = f.result
             // Fresh host list → measure it right away (silent; per-host spinners show progress).
-            pingServers(UiLogic.pingTargets(store.servers(), id, _pinging.value))
+            if (store.snapshot().adv.autoPingServers) pingServers(UiLogic.pingTargets(store.servers(), id, _pinging.value))
             if (!silent || r.isFailure) _toast.value = r.fold({ r0 -> "«${r0.title ?: sub.title}»: ${UiLogic.subFooterLeft(r0.servers.count { s -> !UiLogic.isSyntheticServer(s.name) })}" }, { "Ошибка обновления: ${it.message}" })
             // after the summary so the routing message is the one the snackbar shows
             val rr = net.antibs.client.engine.SubscriptionSync.handleRouting(getApplication(), store, f.applied)
@@ -409,7 +409,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val remote = store.subscriptions().filter { it.kind != "manual" && it.url.isNotBlank() }
         remote.forEach { refresh(it.id) }
         val pending = _refreshing.value + remote.map { it.id }
-        pingServers(UiLogic.pingTargetsNotRefreshing(store.servers(), pending, _pinging.value))
+        if (store.snapshot().adv.autoPingServers) pingServers(UiLogic.pingTargetsNotRefreshing(store.servers(), pending, _pinging.value))
     }
 
     /** App open: ping every visible host whose subscription is not being refreshed right now. */
@@ -515,7 +515,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (_update.value is UpdateUi.Checking || _update.value is UpdateUi.Downloading) return
         if (manual) _update.value = UpdateUi.Checking
         viewModelScope.launch {
-            val r = runCatching { net.antibs.client.engine.Updater.check(net.antibs.client.BuildConfig.VERSION_NAME, "") /* 1.0.38: always samur005/antibs-client-apk */ }
+            val r = runCatching { net.antibs.client.engine.Updater.check(net.antibs.client.BuildConfig.VERSION_NAME, "") /* 1.0.38: always samur005/AntiBS2client-releases */ }
             push { it.copy(lastUpdateCheck = System.currentTimeMillis()) }
             r.fold({ u ->
                 when {

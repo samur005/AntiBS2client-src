@@ -36,12 +36,16 @@ object AntiBSVpnService {
     val runner = CoreRunner(scope)
     private var job: Job? = null
 
+    @Volatile private var watchdog: net.antibs.client.engine.ConnectWatchdog? = null
+
     fun connect(ctx: Context) {
+        watchdog?.cancel()
         job?.cancel()
         job = scope.launch { connectNow(ctx) }
     }
 
     fun disconnect(@Suppress("UNUSED_PARAMETER") ctx: Context) {
+        watchdog?.cancel()
         job?.cancel()
         job = scope.launch { runner.stop(); VpnState.log("отключено") }
     }
@@ -60,6 +64,15 @@ object AntiBSVpnService {
         val protocol = UiLogic.protocolGroup(entry)
         VpnState.set(VpnStatus(ConnState.CONNECTING, serverName = entry.name, protocol = protocol, message = if (switching) "Переключение…" else "Подключение…"))
         VpnState.log("подключение к «${entry.name}» ($protocol), режим=${modeLabel(a.mode)}")
+        // 1.0.53: not connected within 5 s (e.g. no network) → abort: stop cores, restore the proxy, «Ошибка подключения»
+        val attempt = kotlin.coroutines.coroutineContext[Job]
+        val wd = net.antibs.client.engine.ConnectWatchdog {
+            attempt?.cancel()
+            VpnState.log("нет подключения за ${net.antibs.client.engine.ConnectWatchdog.TIMEOUT_MS / 1000} с — попытка прервана")
+            runner.stopNow()
+            VpnState.set(VpnStatus(ConnState.ERROR, serverName = entry.name, message = net.antibs.client.engine.ConnectWatchdog.MESSAGE))
+        }
+        watchdog = wd.start()
         try {
             if (entry.engine == EngineKind.QWDTT) error("qWDTT (VK TURN) в версии для Windows пока не поддерживается")
             val reason = entry.xray?.unsupportedReason
@@ -72,10 +85,20 @@ object AntiBSVpnService {
             VpnState.log("движок: ${plan0.engineLabel}")
             val plan = plan0.copy(xray = withApi(plan0.xray, apiPort))
             runner.start(entry, snap, if (a.mode == "proxy") "proxy" else "tun", protocol, apiPort, plan)
+            if (!wd.established()) {
+                // the timeout (or a cancel) already won: tear the late connection down again
+                runner.stopNow()
+                if (wd.timedOut) VpnState.set(VpnStatus(ConnState.ERROR, serverName = entry.name, message = net.antibs.client.engine.ConnectWatchdog.MESSAGE))
+                return
+            }
             VpnState.log("подключено: ${entry.name}")
         } catch (e: kotlinx.coroutines.CancellationException) {
+            if (wd.timedOut) VpnState.set(VpnStatus(ConnState.ERROR, serverName = entry.name, message = net.antibs.client.engine.ConnectWatchdog.MESSAGE))
+            else wd.cancel()
             throw e
         } catch (e: Throwable) {
+            wd.cancel()
+            if (wd.timedOut) return
             VpnState.log("ошибка: ${e.message}")
             VpnState.set(VpnStatus(ConnState.ERROR, serverName = entry.name, message = e.message ?: "ошибка"))
             runner.stopNow()

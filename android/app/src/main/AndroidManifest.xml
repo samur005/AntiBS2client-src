@@ -15,7 +15,7 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
     <!-- «Работа в фоне»: ask to be excluded from battery optimizations -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
-    <!-- 1.0.19: in-app update (APK from github.com/samur005/antibs-client-apk → system package installer) -->
+    <!-- 1.0.19: in-app update (APK from github.com/samur005/AntiBS2client-releases → system package installer) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application

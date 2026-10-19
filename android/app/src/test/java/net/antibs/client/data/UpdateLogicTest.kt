@@ -9,11 +9,11 @@ import org.junit.Test
 
 class UpdateLogicTest {
     private val release = """{"tag_name":"v1.0.20","name":"AntiBS client 1.0.20","draft":false,"prerelease":false,
-        "html_url":"https://github.com/samur005/antibs-client-apk/releases/tag/v1.0.20","body":"## 1.0.20\n- исправления",
+        "html_url":"https://github.com/samur005/AntiBS2client-releases/releases/tag/v1.0.20","body":"## 1.0.20\n- исправления",
         "assets":[
-          {"name":"AntiBS-client-1.0.20-arm64-v8a.apk","size":41000000,"browser_download_url":"https://github.com/samur005/antibs-client-apk/releases/download/v1.0.20/AntiBS-client-1.0.20-arm64-v8a.apk"},
-          {"name":"AntiBS-client-1.0.20-universal.apk","size":80000000,"browser_download_url":"https://github.com/samur005/antibs-client-apk/releases/download/v1.0.20/AntiBS-client-1.0.20-universal.apk"},
-          {"name":"SHA256SUMS.txt","size":200,"browser_download_url":"https://github.com/samur005/antibs-client-apk/releases/download/v1.0.20/SHA256SUMS.txt"}]}"""
+          {"name":"AntiBS-client-1.0.20-arm64-v8a.apk","size":41000000,"browser_download_url":"https://github.com/samur005/AntiBS2client-releases/releases/download/v1.0.20/AntiBS-client-1.0.20-arm64-v8a.apk"},
+          {"name":"AntiBS-client-1.0.20-universal.apk","size":80000000,"browser_download_url":"https://github.com/samur005/AntiBS2client-releases/releases/download/v1.0.20/AntiBS-client-1.0.20-universal.apk"},
+          {"name":"SHA256SUMS.txt","size":200,"browser_download_url":"https://github.com/samur005/AntiBS2client-releases/releases/download/v1.0.20/SHA256SUMS.txt"}]}"""
 
     @Test fun versionCompare() {
         assertTrue(UpdateLogic.isNewer("v1.0.20", "1.0.19"))
@@ -48,7 +48,7 @@ class UpdateLogicTest {
 
     @Test fun urlsIntervalAndRateLimit() {
         assertEquals(UpdateLogic.DEFAULT_URL, UpdateLogic.apiUrl(""))
-        assertEquals("https://api.github.com/repos/samur005/antibs-client-apk/releases/latest", UpdateLogic.DEFAULT_URL)
+        assertEquals("https://api.github.com/repos/samur005/AntiBS2client-releases/releases/latest", UpdateLogic.DEFAULT_URL)
         assertEquals("https://api.github.com/repos/a/b/releases/latest", UpdateLogic.apiUrl("a/b"))
         assertEquals("https://api.github.com/repos/a/b/releases/latest", UpdateLogic.apiUrl("https://github.com/a/b/"))
         assertEquals("https://x.example/latest.json", UpdateLogic.apiUrl("https://x.example/latest.json"))
