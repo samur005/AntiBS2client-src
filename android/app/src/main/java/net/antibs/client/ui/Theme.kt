@@ -156,7 +156,7 @@ private fun lightScheme() = lightColorScheme(
 )
 
 @Composable
-fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, content: @Composable () -> Unit) {
+fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, style: ServerStyle = ServerStyle.CLASSIC, content: @Composable () -> Unit) {
     val dark = isDark(mode)
     val ctx = LocalContext.current
     val accentColor = if (accent == "system" && android.os.Build.VERSION.SDK_INT >= 31) {
@@ -164,7 +164,9 @@ fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, content: @Comp
     } else Color(Accent.argbOf(accent))
     Accent.current = accentColor
     Accent.isDefault = accent == Accent.DEFAULT || (accent == "system" && android.os.Build.VERSION.SDK_INT < 31)
-    val scheme = if (dark) darkScheme(mode == ThemeMode.AMOLED) else lightScheme()
+    val scheme = StyleTheme.colors(style, dark, mode == ThemeMode.AMOLED, if (dark) darkScheme(mode == ThemeMode.AMOLED) else lightScheme())
+    // styles: the whole app (AntiBSColors.Blue users included) follows the style accent
+    if (style != ServerStyle.CLASSIC) { Accent.current = scheme.primary; Accent.isDefault = false }
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -177,8 +179,8 @@ fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, content: @Comp
     }
     // Material3 does not set LocalContentColor, so it stays Color.Black and body text
     // disappears on the dark canvas. Force onBackground for both themes.
-    MaterialTheme(colorScheme = scheme) {
-        CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
+    MaterialTheme(colorScheme = scheme, shapes = StyleTheme.shapes(style)) {
+        CompositionLocalProvider(LocalContentColor provides scheme.onBackground, LocalAppStyle provides style, content = content)
     }
 }
 

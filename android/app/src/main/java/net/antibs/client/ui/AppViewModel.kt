@@ -1,5 +1,6 @@
 package net.antibs.client.ui
 
+import kotlinx.coroutines.isActive
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -578,11 +579,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun downloadUpdate(u: net.antibs.client.data.UpdateLogic.Update) {
         _update.value = UpdateUi.Downloading(u, 0f)
-        viewModelScope.launch {
+        downloadJob?.cancel()
+        downloadJob = viewModelScope.launch {
             runCatching {
-                net.antibs.client.engine.Updater.download(getApplication(), u) { p -> _update.value = UpdateUi.Downloading(u, p) }
-            }.fold({ f -> installUpdate(u, f) }, { e -> _update.value = UpdateUi.Error("Загрузка: ${e.message}") })
+                net.antibs.client.engine.Updater.download(getApplication(), u) { p -> if (isActive) _update.value = UpdateUi.Downloading(u, p) }
+            }.fold({ f -> installUpdate(u, f) }, { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _update.value = UpdateUi.Error("Загрузка: ${e.message}")
+            })
         }
+    }
+
+    private var downloadJob: kotlinx.coroutines.Job? = null
+
+    /** 1.0.54: «Отмена» on the download plate — abort, delete the partial file, hide; the next check offers it again. */
+    fun cancelUpdateDownload() {
+        downloadJob?.cancel(); downloadJob = null
+        runCatching { net.antibs.client.engine.Updater.clearPartial(getApplication()) }
+        _update.value = UpdateUi.Idle
     }
 
     fun installUpdate(u: net.antibs.client.data.UpdateLogic.Update, f: java.io.File) {

@@ -195,7 +195,9 @@ fun AppRoot(vm: AppViewModel) {
     val ui by vm.ui.collectAsState()
     val st by vm.state.collectAsState()
     // Read the collected preference (StateFlow), never a one-shot store.theme() snapshot.
-    AntiBSTheme(ui.theme, st.adv.accent) {
+    val stylePrefs = Styles.get(LocalContext.current)
+    val appStyle by stylePrefs.style.collectAsState()
+    AntiBSTheme(ui.theme, st.adv.accent, appStyle) {
         var pageName by rememberSaveable { mutableStateOf(Page.Main.name) }
         var routingId by rememberSaveable { mutableStateOf<String?>(null) }
         // Detail pages remember which page opened them.
@@ -274,6 +276,15 @@ internal fun UpdateDialog(vm: AppViewModel) {
                 }
             },
             confirmButton = {},
+            // 1.0.54: cancel the running download (style tokens: error colour + style shape)
+            dismissButton = {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { vm.cancelUpdateDownload() },
+                    shape = MaterialTheme.shapes.small,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f)),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("Отмена") }
+            },
         )
         is AppViewModel.UpdateUi.NeedPermission -> AlertDialog(
             onDismissRequest = { vm.dismissUpdate() },
@@ -356,6 +367,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val server = st.servers.firstOrNull { it.id == st.selectedServerId }
     val connected = vpn.state == ConnState.CONNECTED
     var showAdd by remember { mutableStateOf(false) }
+    var showStyle by remember { mutableStateOf(false) }
     val vpnOn = UiLogic.speedCardWanted(vpn.state)
     var speedCardVisible by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(vpnOn) }
     LaunchedEffect(vpnOn) {
@@ -377,13 +389,41 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val payReturn by net.antibs.client.MainActivity.paymentReturn.collectAsState()
     LaunchedEffect(payReturn) { if (payReturn != null) tabName = MainTab.Shop.name }
 
-    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-        TopBar(
+    val sp = Styles.get(ctx)
+    val sStyle by sp.style.collectAsState()
+    val sOpts by sp.options.collectAsState()
+    val sFilter by sp.filter.collectAsState()
+    val sRibbon by sp.ribbon.collectAsState()
+    val sFav by sp.favorites.collectAsState()
+    val sSort by sp.sort.collectAsState()
+    val sSubNew by sp.subNewestFirst.collectAsState()
+    val opts = sOpts[sStyle] ?: ServerStyleLogic.defaultOptions(sStyle)
+    val effLayout = ServerStyleLogic.effectiveLayout(sStyle, opts)
+    val bg = ssBackground(sStyle)
+    Column(Modifier.fillMaxSize().then(if (bg != null && tab == MainTab.Servers) Modifier.background(bg) else Modifier).windowInsetsPadding(WindowInsets.statusBars)) {
+        if (tab == MainTab.Servers) {
+            val ids = st.subscriptions.map { it.id }
+            val curSub = if (effLayout == SubLayout.RIBBON) ServerStyleLogic.validRibbon(sRibbon[sStyle] ?: "", ids).let { id -> st.subscriptions.firstOrNull { it.id == id } } else null
+            ServersHeader(
+                style = sStyle, layout = opts.layout, bestCard = opts.bestCard,
+                onStyle = { sp.setStyle(it) }, onLayout = { sp.setLayout(sStyle, it) }, onBestCard = { sp.setBestCard(sStyle, it) },
+                sortMode = sSort, onSortMode = { sp.setSort(it) }, subNewestFirst = sSubNew, onSubOrder = { sp.setSubNewestFirst(it) },
+                filter = sFilter[sStyle] ?: ServerFilter.ALL, onFilter = { sp.setFilter(sStyle, it) },
+                testing = pinging.isNotEmpty(), onTestAll = { vm.pingAll() },
+                onAdd = { showAdd = true },
+                subMenu = curSub,
+                onSubRefresh = { vm.refresh(it.id) }, onSubPing = { vm.pingSubscription(it.id) },
+                onSubCopy = { copyText(ctx, it.url); vm.message("Ссылка скопирована") },
+                onSubDeleteUnreachable = { vm.askDeleteUnreachable(it.id) }, onSubRestoreHidden = { vm.restoreHiddenHosts(it.id) },
+                onSubDelete = { vm.removeSubscription(it.id) },
+            )
+        } else TopBar(
             theme = ui.theme,
             onTheme = { vm.setTheme(it) },
             onSettings = onOpenSettings,
             onAdd = { showAdd = true },
             onSpeedTest = onOpenSpeedTest,
+            onStyle = { showStyle = true },
         )
         androidx.compose.animation.AnimatedContent(
             targetState = tab,
@@ -510,7 +550,26 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
                     item { Text("Нет подписок. Нажмите «+» вверху справа или купите подписку в «Магазине».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp)) }
                 }
-                groups.forEach { g ->
+                // styles: ribbon / card stack / Material You pick one subscription at a time (ABS 2.3.33 port)
+                if (sStyle != ServerStyle.CLASSIC && effLayout == SubLayout.RIBBON) {
+                    styledServers(sStyle, effLayout, opts.bestCard, sRibbon[sStyle] ?: ServerStyleLogic.RIBBON_FIRST, { sp.setRibbon(sStyle, it) },
+                        sFilter[sStyle] ?: ServerFilter.ALL, { sp.setFilter(sStyle, it) }, sFav, sSort, sSubNew,
+                        st, ui, pings, pinging, vm, ctx, nowSec, onSelected = { tabName = MainTab.Home.name })
+                    return@run
+                }
+                if (sStyle != ServerStyle.CLASSIC && opts.bestCard) item(key = "ss-best") {
+                    val pf: (String) -> Long? = { pings[it] }
+                    val best = ServerStyleLogic.best(st.servers, pf)
+                    val ms = best?.let { ServerStyleLogic.pingMs(pf(it.id)) }
+                    Box(Modifier.padding(vertical = 4.dp)) {
+                        BestServerCard(sStyle, "Лучший сервер", best?.let { UiLogic.displayName(it.name) } ?: "", best?.let { UiLogic.protocolGroup(it) } ?: "",
+                            ms, ms?.let { "$it мс" } ?: "", "Подключить", "Проверьте пинг, чтобы найти лучший сервер",
+                            onAction = { best?.let { vm.select(it.id); tabName = MainTab.Home.name } }, onRetest = { vm.pingAll() })
+                    }
+                }
+                val sFilt = sFilter[sStyle] ?: ServerFilter.ALL
+                ServerStyleLogic.orderSubs(groups, sSubNew).forEach { g0 ->
+                        val g = g0.copy(servers = ServerStyleLogic.sortServers(ServerStyleLogic.filter(g0.servers, sFilt, sFav) { pings[it] }, sSort) { pings[it] })
                         val sub = g.subscription
                         // «Серверы» (manual) is omitted entirely when empty — no blank card/header.
                         if (sub != null && sub.id == ProtocolSupport.MANUAL_SUB_ID && g.total == 0 && st.adv.hideEmptyManual &&
@@ -552,7 +611,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         // 1.0.9: hosts are always a single-column list (the grid toggle was removed;
                         // the legacy persisted «host_grid» flag is still read/written but ignored).
                         items(g.servers, key = { it.id }) { s ->
-                            HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name })
+                            if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name })
+                            else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name })
                         }
                     }
                 }
@@ -562,6 +622,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
         MainBottomBar(tab, onSelect = { tabName = it.name })
     }
     if (showAdd) AddServersSheet(vm = vm, servers = st.servers, onDismiss = { showAdd = false })
+    if (showStyle) StyleViewDialog(onDismiss = { showStyle = false })
 }
 
 /** 1.0.42: bottom tabs, left → right. */
@@ -597,7 +658,7 @@ private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                 colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
                     selectedIconColor = Color.White,
                     selectedTextColor = AntiBSColors.Blue,
-                    indicatorColor = AntiBSColors.BlueDeep,
+                    indicatorColor = if (LocalAppStyle.current == ServerStyle.CLASSIC) AntiBSColors.BlueDeep else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
@@ -614,6 +675,7 @@ private fun TopBar(
     onSettings: () -> Unit,
     onAdd: () -> Unit,
     onSpeedTest: () -> Unit,
+    onStyle: () -> Unit = {},
 ) {
     // 1.0.32: brand on the left (icon + AntiBS2client); ⚙ / + / speedtest stay on the right.
     // Refresh: pull-to-refresh, ↻ / ⋮ «Обновить» on each subscription card, and the auto-update interval.
@@ -638,7 +700,7 @@ private fun TopBar(
         Spacer(Modifier.weight(1f))
         // 1.0.47: theme toggle in the top bar: Светлая → Тёмная → AMOLED → Светлая (Как в системе → the opposite)
         val effectiveDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-        IconButton(onClick = {
+        IconButton(modifier = Modifier.size(34.dp), onClick = {
             onTheme(when (theme) {
                 ThemeMode.LIGHT -> ThemeMode.DARK
                 ThemeMode.DARK -> ThemeMode.AMOLED
@@ -653,12 +715,13 @@ private fun TopBar(
                     ThemeMode.DARK -> Icons.Filled.DarkMode
                     else -> if (effectiveDark) Icons.Filled.DarkMode else Icons.Filled.LightMode
                 },
-                contentDescription = "Сменить тему", tint = tint,
+                contentDescription = "Сменить тему", tint = tint, modifier = Modifier.size(20.dp),
             )
         }
-        IconButton(onClick = onSpeedTest) { Icon(Icons.Filled.Speed, "Тест скорости", tint = tint) }
-        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Настройки", tint = tint) }
-        IconButton(onClick = onAdd) { Icon(Icons.Filled.Add, "Добавить серверы", tint = tint, modifier = Modifier.size(28.dp)) }
+        IconButton(onClick = onStyle, modifier = Modifier.size(34.dp)) { Icon(PaletteIcon, "Стиль оформления", tint = tint, modifier = Modifier.size(20.dp)) }
+        IconButton(onClick = onSpeedTest, modifier = Modifier.size(34.dp)) { Icon(Icons.Filled.Speed, "Тест скорости", tint = tint, modifier = Modifier.size(20.dp)) }
+        IconButton(onClick = onSettings, modifier = Modifier.size(34.dp)) { Icon(Icons.Filled.Settings, "Настройки", tint = tint, modifier = Modifier.size(20.dp)) }
+        IconButton(onClick = onAdd, modifier = Modifier.size(36.dp)) { Icon(Icons.Filled.Add, "Добавить серверы", tint = tint, modifier = Modifier.size(25.dp)) }
     }
 }
 
@@ -1036,7 +1099,7 @@ internal fun SubPingIcon(pinging: Boolean, onPing: () -> Unit) {
 }
 
 @Composable
-private fun SubCard(
+internal fun SubCard(
     sub: Subscription,
     realServers: Int,
     refreshing: Boolean,
@@ -1780,7 +1843,7 @@ internal fun AboutDialog(onClose: () -> Unit) {
 
 
 @Composable
-private fun HostServerRow(
+internal fun HostServerRow(
     s: net.antibs.client.data.ServerEntry,
     st: net.antibs.client.engine.AppState,
     pings: Map<String, Long>,
