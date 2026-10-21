@@ -54,8 +54,9 @@ fun ServersHeader(
     val menuShape = RoundedCornerShape(16.dp)
     @Composable
     fun HeadIcon(icon: ImageVector, desc: String, onClick: () -> Unit) {
+        val hf = androidx.compose.ui.platform.LocalHapticFeedback.current
         Icon(icon, contentDescription = desc, tint = iconTint,
-            modifier = Modifier.clip(CircleShape).clickable { onClick() }.padding(7.dp).size(21.dp))
+            modifier = Modifier.clip(CircleShape).clickable { hf.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onClick() }.padding(7.dp).size(21.dp))
     }
     @Composable
     fun Item(icon: ImageVector?, label: String, checked: Boolean = false, danger: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {

@@ -198,6 +198,10 @@ fun AppRoot(vm: AppViewModel) {
     val stylePrefs = Styles.get(LocalContext.current)
     val appStyle by stylePrefs.style.collectAsState()
     AntiBSTheme(ui.theme, st.adv.accent, appStyle) {
+    // 1.0.55: every Compose haptic respects «Вибрация» (Настройки интерфейса); the system touch-feedback setting applies too.
+    val hapticView = androidx.compose.ui.platform.LocalView.current
+    val gatedHaptic = remember(hapticView, st.adv.haptics) { AppHaptics.feedback(hapticView, st.adv.haptics) }
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalHapticFeedback provides gatedHaptic) {
         var pageName by rememberSaveable { mutableStateOf(Page.Main.name) }
         var routingId by rememberSaveable { mutableStateOf<String?>(null) }
         // Detail pages remember which page opened them.
@@ -226,6 +230,9 @@ fun AppRoot(vm: AppViewModel) {
             UpdateDialog(vm)
             UnreachableDialog(vm)
         }
+        // 1.0.55: one light tick per actual settings / menu page change (not on first show)
+        AppHaptics.TickOnChange(pageName, st.adv.haptics)
+    }
     }
 }
 
@@ -384,6 +391,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     // 1.0.42: bottom navigation «Магазин» · «Главная» · «Серверы» (Главная is the start tab)
     var tabName by rememberSaveable { mutableStateOf(MainTab.Home.name) }
     val tab = MainTab.valueOf(tabName)
+    // 1.0.55: one light tick per actual tab change — navbar tap, back, «Серверы» links, picking a server
+    AppHaptics.TickOnChange(tab, st.adv.haptics)
     BackHandler(enabled = tab != MainTab.Home) { tabName = MainTab.Home.name }
     // 1.0.43: back from the payment page (antibs2client://payment-return) → «Магазин»
     val payReturn by net.antibs.client.MainActivity.paymentReturn.collectAsState()
@@ -653,7 +662,7 @@ private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                 androidx.compose.animation.core.spring(dampingRatio = 0.5f, stiffness = 400f), label = "tab-scale")
             NavigationBarItem(
                 selected = sel,
-                onClick = { if (!sel) { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onSelect(t) } },
+                onClick = { if (!sel) onSelect(t) },
                 icon = {
                     Icon(
                         when (t) {
@@ -1791,7 +1800,10 @@ internal fun NavRow(title: String, value: String? = null, dropdown: Boolean = fa
 }
 
 @Composable
-internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null, onChange0: (Boolean) -> Unit) {
+    // 1.0.55: toggles give the firmer click
+    val hf = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val onChange: (Boolean) -> Unit = { hf.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onChange0(it) }
     Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
         RowTexts(title, subtitle, Modifier.weight(1f).padding(vertical = 4.dp).padding(end = 8.dp))

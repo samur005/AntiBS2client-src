@@ -439,6 +439,13 @@ fun SubCardStack(items: List<RibbonItem>, selected: String, serversLabel: (Int) 
     androidx.compose.runtime.LaunchedEffect(pager.settledPage) {
         items.getOrNull(pager.settledPage)?.let { if (it.id != selected) onPick(it.id) }
     }
+    // 1.0.55: one light tick per settled card change
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val lastPage = androidx.compose.runtime.remember { intArrayOf(start) }
+    androidx.compose.runtime.LaunchedEffect(pager.settledPage) {
+        if (pager.settledPage != lastPage[0]) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        lastPage[0] = pager.settledPage
+    }
     val grads = listOf(
         listOf(Color(0xFF4F46E5), Color(0xFF7C3AED)), listOf(Color(0xFFEA580C), Color(0xFFDB2777)),
         listOf(Color(0xFF0D9488), Color(0xFF2563EB)), listOf(Color(0xFF9333EA), Color(0xFFDB2777))

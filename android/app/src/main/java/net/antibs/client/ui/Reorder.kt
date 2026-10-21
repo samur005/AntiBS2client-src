@@ -44,7 +44,7 @@ fun Modifier.hReorderItem(st: HReorderState, id: String, spacingPx: Float, hapti
         }
         .pointerInput(id) {
             detectDragGesturesAfterLongPress(
-                onDragStart = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); st.dragId = id; st.dx = 0f },
+                onDragStart = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); st.dragId = id; st.dx = 0f },
                 onDragEnd = { val o = st.order; st.dragId = null; st.dx = 0f; onDone(o) },
                 onDragCancel = { st.dragId = null; st.dx = 0f },
                 onDrag = { ch, amt ->
@@ -71,7 +71,7 @@ fun Modifier.vReorderItem(st: VReorderState, list: LazyListState, id: String, ha
     .pointerInput(id) {
         fun info() = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "sub-$id" }
         detectDragGesturesAfterLongPress(
-            onDragStart = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); st.dragId = id; st.anchor = (info()?.offset ?: 0).toFloat(); st.ty = 0f },
+            onDragStart = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); st.dragId = id; st.anchor = (info()?.offset ?: 0).toFloat(); st.ty = 0f },
             onDragEnd = { st.dragId = null; st.ty = 0f },
             onDragCancel = { st.dragId = null; st.ty = 0f },
             onDrag = { ch, amt ->
