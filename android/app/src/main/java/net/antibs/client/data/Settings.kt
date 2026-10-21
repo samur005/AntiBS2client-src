@@ -25,6 +25,8 @@ data class CustomHoliday(
 
 @Serializable
 data class AdvancedSettings(
+    /** 1.0.55: «Единицы скорости» on the speed card: "bytes" (КБ/с, default, also for old installs) or "bits" (кбит/с). */
+    val speedUnits: String = "bytes",
     // Fragment (Xray finalmask "fragment", TCP)
     val fragType: String = "xray",
     val fragPackets: String = "tlshello",

@@ -475,12 +475,12 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         directDownRate = vpn.directDownSpeed,
                         directUpRate = vpn.directUpSpeed,
                         dot = UiLogic.statusDot(vpn.state, tunnelPing),
-                        downSpeed = Format.speedFixed(vpn.downSpeed),
-                        upSpeed = Format.speedFixed(vpn.upSpeed),
+                        downSpeed = Format.speedFixed(vpn.downSpeed, st.adv.speedUnits == "bits"),
+                        upSpeed = Format.speedFixed(vpn.upSpeed, st.adv.speedUnits == "bits"),
                         downTotal = Format.bytesFixed(vpn.downBytes),
                         upTotal = Format.bytesFixed(vpn.upBytes),
-                        directDownSpeed = Format.speedFixed(vpn.directDownSpeed),
-                        directUpSpeed = Format.speedFixed(vpn.directUpSpeed),
+                        directDownSpeed = Format.speedFixed(vpn.directDownSpeed, st.adv.speedUnits == "bits"),
+                        directUpSpeed = Format.speedFixed(vpn.directUpSpeed, st.adv.speedUnits == "bits"),
                         directDownTotal = Format.bytesFixed(vpn.directDownBytes),
                         directUpTotal = Format.bytesFixed(vpn.directUpBytes),
                         vpnSamples = vpnSamples,
@@ -489,6 +489,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         sampleTimes = sampleTimes,
                         onLongPress = onOpenSpeedTest,
                         statsVisible = speedCardVisible,
+                        speedTemplate = Format.speedTemplate(st.adv.speedUnits == "bits"),
                     )
                 }
                 run {
@@ -744,6 +745,7 @@ private fun ConnectionCard(
     active: Boolean,
     dot: UiLogic.StatusDot,
     downSpeed: String,
+    speedTemplate: String = Format.SPEED_TEMPLATE,
     upSpeed: String,
     downTotal: String,
     upTotal: String,
@@ -813,8 +815,8 @@ private fun ConnectionCard(
             // red (direct) groups sit side by side; the sparkline fills the remaining width (≤ 110dp), pinned right.
             val measurer = rememberTextMeasurer()
             val density = LocalDensity.current
-            val speedW = remember(density) {
-                with(density) { measurer.measure(Format.SPEED_TEMPLATE, SpeedStyle).size.width.toDp() + 1.dp }
+            val speedW = remember(density, speedTemplate) {
+                with(density) { measurer.measure(speedTemplate, SpeedStyle).size.width.toDp() + 1.dp }
             }
             val totalW = remember(density) {
                 with(density) { measurer.measure(Format.TOTAL_TEMPLATE, TotalStyle).size.width.toDp() + 2.dp }
