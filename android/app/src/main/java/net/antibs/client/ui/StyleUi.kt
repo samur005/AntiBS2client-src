@@ -206,11 +206,18 @@ data class RibbonItem(val id: String, val title: String, val subtitle: String, v
     val traffic: String = "", val remaining: Float? = null, val used: Long = 0, val total: Long = 0, val servers: Int = 0)
 
 @Composable
-fun SubscriptionRibbon(style: ServerStyle, items: List<RibbonItem>, selected: String, onPick: (String) -> Unit) {
+fun SubscriptionRibbon(style: ServerStyle, items: List<RibbonItem>, selected: String, onPick: (String) -> Unit, onReorder: ((List<String>) -> Unit)? = null) {
     val c = ssColors(style)
-    if (style == ServerStyle.AURORA) { AuroraTiles(items, selected, onPick); return }
+    if (style == ServerStyle.AURORA) { AuroraTiles(items, selected, onPick, onReorder); return }
+    val movable = items.map { it.id }.filter { it.isNotEmpty() && it != ServerStyleLogic.MANUAL_ID }
+    val rs = androidx.compose.runtime.remember(movable) { HReorderState(movable) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val spPx = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.toPx() }
+    val byId = items.associateBy { it.id }
+    val shown = items.filter { it.id !in movable }.filter { it.id.isEmpty() } + rs.order.mapNotNull { byId[it] } + items.filter { it.id !in movable && it.id.isNotEmpty() }
+    fun Modifier.drag(id: String) = if (onReorder == null) this else hReorderItem(rs, id, spPx, haptic) { onReorder(it) }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items.forEach { it ->
+        shown.forEach { it ->
             val on = it.id == selected
             val shape = ssShape(style, 14.dp)
             val hue = if (style.glow && it.id.isNotEmpty()) SsPalette.hue(it.id) else c.accent
@@ -220,7 +227,7 @@ fun SubscriptionRibbon(style: ServerStyle, items: List<RibbonItem>, selected: St
                 on -> Modifier.clip(shape).background(Brush.linearGradient(listOf(c.accent, c.accent.copy(alpha = 0.8f)))).border(1.dp, c.accent, shape)
                 else -> Modifier.clip(shape).background(c.card).border(1.dp, c.cardBorder, shape)
             }
-            Column(m.clickable { onPick(it.id) }.padding(horizontal = 14.dp, vertical = 8.dp).widthIn(max = 180.dp)) {
+            Column(Modifier.drag(it.id).then(m).clickable { onPick(it.id) }.padding(horizontal = 14.dp, vertical = 8.dp).widthIn(max = 180.dp)) {
                 Text(it.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = when { on && style == ServerStyle.CARDS -> Color.White; style.glow && on -> hue; else -> c.onCard })
                 if (it.subtitle.isNotEmpty()) Text(it.subtitle, fontSize = 10.sp, maxLines = 1,
@@ -366,14 +373,21 @@ private fun ringColor(rem: Float?): Color = when {
 
 /** «Аврора»: glass tiles with a traffic ring per subscription. */
 @Composable
-fun AuroraTiles(items: List<RibbonItem>, selected: String, onPick: (String) -> Unit) {
+fun AuroraTiles(items: List<RibbonItem>, selected: String, onPick: (String) -> Unit, onReorder: ((List<String>) -> Unit)? = null) {
     val c = ssColors(ServerStyle.AURORA)
+    val movable = items.map { it.id }.filter { it.isNotEmpty() && it != ServerStyleLogic.MANUAL_ID }
+    val rs = androidx.compose.runtime.remember(movable) { HReorderState(movable) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val spPx = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.toPx() }
+    val byId = items.associateBy { it.id }
+    val shown = items.filter { it.id !in movable }.filter { it.id.isEmpty() } + rs.order.mapNotNull { byId[it] } + items.filter { it.id !in movable && it.id.isNotEmpty() }
+    fun Modifier.drag(id: String) = if (onReorder == null) this else hReorderItem(rs, id, spPx, haptic) { onReorder(it) }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items.forEach { it ->
+        shown.forEach { it ->
             val on = it.id == selected
             val shape = RoundedCornerShape(18.dp)
             Column(
-                Modifier.width(112.dp).clip(shape).background(if (on) c.selectedFill else c.card)
+                Modifier.drag(it.id).width(112.dp).clip(shape).background(if (on) c.selectedFill else c.card)
                     .border(if (on) 1.5.dp else 1.dp, if (on) c.accent else c.cardBorder, shape)
                     .clickable { onPick(it.id) }.padding(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally

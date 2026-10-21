@@ -513,6 +513,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeSubscription(id: String) = store.removeSubscription(id)
 
+    /** 1.0.55: drag-reorder on the Servers screen; [displayIds] is the order as shown. Stored in AppState.subscriptions (used everywhere). */
+    fun moveSubscription(dragId: String, targetId: String, newestFirst: Boolean) {
+        val display = ServerStyleLogic.orderSubs(store.snapshot().subscriptions.map { it.id }, newestFirst)
+        val to = display.indexOf(targetId); if (to < 0) return
+        reorderSubscriptions(SubOrder.move(display, dragId, to), newestFirst)
+    }
+
+    fun reorderSubscriptions(displayIds: List<String>, newestFirst: Boolean) {
+        val order = SubOrder.storedFromDisplay(displayIds, newestFirst)
+        push { st -> st.copy(subscriptions = SubOrder.apply(st.subscriptions, order) { it.id }) }
+    }
+
     // ---- 1.0.18: HWID ----
     /** Per-install device ID (default HWID). */
     val deviceHwid: String get() = store.hwid

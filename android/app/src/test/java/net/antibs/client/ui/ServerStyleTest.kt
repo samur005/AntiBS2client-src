@@ -60,3 +60,16 @@ class ServerStyleTest {
         assertEquals(7, ServerStyle.entries.size)
     }
 }
+
+class SubOrderTest {
+    @Test fun move() {
+        assertEquals(listOf("b", "a", "c"), SubOrder.move(listOf("a", "b", "c"), "a", 1))
+        assertEquals(listOf("c", "a", "b"), SubOrder.move(listOf("a", "b", "c"), "c", 0))
+        assertEquals(listOf("a", "b"), SubOrder.move(listOf("a", "b"), "zz", 0))
+    }
+    @Test fun storedAndApply() {
+        assertEquals(listOf("c", "b", "a"), SubOrder.storedFromDisplay(listOf("a", "b", "c"), false))
+        assertEquals(listOf("c", "a", "b", "x"), SubOrder.apply(listOf("a", "b", "x", "c"), listOf("c", "a", "b")) { it })
+        assertEquals(listOf("b", "a", "x"), SubOrder.apply(listOf("a", "x", "b"), listOf("b", "a")) { it })
+    }
+}

@@ -177,7 +177,7 @@ internal fun LazyListScope.styledServers(
                     MaterialTrafficCard("Использовано", UiLogic.compactSize((tot?.used ?: 0).toDouble()), cur?.total?.takeIf { it > 0 }?.let { "из " + UiLogic.compactSize(it.toDouble()) } ?: "из ∞", items, sel, "Выбрать подписку", onRibbon)
                 }
                 else -> {
-                    SubscriptionRibbon(style, ribbonItems, sel, onRibbon)
+                    SubscriptionRibbon(style, ribbonItems, sel, onRibbon) { order -> vm.reorderSubscriptions(order, Styles.get(ctx).subNewestFirst.value) }
                     if (style == ServerStyle.CYBER && cur != null) CyberTrafficCard(cur.title, UiLogic.compactSize(cur.used.toDouble()),
                         "/ " + (if (cur.total > 0) UiLogic.compactSize(cur.total.toDouble()) else "∞"), cur.subtitle, cur.used, cur.total)
                 }
@@ -189,7 +189,6 @@ internal fun LazyListScope.styledServers(
                     ms, ms?.let { "$it мс" } ?: "", "Подключить", "Проверьте пинг, чтобы найти лучший сервер",
                     onAction = { best?.let { vm.select(it.id); onSelected() } }, onRetest = { vm.pingHosts(shown) })
             }
-            ServerFilterChips(style, filter, mapOf(ServerFilter.ALL to "Все", ServerFilter.FAST to "Быстрые", ServerFilter.FAVORITES to "Избранное"), onFilter)
         }
     }
     if (list.isEmpty()) item(key = "ss-empty") { Text("Нет серверов", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp)) }

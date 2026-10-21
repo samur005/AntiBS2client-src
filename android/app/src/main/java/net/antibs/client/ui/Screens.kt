@@ -541,7 +541,11 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             onRefresh = { vm.refreshAll() },
             modifier = Modifier.fillMaxSize(),
         ) {
+            val subListState = androidx.compose.foundation.lazy.rememberLazyListState()
+            val vDrag = remember { VReorderState() }
+            val dragHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
             LazyColumn(
+                state = subListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -568,7 +572,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     }
                 }
                 val sFilt = sFilter[sStyle] ?: ServerFilter.ALL
-                ServerStyleLogic.orderSubs(groups, sSubNew).forEach { g0 ->
+                val shownGroups = ServerStyleLogic.orderSubs(groups, sSubNew)
+                shownGroups.forEach { g0 ->
                         val g = g0.copy(servers = ServerStyleLogic.sortServers(ServerStyleLogic.filter(g0.servers, sFilt, sFav) { pings[it] }, sSort) { pings[it] })
                         val sub = g.subscription
                         // «Серверы» (manual) is omitted entirely when empty — no blank card/header.
@@ -578,6 +583,10 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         }
                         if (sub != null) {
                             item(key = "sub-${sub.id}") {
+                                // 1.0.55: long-press + drag to reorder subscriptions
+                                Box(Modifier.vReorderItem(vDrag, subListState, sub.id, dragHaptic) { d, t ->
+                                    vm.moveSubscription(d, t, sp.subNewestFirst.value)
+                                }) {
                                 SubCard(
                                     sub = sub,
                                     realServers = UiLogic.realServerCount(st.servers, sub.id),
@@ -597,6 +606,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                         vm.message("Ссылка скопирована")
                                     },
                                 )
+                                }
                             }
                         } else if (g.total > 0 || !g.expanded) {
                             item(key = "sub-orphans") {

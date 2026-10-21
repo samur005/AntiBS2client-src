@@ -74,14 +74,13 @@ class StyleShotsTest {
                             ServerStyle.STACK -> SubCardStack(items, "s1", { "$it серв." }, "листайте") {}
                             ServerStyle.MATERIAL -> MaterialTrafficCard("Использовано", "12.4GB", "из 100GB", items, "s1", "Выбрать") {}
                             else -> {
-                                SubscriptionRibbon(style, listOf(RibbonItem("", "Все", "13 серв.")) + items, "s1") {}
+                                SubscriptionRibbon(style, listOf(RibbonItem("", "Все", "13 серв.")) + items, "s1", {})
                                 if (style == ServerStyle.CYBER) CyberTrafficCard("AntiBS Premium", "12.4GB", "/ 100GB", "27 дн.", 12_400_000_000, 100_000_000_000)
                             }
                         } else if (style != ServerStyle.CLASSIC || true) {
                             Text("AntiBS Premium · 6 серверов · 12.4GB/100GB", color = c.onCard, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                         if (opts.bestCard && style != ServerStyle.CLASSIC) BestServerCard(style, "Лучший сервер", "🇩🇪 Frankfurt", "VLESS Reality", 38, "38 мс", "Подключить", "", {}, {})
-                        if (style != ServerStyle.CLASSIC) ServerFilterChips(style, ServerFilter.ALL, mapOf(ServerFilter.ALL to "Все", ServerFilter.FAST to "Быстрые", ServerFilter.FAVORITES to "Избранное")) {}
                         rows.forEachIndexed { i, (n, p, ms) ->
                             val sel = i == 0
                             val shape = ssShape(style, 14.dp)
