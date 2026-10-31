@@ -196,6 +196,10 @@ fun AddServersSheet(
             OlcrtcFormDialog(onDismiss = { form = null }, onSave = { profile -> vm.addManualProfile(profile); form = null; onDismiss() })
             return@let
         }
+        if (proto == "sstp" || proto == "zerotier") {
+            PacketVpnFormDialog(proto, vm, onDismiss = { form = null }, onDone = { form = null; onDismiss() })
+            return@let
+        }
         if (proto == "openvpn" || proto == "openconnect") {
             VpnProtoFormDialog(proto, vm, onDismiss = { form = null }, onDone = { form = null; onDismiss() })
             return@let

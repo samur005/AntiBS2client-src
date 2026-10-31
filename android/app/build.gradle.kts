@@ -28,8 +28,8 @@ android {
         applicationId = "fun.antibs.client"
         minSdk = 26
         targetSdk = 36
-        versionCode = 54
-        versionName = "1.0.53"
+        versionCode = 66
+        versionName = "2.0.5"
         ndk { abiFilters += targetAbis }
         vectorDrawables { useSupportLibrary = true }
         buildConfigField("String", "XRAY_VERSION", "\"26.9.30\"")
@@ -103,7 +103,7 @@ android {
         unitTests.isReturnDefaultValues = true
         // 1.0.46: host-side Compose snapshots of the home globe / map (Robolectric native graphics, run with SNAP=1)
         unitTests.isIncludeAndroidResources = true
-        unitTests.all { it.maxHeapSize = "3g"; if (System.getenv("SNAP") != null) it.setForkEvery(1) }
+        unitTests.all { it.maxHeapSize = "3g"; it.testLogging.showStandardStreams = System.getenv("SSTP_TEST") != null; if (System.getenv("SNAP") != null) it.setForkEvery(1) }
     }
 }
 
@@ -131,6 +131,10 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // 1.0.25: «Автообновление подписок» (periodic background refresh)
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // 2.0.1: SSTP (Open-SSTP-Client, MIT) and ZeroTier (ZeroTierOne MPL-2.0 + JNI SDK GPL-3.0)
+    implementation(project(":sstp"))
+    implementation(project(":zerotier"))
 
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")

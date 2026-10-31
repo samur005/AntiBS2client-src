@@ -28,6 +28,18 @@ object Format {
 
     fun speedFixed(v: Long): String = bytesFixed(v) + "/с"
 
+    // ---- 1.0.55: «Единицы скорости» = Биты: decimal bits per second, same fixed shape ("0.0 кбит/с" … "999.9 Тбит/с") ----
+    private val BIT_UNITS = listOf("кбит/с", "Мбит/с", "Гбит/с", "Тбит/с")
+    fun speedFixedBits(bytesPerSec: Long): String {
+        var x = bytesPerSec.coerceAtLeast(0).toDouble() * 8.0 / 1000.0
+        var i = 0
+        while (x >= 999.95 && i < BIT_UNITS.lastIndex) { x /= 1000.0; i++ }
+        return String.format(Locale.US, "%.1f %s", x.coerceAtMost(999.9), BIT_UNITS[i])
+    }
+    const val SPEED_TEMPLATE_BITS = "999.9 Мбит/с"
+    fun speedFixed(v: Long, bits: Boolean): String = if (bits) speedFixedBits(v) else speedFixed(v)
+    fun speedTemplate(bits: Boolean): String = if (bits) SPEED_TEMPLATE_BITS else SPEED_TEMPLATE
+
     /** Widest strings [speedFixed] / [bytesFixed] can produce (М is the widest unit letter) — sizes the columns. */
     const val SPEED_TEMPLATE = "999.9 МБ/с"
     const val TOTAL_TEMPLATE = "999.9 МБ"
@@ -63,7 +75,7 @@ object Format {
         "ssh" -> "SSH"; "snell" -> "Snell"; "naive" -> "Naive"; "mieru" -> "Mieru"
         "socks4" -> "SOCKS4"; "ssr" -> "ShadowsocksR"; "trusttunnel" -> "TrustTunnel"; "shadowquic" -> "ShadowQUIC"
         "amneziawg" -> "AmneziaWG"; "qwdtt" -> "qWDTT"; "amneziakey" -> "Amnezia (vpn://)"
-        "olcrtc" -> "olcRTC"; "openvpn" -> "OpenVPN"; "openconnect" -> "OpenConnect"
+        "olcrtc" -> "olcRTC"; "openvpn" -> "OpenVPN"; "openconnect" -> "OpenConnect"; "sstp" -> "SSTP"; "zerotier" -> "ZeroTier"
         "chain" -> "Цепь"; "balancer" -> "Балансировщик"; "custom" -> "JSON"
         else -> p.uppercase()
     }

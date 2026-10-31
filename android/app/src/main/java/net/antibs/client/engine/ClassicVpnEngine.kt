@@ -51,7 +51,7 @@ object SecretBox {
     }
 
     fun sealProfile(p: XrayProfile): XrayProfile =
-        if (p.protocol == OpenVpnConfig.PROTOCOL || p.protocol == OpenConnectConfig.PROTOCOL)
+        if (p.protocol == OpenVpnConfig.PROTOCOL || p.protocol == OpenConnectConfig.PROTOCOL || p.protocol == net.antibs.client.data.PacketVpnConfig.SSTP)
             p.copy(password = seal(p.password), privateKeyPassphrase = seal(p.privateKeyPassphrase)) else p
 }
 
@@ -166,6 +166,7 @@ class ClassicVpnEngine(private val ctx: Context, private val profile: XrayProfil
 
         /** Real ping: connect a throw-away client, GET [url] through it. -1 = failed, -2 = n/a. Blocking. */
         fun ping(ctx: Context, p: XrayProfile, url: String, timeoutMs: Int): Long {
+            if (p.protocol == net.antibs.client.data.PacketVpnConfig.SSTP || p.protocol == net.antibs.client.data.PacketVpnConfig.ZEROTIER) return PacketVpnEngine.ping(p, timeoutMs)
             val port = net.antibs.client.data.XrayConfigBuilder.VPN_BASE_PORT + 50 + (seq.get() and 31)
             val t = timeoutMs.coerceIn(10_000, 40_000)
             val (cmd, cfg) = try { prepare(ctx, p, port, "ping", url, t) } catch (e: Exception) { VpnState.log("пинг: ${e.message}"); return -2L }

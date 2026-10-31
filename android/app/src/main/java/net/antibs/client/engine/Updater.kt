@@ -1,5 +1,6 @@
 package net.antibs.client.engine
 
+import kotlinx.coroutines.ensureActive
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -68,19 +69,23 @@ object Updater {
                 out.outputStream().use { o ->
                     val b = ByteArray(128 * 1024)
                     while (true) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()  // 1.0.54: «Отмена»
                         val n = inp.read(b); if (n < 0) break
                         o.write(b, 0, n); done += n
                         if (total > 0) progress((done.toFloat() / total).coerceIn(0f, 1f))
                     }
                 }
             }
-        } finally { c.disconnect() }
+        } catch (e: Throwable) { out.delete(); throw e } finally { c.disconnect() }
         if (expected != null) {
             val got = sha256(out)
             if (!got.equals(expected, true)) { out.delete(); throw IllegalStateException("SHA-256 не совпадает — файл повреждён или подменён") }
         }
         out
     }
+
+    /** 1.0.54: drop a partial / cancelled download. */
+    fun clearPartial(ctx: Context) { File(ctx.cacheDir, "updates").listFiles()?.forEach { it.delete() } }
 
     fun canInstall(ctx: Context): Boolean = ctx.packageManager.canRequestPackageInstalls()
 

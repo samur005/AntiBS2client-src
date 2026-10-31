@@ -26,6 +26,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.draw.shadow
@@ -75,6 +76,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.DarkMode
@@ -175,6 +177,8 @@ private enum class Page {
     // detail pages
     RoutingEdit, SpeedTest, Interface, PerApp, Fragment, Noise, Mux, Inbounds, Vpn, Excluded, Subs, Ping, Protocols, Hwid,
     AdBlock, GeoFiles, NetScan,
+    // 1.0.56: «Сеть» — сотовый мониторинг, Wi‑Fi анализатор, LAN, инструменты
+    NetTools,
     // 1.0.50 settings sub-screens
     SetCores, SetNet, SetSubAuto,
 }
@@ -183,7 +187,7 @@ private enum class Page {
 private val hubPages = setOf(Page.Main, Page.Settings, Page.Routing, Page.Logs, Page.Vpn, Page.Interface, Page.SetCores, Page.SetNet, Page.SetSubAuto)
 
 private fun parentOf(p: Page): Page = when (p) {
-    Page.Main, Page.Settings, Page.SpeedTest -> Page.Main
+    Page.Main, Page.Settings, Page.SpeedTest, Page.NetTools -> Page.Main
     Page.RoutingEdit -> Page.Routing
     Page.Excluded -> Page.Settings
     Page.AdBlock, Page.GeoFiles -> Page.Routing
@@ -195,7 +199,13 @@ fun AppRoot(vm: AppViewModel) {
     val ui by vm.ui.collectAsState()
     val st by vm.state.collectAsState()
     // Read the collected preference (StateFlow), never a one-shot store.theme() snapshot.
-    AntiBSTheme(ui.theme, st.adv.accent) {
+    val stylePrefs = Styles.get(LocalContext.current)
+    val appStyle by stylePrefs.style.collectAsState()
+    AntiBSTheme(ui.theme, st.adv.accent, appStyle) {
+    // 1.0.55: every Compose haptic respects «Вибрация» (Настройки интерфейса); the system touch-feedback setting applies too.
+    val hapticView = androidx.compose.ui.platform.LocalView.current
+    val gatedHaptic = remember(hapticView, st.adv.haptics) { AppHaptics.feedback(hapticView, st.adv.haptics) }
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalHapticFeedback provides gatedHaptic) {
         var pageName by rememberSaveable { mutableStateOf(Page.Main.name) }
         var routingId by rememberSaveable { mutableStateOf<String?>(null) }
         // Detail pages remember which page opened them.
@@ -212,7 +222,8 @@ fun AppRoot(vm: AppViewModel) {
         LaunchedEffect(payReturn) { if (payReturn != null) { backTo = null; pageName = Page.Main.name } }
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             when (page) {
-                Page.Main -> MainScreen(vm, ui, onOpenSettings = { open(Page.Settings) }, onOpenSpeedTest = { open(Page.SpeedTest) })
+                Page.Main -> MainScreen(vm, ui, onOpenSettings = { open(Page.Settings) }, onOpenSpeedTest = { open(Page.SpeedTest) }, onOpenNet = { open(Page.NetTools) })
+                Page.NetTools -> NetToolsPage(vm, onBack = { back() })
                 Page.SpeedTest -> SpeedTestPage(vm, onBack = { back() })
                 Page.Settings, Page.Vpn, Page.Interface, Page.SetCores, Page.SetNet, Page.SetSubAuto ->
                     SettingsHome(vm, ui, onBack = { back() }, open = { open(Page.valueOf(it)) }, section = page.name)
@@ -224,6 +235,9 @@ fun AppRoot(vm: AppViewModel) {
             UpdateDialog(vm)
             UnreachableDialog(vm)
         }
+        // 1.0.55: one light tick per actual settings / menu page change (not on first show)
+        AppHaptics.TickOnChange(pageName, st.adv.haptics)
+    }
     }
 }
 
@@ -274,6 +288,15 @@ internal fun UpdateDialog(vm: AppViewModel) {
                 }
             },
             confirmButton = {},
+            // 1.0.54: cancel the running download (style tokens: error colour + style shape)
+            dismissButton = {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { vm.cancelUpdateDownload() },
+                    shape = MaterialTheme.shapes.small,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f)),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("Отмена") }
+            },
         )
         is AppViewModel.UpdateUi.NeedPermission -> AlertDialog(
             onDismissRequest = { vm.dismissUpdate() },
@@ -300,7 +323,7 @@ internal fun UpdateDialog(vm: AppViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> Unit, onOpenSpeedTest: () -> Unit) {
+private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> Unit, onOpenSpeedTest: () -> Unit, onOpenNet: () -> Unit = {}) {
     val st by vm.state.collectAsState()
     val vpn by VpnState.status.collectAsState()
     val pings by vm.pings.collectAsState()
@@ -356,6 +379,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val server = st.servers.firstOrNull { it.id == st.selectedServerId }
     val connected = vpn.state == ConnState.CONNECTED
     var showAdd by remember { mutableStateOf(false) }
+    var showStyle by remember { mutableStateOf(false) }
     val vpnOn = UiLogic.speedCardWanted(vpn.state)
     var speedCardVisible by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(vpnOn) }
     LaunchedEffect(vpnOn) {
@@ -372,18 +396,49 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     // 1.0.42: bottom navigation «Магазин» · «Главная» · «Серверы» (Главная is the start tab)
     var tabName by rememberSaveable { mutableStateOf(MainTab.Home.name) }
     val tab = MainTab.valueOf(tabName)
+    // 1.0.55: one light tick per actual tab change — navbar tap, back, «Серверы» links, picking a server
+    AppHaptics.TickOnChange(tab, st.adv.haptics)
     BackHandler(enabled = tab != MainTab.Home) { tabName = MainTab.Home.name }
     // 1.0.43: back from the payment page (antibs2client://payment-return) → «Магазин»
     val payReturn by net.antibs.client.MainActivity.paymentReturn.collectAsState()
     LaunchedEffect(payReturn) { if (payReturn != null) tabName = MainTab.Shop.name }
 
-    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-        TopBar(
+    val sp = Styles.get(ctx)
+    val sStyle by sp.style.collectAsState()
+    val sOpts by sp.options.collectAsState()
+    val sFilter by sp.filter.collectAsState()
+    val sRibbon by sp.ribbon.collectAsState()
+    val sFav by sp.favorites.collectAsState()
+    val sSort by sp.sort.collectAsState()
+    val sSubNew by sp.subNewestFirst.collectAsState()
+    val opts = sOpts[sStyle] ?: ServerStyleLogic.defaultOptions(sStyle)
+    val effLayout = ServerStyleLogic.effectiveLayout(sStyle, opts)
+    val bg = ssBackground(sStyle)
+    Column(Modifier.fillMaxSize().then(if (bg != null && tab == MainTab.Servers) Modifier.background(bg) else Modifier).windowInsetsPadding(WindowInsets.statusBars)) {
+        if (tab == MainTab.Servers) {
+            val ids = st.subscriptions.map { it.id }
+            val curSub = if (effLayout == SubLayout.RIBBON) ServerStyleLogic.validRibbon(sRibbon[sStyle] ?: "", ids).let { id -> st.subscriptions.firstOrNull { it.id == id } } else null
+            ServersHeader(
+                style = sStyle, layout = opts.layout, bestCard = opts.bestCard,
+                onStyle = { sp.setStyle(it) }, onLayout = { sp.setLayout(sStyle, it) }, onBestCard = { sp.setBestCard(sStyle, it) },
+                sortMode = sSort, onSortMode = { sp.setSort(it) }, subNewestFirst = sSubNew, onSubOrder = { sp.setSubNewestFirst(it) },
+                filter = sFilter[sStyle] ?: ServerFilter.ALL, onFilter = { sp.setFilter(sStyle, it) },
+                testing = pinging.isNotEmpty(), onTestAll = { vm.pingAll() },
+                onAdd = { showAdd = true },
+                subMenu = curSub,
+                onSubRefresh = { vm.refresh(it.id) }, onSubPing = { vm.pingSubscription(it.id) },
+                onSubCopy = { copyText(ctx, it.url); vm.message("Ссылка скопирована") },
+                onSubDeleteUnreachable = { vm.askDeleteUnreachable(it.id) }, onSubRestoreHidden = { vm.restoreHiddenHosts(it.id) },
+                onSubDelete = { vm.removeSubscription(it.id) },
+            )
+        } else TopBar(
             theme = ui.theme,
             onTheme = { vm.setTheme(it) },
             onSettings = onOpenSettings,
             onAdd = { showAdd = true },
             onSpeedTest = onOpenSpeedTest,
+            onNet = onOpenNet,
+            onStyle = { showStyle = true },
         )
         androidx.compose.animation.AnimatedContent(
             targetState = tab,
@@ -435,12 +490,12 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         directDownRate = vpn.directDownSpeed,
                         directUpRate = vpn.directUpSpeed,
                         dot = UiLogic.statusDot(vpn.state, tunnelPing),
-                        downSpeed = Format.speedFixed(vpn.downSpeed),
-                        upSpeed = Format.speedFixed(vpn.upSpeed),
+                        downSpeed = Format.speedFixed(vpn.downSpeed, st.adv.speedUnits == "bits"),
+                        upSpeed = Format.speedFixed(vpn.upSpeed, st.adv.speedUnits == "bits"),
                         downTotal = Format.bytesFixed(vpn.downBytes),
                         upTotal = Format.bytesFixed(vpn.upBytes),
-                        directDownSpeed = Format.speedFixed(vpn.directDownSpeed),
-                        directUpSpeed = Format.speedFixed(vpn.directUpSpeed),
+                        directDownSpeed = Format.speedFixed(vpn.directDownSpeed, st.adv.speedUnits == "bits"),
+                        directUpSpeed = Format.speedFixed(vpn.directUpSpeed, st.adv.speedUnits == "bits"),
                         directDownTotal = Format.bytesFixed(vpn.directDownBytes),
                         directUpTotal = Format.bytesFixed(vpn.directUpBytes),
                         vpnSamples = vpnSamples,
@@ -449,6 +504,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         sampleTimes = sampleTimes,
                         onLongPress = onOpenSpeedTest,
                         statsVisible = speedCardVisible,
+                        speedTemplate = Format.speedTemplate(st.adv.speedUnits == "bits"),
                     )
                 }
                 run {
@@ -456,12 +512,54 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         PowerToggle(state = vpn.state, since = vpn.since, onClick = ::toggle)
                     }
                 }
-                if (vpn.state == ConnState.ERROR) {
+                val engineDetail by net.antibs.client.engine.VpnState.detail.collectAsState()
+                if (vpn.state != ConnState.ERROR && vpn.state != ConnState.DISCONNECTED) engineDetail?.let { d ->
                     Text(
-                        vpn.message.ifEmpty { "Ошибка" },
+                        d,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp),
+                    )
+                }
+                // 2.0.4: keep the failure text on screen for ≥10 s (it used to vanish when the state went back to
+                // DISCONNECTED); tap copies the error, long-press copies the error + recent log.
+                val errCtx = androidx.compose.ui.platform.LocalContext.current
+                var shownErr by remember { mutableStateOf<String?>(null) }
+                var lastDetail by remember { mutableStateOf<String?>(null) }
+                LaunchedEffect(engineDetail) { if (engineDetail != null) lastDetail = engineDetail }
+                LaunchedEffect(vpn.state) { if (vpn.state == ConnState.CONNECTING) lastDetail = null }
+                LaunchedEffect(vpn.state, vpn.message) {
+                    when (vpn.state) {
+                        ConnState.ERROR -> shownErr = vpn.message.ifEmpty { lastDetail ?: "Ошибка" }
+                        ConnState.CONNECTING, ConnState.CONNECTED -> shownErr = null
+                        // failed during connect and went straight back to «off»: keep what the engine last said
+                        ConnState.DISCONNECTED -> if (shownErr == null && vpn.message.isNotEmpty()) shownErr = vpn.message
+                            else if (shownErr == null && (lastDetail?.contains("ошибка", true) == true || lastDetail?.contains(" — ") == true)) shownErr = lastDetail
+                        else -> {}
+                    }
+                }
+                LaunchedEffect(shownErr) {
+                    if (shownErr != null) {
+                        kotlinx.coroutines.delay(10_000)
+                        while (vpn.state == ConnState.ERROR) kotlinx.coroutines.delay(1_000)
+                        kotlinx.coroutines.delay(5_000)
+                        shownErr = null
+                    }
+                }
+                val errText = if (vpn.state == ConnState.ERROR) vpn.message.ifEmpty { shownErr ?: "Ошибка" } else shownErr
+                if (errText != null) {
+                    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+                    Text(
+                        errText + "  ⧉",
                         color = AntiBSColors.Err,
                         fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 6.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp).combinedClickable(
+                            onClick = { copyText(errCtx, errText); android.widget.Toast.makeText(errCtx, "Ошибка скопирована", android.widget.Toast.LENGTH_SHORT).show() },
+                            onLongClick = {
+                                val log = net.antibs.client.engine.VpnState.logs.value.takeLast(300).joinToString("\n")
+                                copyText(errCtx, errText + "\n\n" + log); android.widget.Toast.makeText(errCtx, "Ошибка и лог скопированы", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                        ),
                     )
                 }
                 if (captcha != null) {
@@ -488,6 +586,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                 // 1.0.48: left-edge ping of the selected server (same measurement as the host list)
                                 ping = WorldPing(busy = server != null && server.id in pinging, ms = server?.id?.let { pings[it] }, stamp = pingStamp),
                                 onPing = server?.let { sv -> { pingAsked = true; vm.pingOne(sv) } },
+                                onNet = onOpenNet,
+                                onSpeed = onOpenSpeedTest,
                             )
                         }
                     }
@@ -501,7 +601,11 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             onRefresh = { vm.refreshAll() },
             modifier = Modifier.fillMaxSize(),
         ) {
+            val subListState = androidx.compose.foundation.lazy.rememberLazyListState()
+            val vDrag = remember { VReorderState() }
+            val dragHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
             LazyColumn(
+                state = subListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -510,7 +614,27 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
                     item { Text("Нет подписок. Нажмите «+» вверху справа или купите подписку в «Магазине».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp)) }
                 }
-                groups.forEach { g ->
+                // styles: ribbon / card stack / Material You pick one subscription at a time
+                if (sStyle != ServerStyle.CLASSIC && effLayout == SubLayout.RIBBON) {
+                    styledServers(sStyle, effLayout, opts.bestCard, sRibbon[sStyle] ?: ServerStyleLogic.RIBBON_FIRST, { sp.setRibbon(sStyle, it) },
+                        sFilter[sStyle] ?: ServerFilter.ALL, { sp.setFilter(sStyle, it) }, sFav, sSort, sSubNew,
+                        st, ui, pings, pinging, vm, ctx, nowSec, onSelected = { tabName = MainTab.Home.name })
+                    return@run
+                }
+                if (sStyle != ServerStyle.CLASSIC && opts.bestCard) item(key = "ss-best") {
+                    val pf: (String) -> Long? = { pings[it] }
+                    val best = ServerStyleLogic.best(st.servers, pf)
+                    val ms = best?.let { ServerStyleLogic.pingMs(pf(it.id)) }
+                    Box(Modifier.padding(vertical = 4.dp)) {
+                        BestServerCard(sStyle, "Лучший сервер", best?.let { UiLogic.displayName(it.name) } ?: "", best?.let { UiLogic.protocolGroup(it) } ?: "",
+                            ms, ms?.let { "$it мс" } ?: "", "Подключить", "Проверьте пинг, чтобы найти лучший сервер",
+                            onAction = { best?.let { vm.select(it.id); tabName = MainTab.Home.name } }, onRetest = { vm.pingAll() })
+                    }
+                }
+                val sFilt = sFilter[sStyle] ?: ServerFilter.ALL
+                val shownGroups = ServerStyleLogic.orderSubs(groups, sSubNew)
+                shownGroups.forEach { g0 ->
+                        val g = g0.copy(servers = ServerStyleLogic.sortServers(ServerStyleLogic.filter(g0.servers, sFilt, sFav) { pings[it] }, sSort) { pings[it] })
                         val sub = g.subscription
                         // «Серверы» (manual) is omitted entirely when empty — no blank card/header.
                         if (sub != null && sub.id == ProtocolSupport.MANUAL_SUB_ID && g.total == 0 && st.adv.hideEmptyManual &&
@@ -519,6 +643,10 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         }
                         if (sub != null) {
                             item(key = "sub-${sub.id}") {
+                                // 1.0.55: long-press + drag to reorder subscriptions
+                                Box(Modifier.vReorderItem(vDrag, subListState, sub.id, dragHaptic) { d, t ->
+                                    vm.moveSubscription(d, t, sp.subNewestFirst.value)
+                                }) {
                                 SubCard(
                                     sub = sub,
                                     realServers = UiLogic.realServerCount(st.servers, sub.id),
@@ -538,6 +666,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                         vm.message("Ссылка скопирована")
                                     },
                                 )
+                                }
                             }
                         } else if (g.total > 0 || !g.expanded) {
                             item(key = "sub-orphans") {
@@ -552,7 +681,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         // 1.0.9: hosts are always a single-column list (the grid toggle was removed;
                         // the legacy persisted «host_grid» flag is still read/written but ignored).
                         items(g.servers, key = { it.id }) { s ->
-                            HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name })
+                            if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name })
+                            else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name })
                         }
                     }
                 }
@@ -562,6 +692,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
         MainBottomBar(tab, onSelect = { tabName = it.name })
     }
     if (showAdd) AddServersSheet(vm = vm, servers = st.servers, onDismiss = { showAdd = false })
+    if (showStyle) StyleViewDialog(onDismiss = { showStyle = false })
 }
 
 /** 1.0.42: bottom tabs, left → right. */
@@ -581,7 +712,7 @@ private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                 androidx.compose.animation.core.spring(dampingRatio = 0.5f, stiffness = 400f), label = "tab-scale")
             NavigationBarItem(
                 selected = sel,
-                onClick = { if (!sel) { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onSelect(t) } },
+                onClick = { if (!sel) onSelect(t) },
                 icon = {
                     Icon(
                         when (t) {
@@ -597,7 +728,7 @@ private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                 colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
                     selectedIconColor = Color.White,
                     selectedTextColor = AntiBSColors.Blue,
-                    indicatorColor = AntiBSColors.BlueDeep,
+                    indicatorColor = if (LocalAppStyle.current == ServerStyle.CLASSIC) AntiBSColors.BlueDeep else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
@@ -614,6 +745,8 @@ private fun TopBar(
     onSettings: () -> Unit,
     onAdd: () -> Unit,
     onSpeedTest: () -> Unit,
+    onStyle: () -> Unit = {},
+    onNet: () -> Unit = {},
 ) {
     // 1.0.32: brand on the left (icon + AntiBS2client); ⚙ / + / speedtest stay on the right.
     // Refresh: pull-to-refresh, ↻ / ⋮ «Обновить» on each subscription card, and the auto-update interval.
@@ -638,7 +771,7 @@ private fun TopBar(
         Spacer(Modifier.weight(1f))
         // 1.0.47: theme toggle in the top bar: Светлая → Тёмная → AMOLED → Светлая (Как в системе → the opposite)
         val effectiveDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-        IconButton(onClick = {
+        IconButton(modifier = Modifier.size(34.dp), onClick = {
             onTheme(when (theme) {
                 ThemeMode.LIGHT -> ThemeMode.DARK
                 ThemeMode.DARK -> ThemeMode.AMOLED
@@ -653,12 +786,12 @@ private fun TopBar(
                     ThemeMode.DARK -> Icons.Filled.DarkMode
                     else -> if (effectiveDark) Icons.Filled.DarkMode else Icons.Filled.LightMode
                 },
-                contentDescription = "Сменить тему", tint = tint,
+                contentDescription = "Сменить тему", tint = tint, modifier = Modifier.size(20.dp),
             )
         }
-        IconButton(onClick = onSpeedTest) { Icon(Icons.Filled.Speed, "Тест скорости", tint = tint) }
-        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Настройки", tint = tint) }
-        IconButton(onClick = onAdd) { Icon(Icons.Filled.Add, "Добавить серверы", tint = tint, modifier = Modifier.size(28.dp)) }
+        IconButton(onClick = onStyle, modifier = Modifier.size(34.dp)) { Icon(PaletteIcon, "Стиль оформления", tint = tint, modifier = Modifier.size(20.dp)) }
+        IconButton(onClick = onSettings, modifier = Modifier.size(34.dp)) { Icon(Icons.Filled.Settings, "Настройки", tint = tint, modifier = Modifier.size(20.dp)) }
+        IconButton(onClick = onAdd, modifier = Modifier.size(36.dp)) { Icon(Icons.Filled.Add, "Добавить серверы", tint = tint, modifier = Modifier.size(25.dp)) }
     }
 }
 
@@ -671,6 +804,7 @@ private fun ConnectionCard(
     active: Boolean,
     dot: UiLogic.StatusDot,
     downSpeed: String,
+    speedTemplate: String = Format.SPEED_TEMPLATE,
     upSpeed: String,
     downTotal: String,
     upTotal: String,
@@ -740,8 +874,8 @@ private fun ConnectionCard(
             // red (direct) groups sit side by side; the sparkline fills the remaining width (≤ 110dp), pinned right.
             val measurer = rememberTextMeasurer()
             val density = LocalDensity.current
-            val speedW = remember(density) {
-                with(density) { measurer.measure(Format.SPEED_TEMPLATE, SpeedStyle).size.width.toDp() + 1.dp }
+            val speedW = remember(density, speedTemplate) {
+                with(density) { measurer.measure(speedTemplate, SpeedStyle).size.width.toDp() + 1.dp }
             }
             val totalW = remember(density) {
                 with(density) { measurer.measure(Format.TOTAL_TEMPLATE, TotalStyle).size.width.toDp() + 2.dp }
@@ -1036,7 +1170,7 @@ internal fun SubPingIcon(pinging: Boolean, onPing: () -> Unit) {
 }
 
 @Composable
-private fun SubCard(
+internal fun SubCard(
     sub: Subscription,
     realServers: Int,
     refreshing: Boolean,
@@ -1716,7 +1850,10 @@ internal fun NavRow(title: String, value: String? = null, dropdown: Boolean = fa
 }
 
 @Composable
-internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null, onChange0: (Boolean) -> Unit) {
+    // 1.0.55: toggles give the firmer click
+    val hf = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val onChange: (Boolean) -> Unit = { hf.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onChange0(it) }
     Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
         RowTexts(title, subtitle, Modifier.weight(1f).padding(vertical = 4.dp).padding(end = 8.dp))
@@ -1780,7 +1917,7 @@ internal fun AboutDialog(onClose: () -> Unit) {
 
 
 @Composable
-private fun HostServerRow(
+internal fun HostServerRow(
     s: net.antibs.client.data.ServerEntry,
     st: net.antibs.client.engine.AppState,
     pings: Map<String, Long>,

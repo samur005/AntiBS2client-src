@@ -1,0 +1,13 @@
+AntiBS2client 2.0.1 includes:
+
+* Open SSTP Client — https://github.com/kittoku/Open-SSTP-Client
+  Copyright (c) 2019 KOBAYASHI Ittoku. MIT License (Open-SSTP-Client-MIT-LICENSE.txt).
+  Modified: protocol core only (module :sstp), runs inside the app's VpnService and hands IP packets to the
+  built-in netstack instead of its own TUN.
+
+* ZeroTierOne core — https://github.com/zerotier/ZeroTierOne
+  Copyright (c) ZeroTier, Inc. Mozilla Public License 2.0 (ZeroTierOne-MPL-2.0-LICENSE.txt).
+  Built as libZeroTierOneJNI.so (arm64-v8a).
+
+* ZeroTier Java/JNI SDK (com.zerotier.sdk) — https://github.com/zerotier/ZeroTierOne/tree/dev/java
+  Copyright (c) ZeroTier, Inc. GNU General Public License v3.0 (ZeroTier-SDK-GPL-3.0-LICENSE.txt).

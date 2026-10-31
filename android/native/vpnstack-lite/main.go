@@ -48,6 +48,11 @@ type cfg struct {
 	UserAgent string   `json:"user_agent"`
 	Answers   []string `json:"answers"`
 	Self      string   `json:"self"`
+	Sock      string   `json:"sock"`   // pkt: unix socket the app writes framed IP packets to
+	Addrs     []string `json:"addrs"`  // pkt: tunnel addresses
+	DNS       []string `json:"dns"`    // pkt: DNS servers inside the tunnel
+	MTU       int      `json:"mtu"`
+	Routes    []string `json:"routes"` // pkt: if set, only these prefixes go into the tunnel, the rest is dialled directly
 }
 
 var outMu sync.Mutex
@@ -177,6 +182,11 @@ func main() {
 		runOpenConnect(loadCfg(os.Args[2]))
 	case "oc-tun":
 		ocTun()
+	case "pkt":
+		if len(os.Args) < 3 {
+			fail("no config")
+		}
+		runPkt(loadCfg(os.Args[2]))
 	default:
 		fail("unknown mode %q", os.Args[1])
 	}

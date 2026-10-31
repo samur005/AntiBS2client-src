@@ -3,7 +3,7 @@ package net.antibs.client.engine
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * 1.0.53: connect timeout (like ABS ConnectWatchdog, here 5 s). Started when a connect attempt begins; exactly one of
+ * 1.0.53: connect timeout (5 s). Started when a connect attempt begins; exactly one of
  * [established] (the attempt finished in time) / timeout / [cancel] wins. On timeout [onTimeout] runs once on the
  * watchdog thread; the caller stops the started cores and reports [MESSAGE]. A late «connected» after the timeout
  * gets `false` from [established] and must be torn down instead of being reported.

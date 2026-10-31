@@ -95,7 +95,7 @@ object ProtocolSupport {
     fun isMihomo(protocol: String): Boolean = protocol.lowercase() in MIHOMO_WORKING
     fun isOlcrtc(protocol: String): Boolean = protocol.lowercase() == Olcrtc.PROTOCOL
     /** 1.0.41: OpenVPN / OpenConnect through libvpnstack.so. */
-    fun isClassicVpn(protocol: String): Boolean = protocol.lowercase() in setOf(OpenVpnConfig.PROTOCOL, OpenConnectConfig.PROTOCOL)
+    fun isClassicVpn(protocol: String): Boolean = protocol.lowercase() in setOf(OpenVpnConfig.PROTOCOL, OpenConnectConfig.PROTOCOL, PacketVpnConfig.SSTP, PacketVpnConfig.ZEROTIER)
     fun isRunnable(protocol: String): Boolean = protocol.lowercase().let {
         it in XRAY_WORKING || it in SINGBOX_WORKING || it in MIERU_WORKING || it in MIHOMO_WORKING || it == Olcrtc.PROTOCOL || isClassicVpn(it)
     }

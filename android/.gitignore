@@ -1,0 +1,10 @@
+.gradle/
+build/
+app/build/
+local.properties
+.tools/
+out/*.apk
+*.keystore
+native/qwdtt-client/build/
+keystore.properties
+*.jks

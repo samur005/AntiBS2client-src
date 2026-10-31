@@ -1,0 +1,3 @@
+LDX="-llog -static-libstdc++ -Wl,-z,max-page-size=16384 -Wl,--gc-sections -s" bash /workspace/ztbuild/build.sh /workspace/ztbuild/arm64-v8a $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang++ -D__ANDROID__ -w -ffunction-sections -fdata-sections > /tmp/ztndk.log 2>&1
+LDX="-llog -static-libstdc++ -Wl,-z,max-page-size=16384 -Wl,--gc-sections -s" bash /workspace/ztbuild/build.sh /workspace/ztbuild/armeabi-v7a $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang++ -D__ANDROID__ -w -ffunction-sections -fdata-sections >> /tmp/ztndk.log 2>&1
+echo EXIT >> /tmp/ztndk.log

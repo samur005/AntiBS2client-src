@@ -16,6 +16,8 @@ package net.antibs.client.ui
  * inbound, falls back to the host's country when offline) with the arc between them while connected.
  */
 
+import androidx.compose.material.icons.filled.CellTower
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -288,7 +290,7 @@ data class WorldPing(val busy: Boolean = false, val ms: Long? = null, val stamp:
 /** «Глобус» / «Карта» block of «Главная». [onServers]: tap on the bubble opens «Серверы». */
 @Composable
 fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.compose.ui.unit.Dp = 0.dp, onServers: () -> Unit = {},
-              ping: WorldPing = WorldPing(), onPing: (() -> Unit)? = null, holiday: net.antibs.client.data.Holiday? = null) {
+              ping: WorldPing = WorldPing(), onPing: (() -> Unit)? = null, onNet: (() -> Unit)? = null, onSpeed: (() -> Unit)? = null, holiday: net.antibs.client.data.Holiday? = null) {
     val ctx = LocalContext.current
     remember { WorldOpacity.init(ctx); 0 }
     var panel by remember { mutableStateOf<String?>(null) }
@@ -387,7 +389,31 @@ fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.
             onGeo = { toggleGeo() },
             onLong = { k -> mode = k; prefs.edit().putString("mode", k).apply(); panel = k },
             modifier = Modifier.align(Alignment.TopEnd).padding(top = iconsBottom - PILL_H))
-        if (onPing != null) PingPill(ping, onPing, Modifier.align(Alignment.TopStart).padding(top = iconsBottom - PILL_H))
+        // 2.0.2: «Сеть» (network monitoring) sits next to the ping pill, same pill style
+        // 2.0.5: left group, left→right: «Сеть» (monitoring), speed test, ping — same pill style
+        if (onPing != null || onNet != null || onSpeed != null) Row(Modifier.align(Alignment.TopStart).padding(top = iconsBottom - PILL_H), verticalAlignment = Alignment.CenterVertically) {
+            var first = true
+            @Composable fun gap() { if (!first) Spacer(Modifier.width(8.dp)); first = false }
+            if (onNet != null) {
+                gap()
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
+                        .clickable(onClickLabel = "Мониторинг сети", onClick = onNet).padding(3.dp)
+                        .size(36.dp, 32.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Filled.CellTower, "Сеть", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+            }
+            if (onSpeed != null) {
+                gap()
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
+                        .clickable(onClickLabel = "Тест скорости", onClick = onSpeed).padding(3.dp)
+                        .size(36.dp, 32.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Filled.Speed, "Тест скорости", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+            }
+            if (onPing != null) { gap(); PingPill(ping, onPing, Modifier) }
+        }
         if (holiday != null) {
             Row(
                 Modifier.align(Alignment.TopCenter).padding(top = (iconsBottom - PILL_H - 40.dp).coerceAtLeast(4.dp)),

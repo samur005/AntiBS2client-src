@@ -41,6 +41,11 @@ object VpnState {
     /** 1.0.36: one-shot notices from the VPN service for the UI («Автовыбор: переключено на …»). */
     private val _notice = MutableStateFlow<String?>(null)
     val notice: StateFlow<String?> get() = _notice
+    private val _detail = MutableStateFlow<String?>(null)
+    /** Engine-specific progress line under the power button (ZeroTier: node ID · status · address). */
+    val detail: StateFlow<String?> = _detail
+    fun setDetail(text: String?) { _detail.value = text }
+
     fun notice(text: String) { _notice.value = text }
     fun consumeNotice() { _notice.value = null }
 

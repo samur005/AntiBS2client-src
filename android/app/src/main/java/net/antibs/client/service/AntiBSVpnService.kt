@@ -119,12 +119,21 @@ class AntiBSVpnService : VpnService() {
         VpnState.set(VpnStatus(ConnState.CONNECTING, serverName = entry.name, protocol = protocol, message = if (switching) "Переключение…" else "Подключение…"))
         VpnState.log("подключение к «${entry.name}» ($protocol)")
         // 1.0.53: no connection within 5 s (e.g. no network) → stop everything, «Ошибка подключения»
-        watchdog = net.antibs.client.engine.ConnectWatchdog {
+        // 2.0.4: the 5 s budget killed SSTP mid-LCP on mobile networks (TCP+TLS+HTTP+SSTP+LCP+auth+IPCP are ~8 RTTs).
+        // Tunnels with their own handshake get their own budget; their engines time out with a specific error first.
+        val wdMs = when (entry.xray?.protocol?.lowercase()) {
+            "sstp" -> 65_000L
+            "zerotier" -> 95_000L
+            "openvpn", "l2tp", "pptp", "ikev2", "ipsec" -> 45_000L
+            else -> net.antibs.client.engine.ConnectWatchdog.TIMEOUT_MS
+        }
+        watchdog = net.antibs.client.engine.ConnectWatchdog(wdMs) {
             if (!isCurrent(gen)) return@ConnectWatchdog
             bumpSession()
-            VpnState.log("нет подключения за ${net.antibs.client.engine.ConnectWatchdog.TIMEOUT_MS / 1000} с — попытка прервана")
+            val stage = VpnState.detail.value
+            VpnState.log("нет подключения за ${wdMs / 1000} с — попытка прервана" + (stage?.let { " (этап: $it)" } ?: ""))
             stopAll()
-            VpnState.set(VpnStatus(ConnState.ERROR, serverName = entry.name, message = net.antibs.client.engine.ConnectWatchdog.MESSAGE))
+            VpnState.set(VpnStatus(ConnState.ERROR, serverName = entry.name, message = net.antibs.client.engine.ConnectWatchdog.MESSAGE + " за ${wdMs / 1000} с" + (stage?.let { " — $it" } ?: "")))
             try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
             stopSelf()
             VpnTileService.refresh(this)
@@ -256,7 +265,8 @@ class AntiBSVpnService : VpnService() {
     /** «Резолвить адреса серверов»: dial by IP, keep the hostname as SNI / Host so TLS still verifies. */
     private fun resolveEntry(e: ServerEntry): ServerEntry {
         val p = e.xray ?: return e
-        if (p.protocol in setOf("chain", "balancer", "custom", "wireguard")) return e
+        // 2.0.3: in-process SSTP/ZeroTier take SNI/host from the original hostname — never replace it with an IP
+        if (p.protocol in setOf("chain", "balancer", "custom", "wireguard", "sstp", "zerotier", "openvpn", "l2tp", "pptp", "ikev2")) return e
         val host = p.server
         if (host.isBlank() || host == "—" || host.matches(Regex("""^\d{1,3}(\.\d{1,3}){3}$""")) || host.contains(':')) return e
         return try {
@@ -337,6 +347,22 @@ class AntiBSVpnService : VpnService() {
     /** 1.0.41: OpenVPN / OpenConnect helper (libvpnstack.so) behind loopback SOCKS [port]. */
     private fun startClassicVpn(p: net.antibs.client.data.XrayProfile, port: Int, name: String, gen: Int) {
         if (!isCurrent(gen)) return
+        if (p.protocol == net.antibs.client.data.PacketVpnConfig.SSTP || p.protocol == net.antibs.client.data.PacketVpnConfig.ZEROTIER) {
+            // 2.0.1: SSTP / ZeroTier in-process → libvpnstack.so «pkt» SOCKS [port]
+            val pe = net.antibs.client.engine.PacketVpnEngine(this, p, port)
+            pe.onExit = exit@{ msg ->
+                if (!isCurrent(gen)) return@exit
+                if (running || VpnState.status.value.state == ConnState.CONNECTING) {
+                    VpnState.log(msg)
+                    VpnState.set(VpnStatus(ConnState.ERROR, serverName = name, message = msg))
+                    stopAll(); stopSelf()
+                }
+            }
+            net.antibs.client.engine.PacketVpnEngine.register(pe)
+            pe.start(if (p.protocol == net.antibs.client.data.PacketVpnConfig.ZEROTIER) 90_000 else 60_000)
+            if (!isCurrent(gen)) pe.stop()
+            return
+        }
         val engine = net.antibs.client.engine.ClassicVpnEngine(this, p, port)
         engine.onExit = exit@{ msg ->
             if (!isCurrent(gen)) return@exit
@@ -683,6 +709,7 @@ class AntiBSVpnService : VpnService() {
         MieruEngine.stopAll()
         net.antibs.client.engine.OlcrtcEngine.stopAll()
         net.antibs.client.engine.ClassicVpnEngine.stopAll()
+        net.antibs.client.engine.PacketVpnEngine.stopAll()
         MihomoEngine.current?.stop(); MihomoEngine.current = null
         LogTailer.current?.stop(); LogTailer.current = null
         QwdttEngine.current?.stop(); QwdttEngine.current = null

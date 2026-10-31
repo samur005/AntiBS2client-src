@@ -104,6 +104,8 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         }, subtitle = "Праздники РФ и мусульманские") { dialog = "seasonal" }
                         NavRow("Язык", "Русский", dropdown = true, subtitle = "Язык интерфейса приложения") { vm.message("Пока доступен только русский язык") }
                         NavRow("Тема оформления", themeLabel(ui.theme), dropdown = true, subtitle = "Светлая, тёмная, чёрная или как в системе") { dialog = "theme" }
+                        RowDivider()
+                        NavRow("Стиль оформления", Styles.get(androidx.compose.ui.platform.LocalContext.current).style.collectAsState().value.title, dropdown = true, subtitle = "Неон, Карточки, Аврора, Киберпанк…") { dialog = "style" }
                         NavRow("Настройки интерфейса", subtitle = "Акцент, список серверов, главный экран, уведомление") { open("Interface") }
                     }
                     SettingsCard("Настройки туннеля") {
@@ -139,6 +141,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                     SettingsCard("Инструменты") {
                         NavRow("Тест скорости", subtitle = "Скорость и задержка через текущий сервер") { open("SpeedTest") }
                         NavRow("Сканер сети Wi‑Fi", subtitle = "Устройства в локальной сети") { open("NetScan") }
+                        NavRow("Сеть: мониторинг и анализ", subtitle = "Сотовая связь, Wi‑Fi анализатор, LAN, ping / DNS") { open("NetTools") }
                         NavRow("Логи", if (a.logging) levelLabel(a.logLevel) else "Логирование Xray выключено") { open("Logs") }
                         NavRow("Экспорт настроек", subtitle = "Настройки, маршрутизация, подписки и ручные серверы (без HWID)") { exportLauncher.launch("antibs-settings-${BuildConfig.VERSION_NAME}.json") }
                         NavRow("Импорт настроек", subtitle = "Добавляет недостающие подписки/серверы и заменяет настройки") { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }
@@ -233,8 +236,11 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                 "Interface" -> {
                     SettingsCard("Оформление") {
                         NavRow("Тема оформления", themeLabel(ui.theme), dropdown = true, subtitle = "Светлая, тёмная, чёрная или как в системе") { dialog = "theme" }
+                        RowDivider()
+                        StyleSettingsSection()
                         NavRow("Акцентный цвет", Accent.label(a.accent), dropdown = true, subtitle = "Цвет кнопок, переключателей и значений") { dialog = "accent" }
                         SwitchRow("Вибрация", a.haptics, subtitle = "Отклик на нажатия") { v -> vm.setAdv { it.copy(haptics = v) } }
+                        NavRow("Единицы скорости", if (a.speedUnits == "bits") "Биты" else "Байты", dropdown = true, subtitle = "На карточке скорости: КБ/с, МБ/с или кбит/с, Мбит/с") { dialog = "speedUnits" }
                     }
                     SettingsCard("Список серверов") {
                         SwitchRow("Компактный список серверов", ui.compactServers) { vm.setCompact(it) }
@@ -343,6 +349,8 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
     when (dialog) {
         "ip" -> ChoiceDialog("Предпочтительный тип IP", listOf("auto" to "Auto", "ipv4" to "IPv4", "ipv6" to "IPv6"), ui.ipType, { vm.setIpType(it) }, { dialog = null })
         "mtu" -> MtuDialog(a.tunMtu, { m -> vm.setAdvTunnel { it.copy(tunMtu = m) } }, { dialog = null })
+        "style" -> { val sp = Styles.get(androidx.compose.ui.platform.LocalContext.current); ChoiceDialog("Стиль оформления", ServerStyle.entries.map { it.key to it.title }, sp.style.value.key, { sp.setStyle(ServerStyle.of(it)) }, { dialog = null }) }
+        "speedUnits" -> ChoiceDialog("Единицы скорости", listOf("bytes" to "Байты (КБ/с, МБ/с)", "bits" to "Биты (кбит/с, Мбит/с)"), if (a.speedUnits == "bits") "bits" else "bytes", { u -> vm.setAdv { it.copy(speedUnits = u) } }, { dialog = null })
         "theme" -> ChoiceDialog("Тема оформления", themeChoices, ui.theme.name.lowercase(), { vm.setTheme(themeFrom(it)) }, { dialog = null })
         "accent" -> ChoiceDialog("Акцентный цвет",
             (if (Build.VERSION.SDK_INT >= 31) listOf("system" to Accent.label("system")) else emptyList()) + Accent.presets.map { it.first to it.second },

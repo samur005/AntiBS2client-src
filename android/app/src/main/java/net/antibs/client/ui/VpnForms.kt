@@ -247,3 +247,56 @@ internal fun VpnProtoFormDialog(proto: String, vm: AppViewModel, onDismiss: () -
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
     )
 }
+
+/** 2.0.1: «Создать вручную» → SSTP (host, port, login, password, certificate check, SNI) and ZeroTier (Network ID). */
+@Composable
+internal fun PacketVpnFormDialog(proto: String, vm: AppViewModel, onDismiss: () -> Unit, onDone: () -> Unit) {
+    val sstp = proto == net.antibs.client.data.PacketVpnConfig.SSTP
+    var name by remember { mutableStateOf("") }
+    var server by remember { mutableStateOf("") }
+    var port by remember { mutableStateOf("443") }
+    var user by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    var verify by remember { mutableStateOf(true) }
+    var sni by remember { mutableStateOf("") }
+    var nwid by remember { mutableStateOf("") }
+    val valid = if (sstp) server.isNotBlank() && user.isNotBlank() else net.antibs.client.data.PacketVpnConfig.isNetworkId(nwid)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (sstp) "SSTP" else "ZeroTier") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    if (sstp) "Microsoft SSTP (PPP поверх TLS, обычно порт 443): Windows Server RRAS, SoftEther, MikroTik. Трафик идёт через Xray — маршрутизация, блокировка рекламы и график скорости работают."
+                    else "ZeroTier: подключение к виртуальной сети по Network ID. Через туннель идут только адреса сети ZeroTier, остальной трафик — напрямую. Устройство нужно авторизовать в панели сети (my.zerotier.com). Только arm64-v8a.",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(name, { name = it }, label = { Text("Имя") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (sstp) {
+                    OutlinedTextField(server, { server = it.trim() }, label = { Text("Сервер") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(port, { port = it.filter(Char::isDigit).take(5) }, label = { Text("Порт") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(user, { user = it }, label = { Text("Логин") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(pass, { pass = it }, label = { Text("Пароль") }, singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = verify, onCheckedChange = { verify = it })
+                        Text("Проверять сертификат сервера")
+                    }
+                    OutlinedTextField(sni, { sni = it.trim() }, label = { Text("SNI (необязательно)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                } else {
+                    OutlinedTextField(nwid, { nwid = it.trim().lowercase().take(16) }, label = { Text("Network ID (16 символов)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        isError = nwid.isNotEmpty() && !net.antibs.client.data.PacketVpnConfig.isNetworkId(nwid))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = valid, onClick = {
+                val p = if (sstp) net.antibs.client.data.PacketVpnConfig.sstp(name, server, port.toIntOrNull() ?: 443, user, pass, verify, sni)
+                else net.antibs.client.data.PacketVpnConfig.zerotier(name, nwid)
+                vm.addManualProfile(p); onDone()
+            }) { Text("Сохранить") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
+}

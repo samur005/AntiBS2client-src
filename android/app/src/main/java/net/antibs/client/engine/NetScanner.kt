@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import net.antibs.client.data.NetScanLogic
+import net.antibs.client.data.DeviceIdLogic
 import java.io.File
 import java.net.ConnectException
 import java.net.DatagramPacket
@@ -65,8 +66,13 @@ object NetScanner {
         val portsScanned: Boolean = false,
         val isGateway: Boolean = false,
         val isSelf: Boolean = false,
+        // 1.0.59: identification
+        val type: DeviceIdLogic.DevType? = null,
+        val name: String? = null,
+        val model: String? = null,
+        val evidence: List<String> = emptyList(),
     ) {
-        val kind: String get() = NetScanLogic.guessKind(host, vendor, ports, isGateway)
+        val kind: String get() = type?.label ?: NetScanLogic.guessKind(host, vendor, ports, isGateway)
     }
 
     @Suppress("DEPRECATION")
@@ -134,7 +140,9 @@ object NetScanner {
     // ── probes ──
     private fun tcp(net: Network?, ip: String, port: Int, timeout: Int): Pair<Boolean, Boolean> {
         // first = host alive, second = port open
-        val s = (net?.socketFactory?.createSocket() ?: Socket())
+        // 2.0.5: never fall back to the default (VPN) network
+        if (net == null) return false to false
+        val s = net.socketFactory.createSocket()
         return try {
             s.connect(InetSocketAddress(InetAddress.getByAddress(addr(ip)), port), timeout); true to true
         } catch (e: ConnectException) {
@@ -149,9 +157,10 @@ object NetScanner {
     }
 
     private fun udp(net: Network?, ip: String, port: Int, payload: ByteArray, timeout: Int): ByteArray? {
+        if (net == null) return null
         val s = DatagramSocket()
         return try {
-            net?.bindSocket(s)
+            net.bindSocket(s)
             s.soTimeout = timeout
             s.send(DatagramPacket(payload, payload.size, InetAddress.getByAddress(addr(ip)), port))
             val buf = ByteArray(1500); val p = DatagramPacket(buf, buf.size)
@@ -162,7 +171,8 @@ object NetScanner {
     /** Alive check: ICMP (bound to the Wi‑Fi interface) then a few TCP ports. */
     private suspend fun probe(net: Network?, nif: NetworkInterface?, ip: String, timeout: Int): Device? = coroutineScope {
         val t0 = SystemClock.elapsedRealtime()
-        val icmp = runCatching { InetAddress.getByAddress(addr(ip)).isReachable(nif, 0, timeout) }.getOrDefault(false)
+        // 2.0.5: ICMP via ping pinned to the Wi‑Fi interface (isReachable may fall back to an unbound TCP echo)
+        val icmp = nif != null && icmpPing(nif.name, ip, timeout)
         if (icmp) return@coroutineScope Device(ip, (SystemClock.elapsedRealtime() - t0).toInt(), "ICMP")
         val found = NetScanLogic.PROBE_PORTS.map { port ->
             async(Dispatchers.IO) {
@@ -174,6 +184,12 @@ object NetScanner {
         if (found.isEmpty()) null
         else Device(ip, found.minOf { it.third }, "TCP", ports = found.filter { it.second }.map { it.first }.sorted())
     }
+
+    private fun icmpPing(iface: String, ip: String, timeout: Int): Boolean = runCatching {
+        val p = ProcessBuilder("ping", "-c", "1", "-W", "${maxOf(1, (timeout + 999) / 1000)}", "-I", iface, ip).redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().readText()
+        p.waitFor() == 0 && out.contains("bytes from $ip")
+    }.getOrDefault(false)
 
     fun hostName(net: Network?, st: WifiState, ip: String): Pair<String, String>? {
         val rev = NetScanLogic.reverseName(ip)
@@ -203,14 +219,20 @@ object NetScanner {
         parallel: Int = 64,
         onProgress: (Int, Int) -> Unit,
         onDevice: (Device) -> Unit,
+        onWarning: (String) -> Unit = {},
     ): List<Device> = withContext(Dispatchers.IO) {
         val range = st.range ?: return@withContext emptyList()
-        val net = st.network
+        val net = st.network ?: wifiNetwork(ctx)
+        if (net == null) { onWarning("Сеть Wi‑Fi не найдена — сканирование через VPN дало бы ложные результаты."); return@withContext emptyList() }
         val nif = st.iface?.let { runCatching { NetworkInterface.getByName(it) }.getOrNull() }
         val hosts = NetScanLogic.hosts(range)
         val done = AtomicInteger(0)
         val sem = Semaphore(parallel)
         val found = java.util.concurrent.ConcurrentHashMap<String, Device>()
+        // 1.0.59: multicast discovery runs alongside the sweep
+        val lock = runCatching { ctx.applicationContext.getSystemService(WifiManager::class.java)?.createMulticastLock("lan-scan")?.apply { setReferenceCounted(false); acquire() } }.getOrNull()
+        val mdnsJob = async { runCatching { DeviceIdentifier.mdns(net, 2500) }.getOrDefault(emptyMap()) }
+        val ssdpJob = async { runCatching { DeviceIdentifier.ssdp(net, 2200) }.getOrDefault(emptyMap()) }
         // self + gateway are always listed
         st.ip?.let { found[it] = Device(it, 0, "это устройство", isSelf = true) }
         hosts.map { ip ->
@@ -224,6 +246,11 @@ object NetScanner {
                 }
             }
         }.awaitAll()
+        // 2.0.5: drop fake answers (identical behaviour across the subnet) and flag an implausible result
+        val verdict = NetScanLogic.judge(found.values.filter { !it.isSelf }.map { NetScanLogic.Probe(it.ip, it.latencyMs, it.via, it.ports) },
+            hosts.size, setOfNotNull(st.gateway))
+        verdict.fake.forEach { found.remove(it) }
+        verdict.reason?.let(onWarning)
         // the probes filled the neighbour cache — read it when allowed
         val arp = neighbours()
         for ((ip, mac) in arp) {
@@ -238,6 +265,61 @@ object NetScanner {
             async { sem.withPermit { (if (d.isSelf) null else hostName(net, st, d.ip))?.let { (h, src) -> d.copy(host = h, hostSource = src) } ?: d } }
         }.awaitAll()
         named.forEach(onDevice)
-        named.sortedBy { NetScanLogic.ipToInt(it.ip)?.toLong()?.and(0xffffffffL) ?: 0L }
+        // 1.0.59: identify (mDNS + SSDP + ports + HTTP), all in parallel with short timeouts
+        val mdns = mdnsJob.await(); val ssdp = ssdpJob.await()
+        runCatching { lock?.release() }
+        val all = LinkedHashMap<String, Device>(); named.forEach { all[it.ip] = it }
+        for (ip in mdns.keys + ssdp.keys) {
+            if (ip !in all && NetScanLogic.ipToInt(ip)?.let { it in range.first..range.last } == true)
+                all[ip] = Device(ip, null, if (ip in mdns) "mDNS" else "SSDP", isGateway = ip == st.gateway, isSelf = ip == st.ip)
+        }
+        val ided = all.values.map { d ->
+            async { sem.withPermit { runCatching { identify(net, d, mdns[d.ip], ssdp[d.ip]) }.getOrDefault(d) } }
+        }.awaitAll()
+        ided.forEach(onDevice)
+        ided.sortedBy { NetScanLogic.ipToInt(it.ip)?.toLong()?.and(0xffffffffL) ?: 0L }
+    }
+
+    private fun httpProbe(net: Network?, ip: String, port: Int): Pair<String?, String?>? = runCatching {
+        val url = java.net.URL(if (port == 443) "https://$ip/" else "http://$ip:$port/")
+        val c = (net ?: return@runCatching null).openConnection(url) as java.net.HttpURLConnection
+        if (c is javax.net.ssl.HttpsURLConnection) { c.sslSocketFactory = DeviceIdentifier.trustAll; c.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true } }
+        c.connectTimeout = 1200; c.readTimeout = 1500; c.instanceFollowRedirects = true
+        c.setRequestProperty("User-Agent", "Mozilla/5.0")
+        try {
+            val server = c.getHeaderField("Server")
+            val body = runCatching { (if (c.responseCode >= 400) c.errorStream else c.inputStream)?.use { s -> String(s.readNBytesCompat(32_768), Charsets.UTF_8) } }.getOrNull()
+            server to body?.let { DeviceIdLogic.htmlTitle(it) }
+        } finally { c.disconnect() }
+    }.getOrNull()
+
+    private fun java.io.InputStream.readNBytesCompat(n: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(4096)
+        while (out.size() < n) { val r = read(buf, 0, minOf(buf.size, n - out.size())); if (r <= 0) break; out.write(buf, 0, r) }
+        return out.toByteArray()
+    }
+
+    /** 1.0.59: fold every source of evidence into type / name / model. */
+    private suspend fun identify(net: Network?, d: Device, mdns: DeviceIdLogic.MdnsInfo?, ssdp: DeviceIdentifier.Ssdp?): Device = coroutineScope {
+        val fp = if (d.isSelf) emptyList() else DeviceIdLogic.FP_PORTS.filter { it !in d.ports }.map { p -> async(Dispatchers.IO) { if (tcp(net, d.ip, p, 350).second) p else null } }.awaitAll().filterNotNull()
+        val ports = (d.ports + fp).distinct().sorted()
+        val http = listOf(80, 8080, 443).filter { it in ports }.map { p -> async(Dispatchers.IO) { httpProbe(net, d.ip, p) } }.awaitAll().filterNotNull()
+        val server = http.firstNotNullOfOrNull { it.first }; val title = http.firstNotNullOfOrNull { it.second }
+        val e = DeviceIdLogic.Evidence(
+            isGateway = d.isGateway, ports = ports, host = d.host, vendor = d.vendor, mdns = mdns, upnp = ssdp?.upnp, upnpType = ssdp?.st,
+            netbios = d.host.takeIf { d.hostSource == "NetBIOS" }, httpTitle = title, httpServer = server,
+        )
+        val ev = buildList {
+            if (d.isGateway) add("шлюз по умолчанию")
+            d.host?.let { add("${d.hostSource ?: "имя"}: $it") }
+            mdns?.let { m -> add("mDNS: " + listOfNotNull(m.name, m.model, m.services.sorted().joinToString(", ").takeIf { it.isNotEmpty() }).joinToString(" · ")) }
+            ssdp?.let { s -> add("SSDP/UPnP: " + listOfNotNull(s.upnp?.friendlyName, s.upnp?.manufacturer, s.upnp?.modelName, s.server).joinToString(" · ").ifEmpty { s.st ?: "ответ" }) }
+            if (fp.isNotEmpty() || d.ports.isNotEmpty()) add("порты: " + ports.joinToString(", "))
+            title?.let { add("HTTP title: $it") }
+            server?.let { add("HTTP Server: $it") }
+            d.vendor?.let { add("MAC/OUI: $it") }
+        }
+        d.copy(ports = ports, type = if (d.isSelf) DeviceIdLogic.DevType.PHONE else DeviceIdLogic.classify(e),
+            name = DeviceIdLogic.bestName(e), model = DeviceIdLogic.makeModel(e), evidence = ev)
     }
 }

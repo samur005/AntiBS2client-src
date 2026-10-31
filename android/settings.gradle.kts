@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "AntiBSClient"
 include(":app")
+include(":sstp", ":zerotier")

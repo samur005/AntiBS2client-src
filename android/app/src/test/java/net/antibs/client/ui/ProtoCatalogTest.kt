@@ -12,7 +12,7 @@ class ProtoCatalogTest {
         // 1.0.26: supported by import/engines, now creatable by hand too
         "amneziawg", "qwdtt", "amneziakey",
         // 1.0.41
-        "olcrtc", "openvpn", "openconnect")
+        "olcrtc", "openvpn", "openconnect", "sstp", "zerotier")
 
     @Test fun sameProtocolsNoDuplicates() {
         val p = ProtoCatalog.all.map { it.protocol }

@@ -166,4 +166,26 @@ object NetScanLogic {
             else -> "Устройство"
         }
     }
+
+    // 2.0.5: guard against probes leaking into a VPN tunnel (every address "answers" the same way)
+    data class Probe(val ip: String, val latencyMs: Int?, val via: String, val ports: List<Int>)
+    data class Verdict(val fake: Set<String>, val unreliable: Boolean, val reason: String?)
+
+    /** Hosts sharing one identical (via, ports, ~latency) signature across most of the subnet are fake. */
+    fun judge(alive: List<Probe>, total: Int, keep: Set<String> = emptySet()): Verdict {
+        if (total < 8 || alive.isEmpty()) return Verdict(emptySet(), false, null)
+        val groups = alive.groupBy { it.via to it.ports.sorted() }
+        val (_, big) = groups.maxByOrNull { it.value.size }!!.toPair()
+        val lat = big.mapNotNull { it.latencyMs }
+        val flat = lat.size >= 2 && (lat.max() - lat.min()) <= maxOf(6, lat.min() / 5)
+        val fake = if (big.size >= maxOf(8, total / 2) && flat) big.map { it.ip }.toSet() - keep else emptySet()
+        val left = alive.size - fake.size
+        val unreliable = fake.isNotEmpty() || left >= maxOf(8, (total * 0.8).toInt())
+        val reason = when {
+            fake.isNotEmpty() -> "Отброшено ${fake.size} ложных ответов: почти все адреса отвечают одинаково — похоже, проверки идут через VPN-туннель."
+            unreliable -> "Подозрительно много «живых» адресов ($left из $total) — результат может быть недостоверным."
+            else -> null
+        }
+        return Verdict(fake, unreliable, reason)
+    }
 }

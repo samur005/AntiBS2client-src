@@ -26,6 +26,7 @@ type Stack struct {
 	once sync.Once
 	local4 netip.Addr
 	done chan struct{}
+	routes []netip.Prefix
 }
 
 func newStack(fd *os.File, addrs []netip.Addr, dns []netip.Addr, mtu int, port int) (*Stack, error) {
@@ -193,7 +194,12 @@ func (s *Stack) handle(c net.Conn) {
 	switch req[1] {
 	case 1: // CONNECT
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		up, err := s.tnet.DialContext(ctx, "tcp", addr)
+		var up net.Conn
+		if h, _, _ := net.SplitHostPort(addr); s.inTunnel(h) {
+			up, err = s.tnet.DialContext(ctx, "tcp", addr)
+		} else {
+			up, err = (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+		}
 		cancel()
 		if err != nil {
 			reply(c, 5, nil)
@@ -229,7 +235,14 @@ func (s *Stack) udpAssociate(c net.Conn) {
 	c.SetDeadline(time.Time{})
 	var client *net.UDPAddr
 	var mu sync.Mutex
-	go func() {
+	var dc net.PacketConn // direct socket for destinations outside split routes
+	if len(s.routes) > 0 {
+		if d, err := net.ListenUDP("udp", nil); err == nil {
+			dc = d
+			defer d.Close()
+		}
+	}
+	recv := func(rc net.PacketConn) {
 		buf := make([]byte, 65535)
 		for {
 			n, from, err := rc.ReadFrom(buf)
@@ -253,7 +266,11 @@ func (s *Stack) udpAssociate(c net.Conn) {
 			binary.BigEndian.PutUint16(hdr[len(hdr)-2:], uint16(ua.Port))
 			lc.WriteToUDP(append(hdr, buf[:n]...), cl)
 		}
-	}()
+	}
+	go recv(rc)
+	if dc != nil {
+		go recv(dc)
+	}
 	go func() {
 		buf := make([]byte, 65535)
 		for {
@@ -276,7 +293,11 @@ func (s *Stack) udpAssociate(c net.Conn) {
 			if err != nil {
 				continue
 			}
-			if _, err := rc.WriteTo(r.b[r.i:], ua); err != nil { say("LOG udp write %v: %v", ua, err) }
+			var out net.PacketConn = rc
+			if dc != nil && !s.inTunnel(ua.IP.String()) {
+				out = dc
+			}
+			if _, err := out.WriteTo(r.b[r.i:], ua); err != nil { say("LOG udp write %v: %v", ua, err) }
 		}
 	}()
 	io.Copy(io.Discard, c) // association lives while the TCP control connection is open
@@ -291,7 +312,12 @@ func (s *Stack) resolveUDP(hp string) (*net.UDPAddr, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return &net.UDPAddr{IP: ip, Port: p}, nil
 	}
-	ips, err := s.tnet.LookupHost(host)
+	var ips []string
+	if len(s.routes) > 0 {
+		ips, err = net.LookupHost(host)
+	} else {
+		ips, err = s.tnet.LookupHost(host)
+	}
 	if err != nil || len(ips) == 0 {
 		return nil, fmt.Errorf("resolve %s: %v", host, err)
 	}

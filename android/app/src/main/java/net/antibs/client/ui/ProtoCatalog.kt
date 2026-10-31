@@ -50,6 +50,8 @@ object ProtoCatalog {
             Item("olcRTC", "olcrtc", "Телемост / Jitsi", "OL", Family.VPN),
             Item("OpenVPN", "openvpn", ".ovpn", "OV", Family.VPN),
             Item("OpenConnect", "openconnect", "AnyConnect", "OC", Family.VPN),
+            Item("SSTP", "sstp", "MS SSTP · TLS 443", "ST", Family.VPN),
+            Item("ZeroTier", "zerotier", "Network ID", "ZT", Family.VPN),
         )),
         Group("Расширенные", Family.ADVANCED, listOf(
             Item("Прокси цепь", "chain", "Через несколько", "⛓", Family.ADVANCED),

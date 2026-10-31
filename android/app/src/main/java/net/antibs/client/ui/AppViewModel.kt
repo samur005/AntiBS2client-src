@@ -1,5 +1,6 @@
 package net.antibs.client.ui
 
+import kotlinx.coroutines.isActive
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -512,6 +513,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeSubscription(id: String) = store.removeSubscription(id)
 
+    /** 1.0.55: drag-reorder on the Servers screen; [displayIds] is the order as shown. Stored in AppState.subscriptions (used everywhere). */
+    fun moveSubscription(dragId: String, targetId: String, newestFirst: Boolean) {
+        val display = ServerStyleLogic.orderSubs(store.snapshot().subscriptions.map { it.id }, newestFirst)
+        val to = display.indexOf(targetId); if (to < 0) return
+        reorderSubscriptions(SubOrder.move(display, dragId, to), newestFirst)
+    }
+
+    fun reorderSubscriptions(displayIds: List<String>, newestFirst: Boolean) {
+        val order = SubOrder.storedFromDisplay(displayIds, newestFirst)
+        push { st -> st.copy(subscriptions = SubOrder.apply(st.subscriptions, order) { it.id }) }
+    }
+
     // ---- 1.0.18: HWID ----
     /** Per-install device ID (default HWID). */
     val deviceHwid: String get() = store.hwid
@@ -578,11 +591,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun downloadUpdate(u: net.antibs.client.data.UpdateLogic.Update) {
         _update.value = UpdateUi.Downloading(u, 0f)
-        viewModelScope.launch {
+        downloadJob?.cancel()
+        downloadJob = viewModelScope.launch {
             runCatching {
-                net.antibs.client.engine.Updater.download(getApplication(), u) { p -> _update.value = UpdateUi.Downloading(u, p) }
-            }.fold({ f -> installUpdate(u, f) }, { e -> _update.value = UpdateUi.Error("Загрузка: ${e.message}") })
+                net.antibs.client.engine.Updater.download(getApplication(), u) { p -> if (isActive) _update.value = UpdateUi.Downloading(u, p) }
+            }.fold({ f -> installUpdate(u, f) }, { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _update.value = UpdateUi.Error("Загрузка: ${e.message}")
+            })
         }
+    }
+
+    private var downloadJob: kotlinx.coroutines.Job? = null
+
+    /** 1.0.54: «Отмена» on the download plate — abort, delete the partial file, hide; the next check offers it again. */
+    fun cancelUpdateDownload() {
+        downloadJob?.cancel(); downloadJob = null
+        runCatching { net.antibs.client.engine.Updater.clearPartial(getApplication()) }
+        _update.value = UpdateUi.Idle
     }
 
     fun installUpdate(u: net.antibs.client.data.UpdateLogic.Update, f: java.io.File) {
@@ -674,6 +700,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 1.0.41: olcRTC has no host:port — join the room with a throw-away client and GET through it.
         if (s.xray?.protocol == net.antibs.client.data.Olcrtc.PROTOCOL) return olcrtcPing(s, st, timeoutMs)
         // 1.0.41: OpenVPN / OpenConnect — TCP ping if asked (TCP remotes), otherwise a real handshake + GET through the tunnel
+        // 2.0.1: SSTP — TCP connect to the server; ZeroTier has no single host (n/a)
+        if (s.xray?.protocol in setOf(net.antibs.client.data.PacketVpnConfig.SSTP, net.antibs.client.data.PacketVpnConfig.ZEROTIER))
+            return withContext(Dispatchers.IO) { net.antibs.client.engine.PacketVpnEngine.ping(s.xray!!, timeoutMs) }
         if (s.xray?.protocol in setOf("openvpn", "openconnect")) {
             val x = s.xray!!
             if (a.pingType == "tcp" && (x.protocol == "openconnect" || x.network == "tcp")) {
