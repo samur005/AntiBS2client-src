@@ -117,6 +117,9 @@ data class AdvancedSettings(
     val serverGrouping: ServerGrouping = ServerGrouping(),
     val pingChip: PingChipStyle = PingChipStyle(),
     val autoPing: AutoPing = AutoPing(),
+    // 2.0.7: home variant B cards
+    val homeNetMonitor: Boolean = true,
+    val homeUrlTest: Boolean = true,
 ) {
     val perAppSelected: List<String> get() = if (perAppMode == "bypass") perAppBypass else perAppInclude
 

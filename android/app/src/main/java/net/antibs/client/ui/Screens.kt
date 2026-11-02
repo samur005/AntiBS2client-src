@@ -474,7 +474,11 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     val fullH = maxHeight
                     Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                         Column(
-                            Modifier.fillMaxWidth().height(fullH).padding(start = 12.dp, end = 12.dp, top = 2.dp),
+                            Modifier.fillMaxWidth().height(run {
+                                // 2.0.7: variant B — keep ≥170 dp for the world strip; scroll only when the screen is too short
+                                val extra = (if (st.adv.homeNetMonitor) 112.dp else 0.dp) + (if (st.adv.homeUrlTest) 140.dp else 0.dp)
+                                if (extra.value == 0f) fullH else maxOf(fullH, 470.dp + extra)
+                            }).padding(start = 12.dp, end = 12.dp, top = 2.dp),
                             verticalArrangement = Arrangement.spacedBy(3.dp),
                         ) {
                 run {
@@ -526,7 +530,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     )
                 }
                 run {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = if (st.adv.homeNetMonitor || st.adv.homeUrlTest) 4.dp else 10.dp), contentAlignment = Alignment.Center) {
                         PowerToggle(state = vpn.state, since = vpn.since, onClick = ::toggle)
                     }
                 }
@@ -583,6 +587,13 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (captcha != null) {
                     run { CaptchaCard(captcha!!) }
                 }
+                            HomeMonitorSection(
+                                connected = connected,
+                                socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
+                                showMonitor = st.adv.homeNetMonitor,
+                                showUrl = st.adv.homeUrlTest,
+                                haptics = st.adv.haptics,
+                            )
                             val liveName = if (connected || vpn.state == ConnState.CONNECTING) UiLogic.liveHostName(vpn.serverName, vpn.pickName, connected).ifEmpty { server?.name.orEmpty() } else server?.name.orEmpty()
                             HomeWorld(
                                 holiday = runCatching {

@@ -242,6 +242,10 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         SwitchRow("Вибрация", a.haptics, subtitle = "Отклик на нажатия") { v -> vm.setAdv { it.copy(haptics = v) } }
                         NavRow("Единицы скорости", if (a.speedUnits == "bits") "Биты" else "Байты", dropdown = true, subtitle = "На карточке скорости: КБ/с, МБ/с или кбит/с, Мбит/с") { dialog = "speedUnits" }
                     }
+                    SettingsCard("Главный экран") {
+                        SwitchRow("Мониторинг сети", a.homeNetMonitor, subtitle = "Задержка через VPN (gstatic) и напрямую (vk.ru), обновляется вживую") { v -> vm.setAdv { it.copy(homeNetMonitor = v) } }
+                        SwitchRow("URL Тест", a.homeUrlTest, subtitle = "Google, Telegram, Запретgram, YouTube") { v -> vm.setAdv { it.copy(homeUrlTest = v) } }
+                    }
                     SettingsCard("Список серверов") {
                         SwitchRow("Компактный список серверов", ui.compactServers) { vm.setCompact(it) }
                         SwitchRow("Подписки развёрнуты", ui.subsExpanded, subtitle = "Группы подписок открыты при запуске") { vm.setSubsExpanded(it) }
