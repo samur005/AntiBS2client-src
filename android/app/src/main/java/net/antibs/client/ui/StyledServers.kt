@@ -45,6 +45,7 @@ fun ServersHeader(
     subMenu: Subscription?,
     onSubRefresh: (Subscription) -> Unit, onSubPing: (Subscription) -> Unit, onSubCopy: (Subscription) -> Unit,
     onSubDeleteUnreachable: (Subscription) -> Unit, onSubRestoreHidden: (Subscription) -> Unit, onSubDelete: (Subscription) -> Unit,
+    subExtraMenu: (@Composable (Subscription, () -> Unit) -> Unit)? = null,
     viewOpenInitially: Boolean = false,
 ) {
     val c = ssColors(style)
@@ -134,6 +135,7 @@ fun ServersHeader(
                 Item(Icons.Filled.ContentCopy, "Скопировать ссылку", enabled = sub.url.isNotBlank()) { moreOpen = false; onSubCopy(sub) }
                 if (sub.hiddenHosts.isNotEmpty()) Item(Icons.Filled.Restore, "Показать удалённые хосты") { moreOpen = false; onSubRestoreHidden(sub) }
                 Item(Icons.Filled.TimerOff, "Удалить недоступные") { moreOpen = false; onSubDeleteUnreachable(sub) }
+                subExtraMenu?.invoke(sub) { moreOpen = false }
                 Item(Icons.Filled.DeleteForever, "Удалить", danger = true) { moreOpen = false; onSubDelete(sub) }
             }
         }
@@ -193,6 +195,21 @@ internal fun LazyListScope.styledServers(
         }
     }
     if (list.isEmpty()) item(key = "ss-empty") { Text("Нет серверов", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp)) }
+    // 2.0.6 (ABS): country groups inside the chosen subscription (or «Все»)
+    val sg = st.adv.serverGrouping
+    if (sg.isOn(sel) && list.size > 1) {
+        val gs = sg.forSub(sel)
+        net.antibs.client.data.ServerGrouping.group(list, { it.name }, gs.sort, { pings[it.id] }).forEach { (code, l) ->
+            val open = sg.isOpen(sel, code)
+            item(key = "ss-cg-$sel-$code") {
+                CountryHeader(code, l.size, open, net.antibs.client.data.ServerGrouping.bestPing(l.map { pings[it.id] }), gs.showPing) {
+                    vm.setAdv { it.copy(serverGrouping = it.serverGrouping.toggle(sel, code)) }
+                }
+            }
+            if (open) items(l, key = { "ss-" + it.id }) { s -> StyledHostRow(style, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, favorites, onSelected) }
+        }
+        return
+    }
     items(list, key = { "ss-" + it.id }) { s -> StyledHostRow(style, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, favorites, onSelected) }
 }
 

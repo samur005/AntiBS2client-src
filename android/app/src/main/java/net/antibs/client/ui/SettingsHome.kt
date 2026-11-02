@@ -101,7 +101,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                             "off" -> "Выключено"
                             "auto" -> "Авто"
                             else -> net.antibs.client.data.HolidayCalendar.byId(a.seasonalDecor, a.customHolidays)?.let { "${it.emoji} ${it.name}" } ?: "Авто"
-                        }, subtitle = "Праздники РФ и мусульманские") { dialog = "seasonal" }
+                        }, subtitle = "Праздник, снег, гирлянда, надпись") { open("Seasonal") }
                         NavRow("Язык", "Русский", dropdown = true, subtitle = "Язык интерфейса приложения") { vm.message("Пока доступен только русский язык") }
                         NavRow("Тема оформления", themeLabel(ui.theme), dropdown = true, subtitle = "Светлая, тёмная, чёрная или как в системе") { dialog = "theme" }
                         RowDivider()
@@ -245,9 +245,21 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                     SettingsCard("Список серверов") {
                         SwitchRow("Компактный список серверов", ui.compactServers) { vm.setCompact(it) }
                         SwitchRow("Подписки развёрнуты", ui.subsExpanded, subtitle = "Группы подписок открыты при запуске") { vm.setSubsExpanded(it) }
+                        run {
+                            val g = a.serverGrouping
+                            SwitchRow("Группировать по странам", g.on, subtitle = "Серверы каждой подписки по странам (флаг в названии); можно переопределить в меню подписки") { v -> vm.setAdv { it.copy(serverGrouping = g.copy(on = v)) } }
+                            if (g.on) {
+                                NavRow("Сортировка стран", when (g.sort) { "count" -> "По количеству серверов"; "ping" -> "По пингу"; else -> "Страны по алфавиту" }, dropdown = true) {
+                                    vm.setAdv { it.copy(serverGrouping = g.copy(sort = when (g.sort) { "name" -> "count"; "count" -> "ping"; else -> "name" })) } }
+                                SwitchRow("Страны раскрыты по умолчанию", g.openDefault) { v -> vm.setAdv { it.copy(serverGrouping = g.copy(openDefault = v, open = emptySet())) } }
+                                SwitchRow("Пинг самого быстрого сервера", g.showPing, subtitle = "В заголовке свёрнутой страны") { v -> vm.setAdv { it.copy(serverGrouping = g.copy(showPing = v)) } }
+                                SwitchRow("Запоминать раскрытые группы", g.rememberOpen) { v -> vm.setAdv { it.copy(serverGrouping = g.copy(rememberOpen = v)) } }
+                            }
+                        }
                         SwitchRow("Скрывать пустую группу «Серверы»", a.hideEmptyManual) { vm.setHideEmptyManual(it) }
                     }
                     SettingsCard("Главный экран") {
+                        NavRow("Остаток подписки", if (a.subRemain.show) "Показывать" else "Скрыт", subtitle = "Дни и трафик внизу карточки подключения") { open("SubRemain") }
                         NavRow("Прозрачность океана на глобусе", "$globePct%", dropdown = true, subtitle = "Также: долгое нажатие на значок глобуса") { dialog = "opGlobe" }
                         NavRow("Прозрачность океана на карте", "$mapPct%", dropdown = true, subtitle = "Также: долгое нажатие на значок карты") { dialog = "opMap" }
                     }
@@ -263,6 +275,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                     SettingsCard("Запуск") {
                         SwitchRow("Автозапуск после перезагрузки", ui.autostart) { vm.setAutostart(it) }
                         SwitchRow("Подключаться при запуске приложения", a.autoConnectOnLaunch) { v -> vm.setAdv { it.copy(autoConnectOnLaunch = v) } }
+                        NavRow("Расписание VPN", net.antibs.client.service.VpnScheduler.load(ctx).let { c -> if (c.on) "Вкл · правил: ${c.rules.size}" else "Выкл" }, subtitle = "Включать и выключать VPN по времени и дням") { open("Schedule") }
                         NavRow("Кнопка VPN в шторке", if (Build.VERSION.SDK_INT >= 33) "Добавить плитку" else "Добавьте вручную: шторка → ✎") {
                             val act = ctx.findActivity()
                             if (act != null) vm.requestQsTile(act) else vm.message("Откройте шторку → ✎ и перетащите плитку «AntiBS»")

@@ -111,6 +111,12 @@ data class AdvancedSettings(
     val seasonalDecor: String = "auto",
     /** User-defined holidays: id, name, emoji, month, day (Gregorian). */
     val customHolidays: List<CustomHoliday> = emptyList(),
+    // 2.0.6 (ABS port)
+    val seasonalFx: SeasonalFx = SeasonalFx(),
+    val subRemain: SubRemainStyle = SubRemainStyle(),
+    val serverGrouping: ServerGrouping = ServerGrouping(),
+    val pingChip: PingChipStyle = PingChipStyle(),
+    val autoPing: AutoPing = AutoPing(),
 ) {
     val perAppSelected: List<String> get() = if (perAppMode == "bypass") perAppBypass else perAppInclude
 

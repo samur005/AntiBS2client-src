@@ -1,5 +1,6 @@
 package net.antibs.client.ui
 
+import androidx.compose.foundation.layout.asPaddingValues
 import net.antibs.client.data.ProtocolSupport
 
 import android.app.Activity
@@ -181,6 +182,8 @@ private enum class Page {
     NetTools,
     // 1.0.50 settings sub-screens
     SetCores, SetNet, SetSubAuto,
+    // 2.0.6 (ABS port)
+    Seasonal, SubRemain, Schedule,
 }
 
 /** Pages a detail page may return to when it was opened from them (Per-app is reachable from Settings and Routing). */
@@ -231,6 +234,11 @@ fun AppRoot(vm: AppViewModel) {
                 Page.Logs -> LogsTab(vm, onBack = { back() })
                 Page.RoutingEdit -> RoutingEditPage(vm, st, routingId ?: "", onBack = { pageName = Page.Routing.name })
                 else -> SettingsDetail(page, vm, ui, onBack = { back() }, onOpen = { open(it) })
+            }
+            // 2.0.6 (ABS): snow + garland over the main screen (draw-only, no touch handling)
+            if (page == Page.Main) {
+                val (snowOn, garlandOn) = remember(st.adv.seasonalFx, st.adv.seasonalDecor, st.adv.customHolidays) { seasonalNow(st.adv) }
+                SeasonalOverlay(st.adv.seasonalFx, snowOn, garlandOn, androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
             }
             UpdateDialog(vm)
             UnreachableDialog(vm)
@@ -429,6 +437,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 onSubRefresh = { vm.refresh(it.id) }, onSubPing = { vm.pingSubscription(it.id) },
                 onSubCopy = { copyText(ctx, it.url); vm.message("Ссылка скопирована") },
                 onSubDeleteUnreachable = { vm.askDeleteUnreachable(it.id) }, onSubRestoreHidden = { vm.restoreHiddenHosts(it.id) },
+                subExtraMenu = { sb, close -> GroupingMenuItems(vm, st.adv.serverGrouping, sb.id, close) },
                 onSubDelete = { vm.removeSubscription(it.id) },
             )
         } else TopBar(
@@ -505,6 +514,15 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         onLongPress = onOpenSpeedTest,
                         statsVisible = speedCardVisible,
                         speedTemplate = Format.speedTemplate(st.adv.speedUnits == "bits"),
+                        pingMs = vm.currentPingId()?.let { pings[it] }?.takeIf { it >= -1 },
+                        pingBusy = vm.currentPingId()?.let { it in pinging } == true,
+                        pingStyle = st.adv.pingChip,
+                        onPing = { vm.pingCurrent() },
+                        subLine = run {
+                            val sid = (vm.currentPingId() ?: server?.id)?.let { id -> st.servers.firstOrNull { it.id == id } }?.subscriptionId
+                            net.antibs.client.data.SubLineData.of(st.subscriptions.firstOrNull { it.id == sid }, System.currentTimeMillis())
+                        },
+                        subStyle = st.adv.subRemain,
                     )
                 }
                 run {
@@ -585,7 +603,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                 onServers = { tabName = MainTab.Servers.name },
                                 // 1.0.48: left-edge ping of the selected server (same measurement as the host list)
                                 ping = WorldPing(busy = server != null && server.id in pinging, ms = server?.id?.let { pings[it] }, stamp = pingStamp),
-                                onPing = server?.let { sv -> { pingAsked = true; vm.pingOne(sv) } },
+                                onPing = null,   // 2.0.6: the ping moved into the connection card («пинг: N мс»)
+                                seasonalFx = st.adv.seasonalFx,
                                 onNet = onOpenNet,
                                 onSpeed = onOpenSpeedTest,
                             )
@@ -661,6 +680,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                     onRestoreHidden = { vm.restoreHiddenHosts(sub.id) },
                                     onDeleteUnreachable = { vm.askDeleteUnreachable(sub.id) },
                                     scanningUnreachable = sub.id in unreachableScan,
+                                    extraMenu = { close -> GroupingMenuItems(vm, st.adv.serverGrouping, sub.id, close) },
                                     onCopy = {
                                         copyText(ctx, sub.url)
                                         vm.message("Ссылка скопирована")
@@ -680,6 +700,24 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         }
                         // 1.0.9: hosts are always a single-column list (the grid toggle was removed;
                         // the legacy persisted «host_grid» flag is still read/written but ignored).
+                        val gid = sub?.id ?: UiLogic.ORPHAN_GROUP
+                        val sg = st.adv.serverGrouping
+                        // 2.0.6 (ABS): «Группировать по странам» — per subscription, with its own override
+                        if (sg.isOn(gid) && g.servers.size > 1) {
+                            val gs = sg.forSub(gid)
+                            net.antibs.client.data.ServerGrouping.group(g.servers, { it.name }, gs.sort, { pings[it.id] }).forEach { (code, list) ->
+                                val open = sg.isOpen(gid, code)
+                                item(key = "cg-$gid-$code") {
+                                    CountryHeader(code, list.size, open, net.antibs.client.data.ServerGrouping.bestPing(list.map { pings[it.id] }), gs.showPing) {
+                                        vm.setAdv { it.copy(serverGrouping = it.serverGrouping.toggle(gid, code)) }
+                                    }
+                                }
+                                if (open) items(list, key = { it.id }) { s ->
+                                    if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name })
+                                    else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name })
+                                }
+                            }
+                        } else
                         items(g.servers, key = { it.id }) { s ->
                             if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name })
                             else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name })
@@ -796,7 +834,7 @@ private fun TopBar(
 }
 
 @Composable
-private fun ConnectionCard(
+internal fun ConnectionCard(
     flag: String,
     name: String,
     proto: String,
@@ -822,6 +860,12 @@ private fun ConnectionCard(
     directUpRate: Long = 0,
     onLongPress: () -> Unit = {},
     statsVisible: Boolean = true,
+    pingMs: Long? = null,
+    pingBusy: Boolean = false,
+    pingStyle: net.antibs.client.data.PingChipStyle? = null,
+    onPing: (() -> Unit)? = null,
+    subLine: net.antibs.client.data.SubLineData? = null,
+    subStyle: net.antibs.client.data.SubRemainStyle = net.antibs.client.data.SubRemainStyle(),
 ) {
     val shape = RoundedCornerShape(16.dp)
     Surface(
@@ -856,6 +900,10 @@ private fun ConnectionCard(
                         modifier = Modifier.clip(RoundedCornerShape(7.dp)).background(chipBg).padding(horizontal = 7.dp, vertical = 2.dp),
                     )
                 }
+            }
+            // 2.0.6 (ABS): «пинг: 131 мс» under the protocol badge — auto-ping updates it, a tap pings at once
+            if (pingStyle != null && pingStyle.show) Row(Modifier.fillMaxWidth().padding(top = 3.dp), horizontalArrangement = Arrangement.End) {
+                HomePingChip(pingMs, pingBusy, pingStyle, active, onPing)
             }
             androidx.compose.animation.AnimatedVisibility(
                 visible = statsVisible,
@@ -912,6 +960,8 @@ private fun ConnectionCard(
             }
             }
             }
+            // 2.0.6 (ABS): «Остаток подписки» — the last row inside the card
+            if (subLine != null && subStyle.show) SubRemainRow(subLine, subStyle, Modifier.padding(top = 8.dp))
         }
     }
 }
@@ -1185,6 +1235,7 @@ internal fun SubCard(
     onRestoreHidden: () -> Unit = {},
     onDeleteUnreachable: () -> Unit = {},
     scanningUnreachable: Boolean = false,
+    extraMenu: (@Composable (close: () -> Unit) -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     val traffic = UiLogic.traffic(sub)
@@ -1229,6 +1280,7 @@ internal fun SubCard(
                             DropdownMenuItem(text = { Text("Копировать ссылку") }, onClick = { menu = false; onCopy() })
                         }
                         DropdownMenuItem(text = { Text("Проверить пинг") }, onClick = { menu = false; onPing() })
+                        extraMenu?.invoke { menu = false }
                         if (realServers > 0) DropdownMenuItem(
                             text = { Text(if (scanningUnreachable) "Удалить недоступные (пинг…)" else "Удалить недоступные") },
                             enabled = !scanningUnreachable,
@@ -1707,6 +1759,9 @@ private fun SettingsDetail(page: Page, vm: AppViewModel, ui: UiSettings, onBack:
         Page.Excluded -> ExcludedRoutesPage(vm, st, onBack)
         Page.Subs -> SubsSettings(vm, onBack)
         Page.Ping -> PingPage(vm, st, onBack)
+        Page.Seasonal -> SeasonalPage(vm, st, onBack)
+        Page.SubRemain -> SubRemainPage(vm, st, onBack)
+        Page.Schedule -> SchedulePage(onBack)
         Page.Protocols -> ProtocolsPage(onBack)
         Page.Hwid -> HwidPage(vm, st, onBack)
         else -> SettingsScaffold("Настройки", onBack) { TextButton(onClick = onBack) { Text("Назад") } }

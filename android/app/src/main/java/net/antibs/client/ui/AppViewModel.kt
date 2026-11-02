@@ -13,6 +13,7 @@ import net.antibs.client.engine.XrayCore
 import net.antibs.client.engine.ConnState
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.async
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonArray
@@ -123,7 +124,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     _tunnelPing.value = UiLogic.TunnelPing.CHECKING
                     val serverId = sessionServerId(s.serverName)
-                    tunnelJob = viewModelScope.launch { tunnelLoop(serverId) }
+                    tunnelJob = viewModelScope.launch { launch { bgListPingLoop() }; tunnelLoop(serverId) }
                 }
             }
         }
@@ -146,15 +147,88 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val ms = tunnelCheck(serverId)
             val now = if (ms != null) UiLogic.TunnelPing.OK else UiLogic.TunnelPing.FAIL
             _tunnelPing.value = now
-            if (serverId != null) _pings.update { it + (serverId to UiLogic.tunnelPingValue(ms)) }
+            val ap = store.snapshot().adv.autoPing
+            if (serverId != null && ap.on) _pings.update { it + (serverId to UiLogic.tunnelPingValue(ms)) }
             if (now != last) VpnState.log(if (ms != null) "пинг через туннель: $ms мс" else "пинг через туннель: нет ответа")
             last = now
             // Next check after the interval, or sooner (~1.5 s after) when the device network changes.
-            if (withTimeoutOrNull(UiLogic.TUNNEL_PING_INTERVAL_MS) { tunnelKick.receive() } != null) {
+            val period = store.snapshot().adv.autoPing.let { if (it.on) it.periodMs else UiLogic.TUNNEL_PING_INTERVAL_MS }
+            if (withTimeoutOrNull(period) { tunnelKick.receive() } != null) {
                 delay(1_500)
                 while (tunnelKick.tryReceive().isSuccess) { }
             }
         }
+    }
+
+    /** 2.0.6 (ABS): tap on «пинг: N мс» — measure the current server right now (through the tunnel when connected). */
+    fun pingCurrent() {
+        val st = store.snapshot()
+        val vs = VpnState.status.value
+        if (tunnelKey != null) {
+            val id = sessionServerId(vs.serverName) ?: return
+            if (id in _pinging.value) return
+            _pinging.update { it + id }
+            viewModelScope.launch {
+                try {
+                    val ms = tunnelCheck(id)
+                    _pings.update { it + (id to UiLogic.tunnelPingValue(ms)) }
+                    _tunnelPing.value = if (ms != null) UiLogic.TunnelPing.OK else UiLogic.TunnelPing.FAIL
+                } finally { _pinging.update { it - id } }
+            }
+        } else {
+            val sel = UiLogic.effectiveSelection(st.selectedServerId, st.servers, st.subscriptions)
+            st.servers.firstOrNull { it.id == sel }?.let { if (it.id !in _pinging.value) pingOne(it) }
+        }
+    }
+
+    /** Server whose ping the home chip shows: the live session host, else the selection. */
+    fun currentPingId(): String? = if (tunnelKey != null) sessionServerId(VpnState.status.value.serverName)
+        else store.snapshot().let { UiLogic.effectiveSelection(it.selectedServerId, it.servers, it.subscriptions) }
+
+    private val failPrefs by lazy { getApplication<Application>().getSharedPreferences("autodelete_ping", android.content.Context.MODE_PRIVATE) }
+
+    /** 2.0.6 (ABS BgListPing): while connected, ping the whole list every 30 min (2 at a time) → auto-delete rule. */
+    private suspend fun bgListPingLoop() {
+        delay(net.antibs.client.data.AutoDeletePing.BG_FIRST_DELAY_MS)
+        while (true) {
+            runCatching { bgListPingRound() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+            delay(net.antibs.client.data.AutoDeletePing.BG_PERIOD_MS)
+        }
+    }
+
+    private suspend fun bgListPingRound() {
+        val ap = store.snapshot().adv.autoPing
+        if (!ap.autoDelete || VpnState.status.value.state != ConnState.CONNECTED) return
+        val list = store.servers().filterNot { UiLogic.isAutoSelectEntry(it) }
+        if (list.isEmpty()) return
+        val sem = kotlinx.coroutines.sync.Semaphore(net.antibs.client.data.AutoDeletePing.BG_PARALLEL)
+        val results = kotlinx.coroutines.coroutineScope {
+            list.map { s -> async { s.id to sem.withPermit { runCatching { measure(s) }.getOrDefault(-1L) } } }.map { it.await() }.toMap()
+        }
+        _pings.update { it + results.filterValues { v -> v >= -1 } }
+        if (VpnState.status.value.state != ConnState.CONNECTED) return
+        val (protect, name) = connectedProtect()
+        val prot: Set<String?> = protect + list.filter { name.isNotBlank() && it.name == name }.map { it.id } + currentPingId()
+        val res = net.antibs.client.data.AutoDeletePing.decide(results, prot, true,
+            net.antibs.client.data.AutoDeletePing.decode(failPrefs.getString("counts", "")), ap.failsToDelete) { directNetOk() }
+        failPrefs.edit().putString("counts", net.antibs.client.data.AutoDeletePing.encode(res.counts)).apply()
+        when (val o = res.outcome) {
+            is net.antibs.client.data.AutoDeletePing.Outcome.Deleted -> {
+                var n = 0
+                o.ids.forEach { id -> if (store.deleteHost(id) != null) { _pings.update { it - id }; n++ } }
+                if (n > 0) { _toast.value = "Удалено $n (${ap.failsToDelete} неудачных проверок подряд)"; VpnState.log("автоудаление: $n") }
+            }
+            net.antibs.client.data.AutoDeletePing.Outcome.Whitelist -> _toast.value = "Похоже на белые списки — серверы не удалены"
+            else -> {}
+        }
+    }
+
+    /** Direct (app sockets bypass the tunnel) generate_204 check: false = whitelist / bad network → nothing deleted. */
+    private suspend fun directNetOk(): Boolean = withContext(Dispatchers.IO) {
+        net.antibs.client.data.AutoDeletePing.PROBE_URLS.any { u -> runCatching {
+            val c = java.net.URL(u).openConnection() as java.net.HttpURLConnection
+            try { c.requestMethod = "HEAD"; c.connectTimeout = 2500; c.readTimeout = 2500; c.instanceFollowRedirects = false; c.responseCode in 200..399 } finally { c.disconnect() }
+        }.getOrDefault(false) }
     }
 
     /** One check (with a single retry on failure): delay in ms, or null when the tunnel did not answer. */
@@ -713,7 +787,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             return olcrtcPing(s, st, timeoutMs, classic = true)
         }
-        return when (a.pingType) {
+        val route = net.antibs.client.data.PingRoute.method(a.pingType, s.xray?.protocol, s.xray?.network, s.xray?.alpn)
+        return when (route) {
             "tcp" -> tcpPing(s, timeoutMs)
             "icmp" -> icmpPing(s, timeoutMs)
             else -> urlTest(s, st, a, timeoutMs) ?: tcpPing(s, timeoutMs)

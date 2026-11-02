@@ -290,7 +290,8 @@ data class WorldPing(val busy: Boolean = false, val ms: Long? = null, val stamp:
 /** «Глобус» / «Карта» block of «Главная». [onServers]: tap on the bubble opens «Серверы». */
 @Composable
 fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.compose.ui.unit.Dp = 0.dp, onServers: () -> Unit = {},
-              ping: WorldPing = WorldPing(), onPing: (() -> Unit)? = null, onNet: (() -> Unit)? = null, onSpeed: (() -> Unit)? = null, holiday: net.antibs.client.data.Holiday? = null) {
+              ping: WorldPing = WorldPing(), onPing: (() -> Unit)? = null, onNet: (() -> Unit)? = null, onSpeed: (() -> Unit)? = null, holiday: net.antibs.client.data.Holiday? = null,
+              seasonalFx: net.antibs.client.data.SeasonalFx = net.antibs.client.data.SeasonalFx()) {
     val ctx = LocalContext.current
     remember { WorldOpacity.init(ctx); 0 }
     var panel by remember { mutableStateOf<String?>(null) }
@@ -414,14 +415,13 @@ fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.
             }
             if (onPing != null) { gap(); PingPill(ping, onPing, Modifier) }
         }
-        if (holiday != null) {
+        if (holiday != null && seasonalFx.showLabel) {
             Row(
                 Modifier.align(Alignment.TopCenter).padding(top = (iconsBottom - PILL_H - 40.dp).coerceAtLeast(4.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(holiday.emoji, fontSize = 18.sp)
-                Spacer(Modifier.width(6.dp))
-                Text(holiday.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.92f))
+                // 2.0.6 (ABS): label colour / opacity / size from «Сезонные украшения»
+                SeasonalLabelText(holiday.emoji, holiday.name, seasonalFx, base = 14f, defColor = Color.White.copy(alpha = 0.92f))
             }
         }
         panel?.let { k -> OpacityPanel(k == "map", iconsBottom + 4.dp) { panel = null } }

@@ -604,6 +604,7 @@ internal fun PingPage(vm: AppViewModel, st: AppState, onBack: () -> Unit) {
                 vm.setPingSettings { it.copy(autoPingServers = v) }
             }
             HintText("Выключено по умолчанию. Ручной пинг (кнопки «Пинговать все» и на карточках) работает всегда.")
+            AutoPingSection(vm, a)
             SectionLabel("Тип пинга")
             listOf(
                 "get" to "GET-запрос через прокси", "head" to "HEAD-запрос через прокси",
