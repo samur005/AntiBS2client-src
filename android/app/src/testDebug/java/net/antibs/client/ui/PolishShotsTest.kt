@@ -101,24 +101,24 @@ class PolishShotsTest {
     @Test fun s15BannerIdle() { d15(); show(ThemeMode.DARK) { banner(84, 231, false) }; save("banner_idle_dark", 700) }
     @Test fun s15BannerPinging() { d15(); show(ThemeMode.DARK) { banner(84, 231, true) }; save("banner_pinging_dark", 700) }
     @Test fun s15BannerTimeout() { d15(); show(ThemeMode.DARK) { banner(-1, 9999, false) }; save("banner_timeout_dark", 700) }
-    @Test fun s15AdBlock() {
-        d15()
+    @Config(qualifiers = "w400dp-h2600dp-xxhdpi")
+    @Test fun s16AdBlockInline() {
+        dir = "/workspace/polish_shots/2016"
         val f = File(rule.activity.filesDir, net.antibs.client.data.AdBlockCounter.COUNTS_NAME)
         net.antibs.client.data.AdBlockCounter.save(f, net.antibs.client.data.AdBlockCounter.Counts(net.antibs.client.data.AdBlockCounter.dayKey(), 137, 4821, true))
         val vm = AppViewModel(rule.activity.application)
         vm.setAdvTunnel { it.copy(blockAds = true, adCats = listOf("tm_windows"), adDnsOn = true, adDnsUrl = net.antibs.client.data.AdBlock.DNS_PRESETS.first().variants[1].url) }
-        live(ThemeMode.DARK) { val st by vm.state.collectAsState(); AdBlockPage(vm, st) {} }
+        live(ThemeMode.DARK) { SettingsHome(vm, vm.ui.value, {}, {}, "Settings") }
         Thread.sleep(2500); rule.waitForIdle()
-        save("adblock_page_dark", 1500)
-        save("adblock_counters_dark", 620)
-        rule.onRoot().performTouchInput { swipeUp() }; rule.waitForIdle()
-        save("adblock_page_dark_bottom")
+        save("settings_collapsed_dark")
+        rule.onNodeWithText("Блокировка рекламы").performClick(); rule.waitForIdle()
+        save("adblock_expanded_full_dark")
     }
     @Test fun s15SettingsCollapsed() {
         d15(); val vm = AppViewModel(rule.activity.application)
         live(ThemeMode.DARK) { SettingsHome(vm, vm.ui.value, {}, {}, "Settings") }
         save("settings_collapsed_dark")
-        rule.onNodeWithText("Блокировка").performClick(); rule.waitForIdle()
+        rule.onNodeWithText("Блокировка рекламы").performClick(); rule.waitForIdle()
         save("settings_expanded_dark")
     }
 }

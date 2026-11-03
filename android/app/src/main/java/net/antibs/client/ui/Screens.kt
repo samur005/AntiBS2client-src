@@ -199,7 +199,7 @@ private enum class Page {
     Main, Routing, Settings, Logs,
     // detail pages
     RoutingEdit, SpeedTest, Interface, PerApp, Fragment, Noise, Mux, Inbounds, Vpn, Excluded, Subs, Ping, Protocols, Hwid,
-    AdBlock, GeoFiles, NetScan,
+    GeoFiles, NetScan,
     // 1.0.56: «Сеть» — сотовый мониторинг, Wi‑Fi анализатор, LAN, инструменты
     NetTools,
     // 1.0.50 settings sub-screens
@@ -1923,7 +1923,6 @@ private fun SettingsDetail(page: Page, vm: AppViewModel, ui: UiSettings, onBack:
         Page.Noise -> NoisePage(vm, st, onBack)
         Page.Mux -> MuxPage(vm, st, onBack)
         Page.Inbounds -> InboundsPage(vm, st, onBack)
-        Page.AdBlock -> AdBlockPage(vm, st, onBack)
         Page.GeoFiles -> GeoFilesPage(vm, onBack)
         Page.NetScan -> NetScanPage(vm, onBack)
         Page.Excluded -> ExcludedRoutesPage(vm, st, onBack)

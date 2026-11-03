@@ -123,10 +123,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                             ui.mux, { vm.setMux(it) }) { open("Mux") }
                         NavRow("Предпочтительный тип IP", ipLabel(ui.ipType), dropdown = true, subtitle = "Какие адреса использовать, если у домена есть и IPv4, и IPv6") { dialog = "ip" }
                     }
-                    SettingsCard("Блокировка") {
-                        SwitchRow("Блокировать рекламу и трекеры", a.blockAds, subtitle = "Отбрасывает известные рекламные и отслеживающие домены внутри туннеля") { v -> vm.setAdvTunnel { it.copy(blockAds = v) } }
-                        NavRow("Блокировка рекламы", adBlockSummary(a), subtitle = null) { open("AdBlock") }
-                    }
+                    SettingsCard("Блокировка рекламы") { AdBlockItems(vm, st) }
                     SettingsCard("Подписки") {
                         NavRow("Подписки", "${st.subscriptions.size} шт.") { open("Subs") }
                         NavRow("Автообновление", if (st.subAutoUpdate) SubAutoUpdate.label(st.subUpdateHours) + if (st.subUpdateWifiOnly) " · только Wi‑Fi" else "" else "Выключено") { open("SetSubAuto") }

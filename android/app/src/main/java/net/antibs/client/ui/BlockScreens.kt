@@ -39,16 +39,6 @@ import net.antibs.client.engine.AppState
 
 // ───────────────────────── 2.0.15: «Блокировка рекламы» (ABS 3.1.27 AdBlockSheet port) ─────────────────────────
 
-internal fun adBlockSummary(a: net.antibs.client.data.AdvancedSettings): String {
-    val cats = AdBlock.CATS.filter { it.id in a.adCats }
-    return listOfNotNull(
-        "в туннеле".takeIf { a.blockAds },
-        cats.filter { !it.telemetry }.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.title.lowercase() },
-        "телеметрия".takeIf { cats.any { it.telemetry } },
-        (AdBlock.findDns(a.adDnsUrl)?.first?.name ?: "свой ДНС").takeIf { AdBlock.dnsUrl(a) != null }?.let { "ДНС: $it" },
-    ).joinToString(" · ").ifEmpty { "выкл" }
-}
-
 /** ABS AdBlockCountSection: «Сегодня» / «Всего» from adblock_counts.json, «н/д» until a counted session ran. */
 @Composable
 internal fun AdBlockCountTiles(c: AdBlockCounter.Counts, onReset: (() -> Unit)?) {
@@ -68,67 +58,49 @@ internal fun AdBlockCountTiles(c: AdBlockCounter.Counts, onReset: (() -> Unit)?)
     }
 }
 
+/** 2.0.16: every ad-block item inline in the Settings «Блокировка рекламы» section — counters first. */
 @Composable
-internal fun AdBlockPage(vm: AppViewModel, st: AppState, onBack: () -> Unit) {
+internal fun AdBlockItems(vm: AppViewModel, st: AppState) {
     val a = st.adv
     val counts by vm.adCounts.collectAsState()
     val sc = ssColors(LocalAppStyle.current)
     fun cat(id: String, on: Boolean) = vm.setAdvTunnel { it.copy(adCats = if (on) (it.adCats + id).distinct() else it.adCats - id) }
     val tunnelOn = AdBlock.enabled(a)
     val dnsOn = AdBlock.dnsUrl(a) != null
-    SettingsScaffold("Блокировка рекламы", onBack) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-            item {
-                SettingsCard("Заблокировано") {
-                    AdBlockCountTiles(counts, if (counts.measured) ({ vm.resetAdCounts() }) else null)
-                    HintText((if (!tunnelOn) "Включите блокировку в туннеле — тогда запросы будут считаться."
-                        else "Реальные запросы к рекламе и трекерам, отброшенные в туннеле (журнал Xray). Для OpenVPN / OpenConnect и других ядер без Xray подсчёт недоступен — н/д.") +
-                        if (dnsOn) " Блокировка через DNS не считается (н/д)." else "")
-                }
-            }
-            item {
-                SettingsCard("В туннеле") {
-                    SwitchRow("Блокировать рекламу и трекеры", a.blockAds, subtitle = "Отбрасывает известные рекламные и отслеживающие домены внутри туннеля") { v -> vm.setAdvTunnel { it.copy(blockAds = v) } }
-                }
-            }
-            item {
-                SettingsCard("Категории") {
-                    AdBlock.CATS.filter { !it.telemetry }.forEach { c -> SwitchRow(c.title, c.id in a.adCats) { cat(c.id, it) } }
-                    HintText("Работает в туннеле Xray. Списки вредоносных, азартных сайтов и майнеров в базе приложения отсутствуют, поэтому их здесь нет.")
-                }
-            }
-            item {
-                SettingsCard("Телеметрия") {
-                    AdBlock.CATS.filter { it.telemetry }.forEach { c -> SwitchRow("Телеметрия ${c.title}", c.id in a.adCats) { cat(c.id, it) } }
-                    HintText("Блокирует сбор данных через туннель Xray. Для Samsung в базе нет отдельного списка телеметрии. Блокировка Windows может мешать некоторым службам Microsoft.")
-                }
-            }
-            item {
-                SettingsCard("ДНС-блокировщик рекламы") {
-                    SwitchRow("ДНС-блокировщик рекламы", a.adDnsOn, subtitle = "Резолвер, который отсекает рекламу и трекеры") { v ->
-                        vm.setAdvTunnel { it.copy(adDnsOn = v, adDnsUrl = if (v && it.adDnsUrl.isBlank()) AdBlock.DNS_PRESETS.first().variants[1].url else it.adDnsUrl) }
+    SectionLabel("Заблокировано")
+    AdBlockCountTiles(counts, if (counts.measured) ({ vm.resetAdCounts() }) else null)
+    HintText((if (!tunnelOn) "Включите блокировку в туннеле — тогда запросы будут считаться."
+        else "Реальные запросы к рекламе и трекерам, отброшенные в туннеле (журнал Xray). Для OpenVPN / OpenConnect и других ядер без Xray подсчёт недоступен — н/д.") +
+        if (dnsOn) " Блокировка через DNS не считается (н/д)." else "")
+    SectionLabel("В туннеле")
+    SwitchRow("Блокировать рекламу и трекеры", a.blockAds, subtitle = "Отбрасывает известные рекламные и отслеживающие домены внутри туннеля") { v -> vm.setAdvTunnel { it.copy(blockAds = v) } }
+    SectionLabel("Категории")
+    AdBlock.CATS.filter { !it.telemetry }.forEach { c -> SwitchRow(c.title, c.id in a.adCats) { cat(c.id, it) } }
+    HintText("Работает в туннеле Xray. Списки вредоносных, азартных сайтов и майнеров в базе приложения отсутствуют, поэтому их здесь нет.")
+    SectionLabel("Телеметрия")
+    AdBlock.CATS.filter { it.telemetry }.forEach { c -> SwitchRow("Телеметрия ${c.title}", c.id in a.adCats) { cat(c.id, it) } }
+    HintText("Блокирует сбор данных через туннель Xray. Для Samsung в базе нет отдельного списка телеметрии. Блокировка Windows может мешать некоторым службам Microsoft.")
+    SectionLabel("ДНС-блокировщик рекламы")
+    SwitchRow("ДНС-блокировщик рекламы", a.adDnsOn, subtitle = "Резолвер, который отсекает рекламу и трекеры") { v ->
+        vm.setAdvTunnel { it.copy(adDnsOn = v, adDnsUrl = if (v && it.adDnsUrl.isBlank()) AdBlock.DNS_PRESETS.first().variants[1].url else it.adDnsUrl) }
+    }
+    if (a.adDnsOn) {
+        val sel = AdBlock.findDns(a.adDnsUrl)
+        AdBlock.DNS_PRESETS.forEach { pr ->
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Text(pr.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (sel?.first == pr) sc.accent else sc.onCard)
+                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    pr.variants.forEach { v ->
+                        FilterChip(selected = sel?.second == v, onClick = { vm.setAdvTunnel { it.copy(adDnsUrl = v.url) } }, label = { Text(v.kind) },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = sc.accent.copy(alpha = 0.22f), selectedLabelColor = sc.accent))
                     }
-                    if (a.adDnsOn) {
-                        val sel = AdBlock.findDns(a.adDnsUrl)
-                        AdBlock.DNS_PRESETS.forEach { pr ->
-                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                                Text(pr.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (sel?.first == pr) sc.accent else sc.onCard)
-                                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    pr.variants.forEach { v ->
-                                        FilterChip(selected = sel?.second == v, onClick = { vm.setAdvTunnel { it.copy(adDnsUrl = v.url) } }, label = { Text(v.kind) },
-                                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = sc.accent.copy(alpha = 0.22f), selectedLabelColor = sc.accent))
-                                    }
-                                }
-                            }
-                        }
-                        SettingField("Свой адрес (udp, https://, quic://)", if (sel == null) a.adDnsUrl else "", { v -> if (v.isNotBlank()) vm.setAdvTunnel { it.copy(adDnsUrl = v.trim()) } },
-                            valid = { it.isBlank() || AdBlock.dnsUrlOk(it) })
-                    }
-                    HintText("Пока блокировщик включён, он заменяет удалённый DNS из раздела «Сеть и DNS» (и профиля маршрутизации) для Xray. Выключите его — снова будет действовать выбранный там DNS.")
                 }
             }
         }
+        SettingField("Свой адрес (udp, https://, quic://)", if (sel == null) a.adDnsUrl else "", { v -> if (v.isNotBlank()) vm.setAdvTunnel { it.copy(adDnsUrl = v.trim()) } },
+            valid = { it.isBlank() || AdBlock.dnsUrlOk(it) })
     }
+    HintText("Пока блокировщик включён, он заменяет удалённый DNS из раздела «Сеть и DNS» (и профиля маршрутизации) для Xray. Выключите его — снова будет действовать выбранный там DNS.")
 }
 
 // ───────────────────────── 1.0.40: «Файлы георесурсов» ─────────────────────────
