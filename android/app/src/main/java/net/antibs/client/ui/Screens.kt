@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.SwitchColors
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.text.withStyle
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.asPaddingValues
 import net.antibs.client.data.ProtocolSupport
@@ -203,13 +204,15 @@ private enum class Page {
     SetCores, SetNet, SetSubAuto,
     // 2.0.6 (ABS port)
     Seasonal, SubRemain, Schedule,
+    // 2.0.12: LAN transfer
+    LanSend, LanRecv,
 }
 
 /** Pages a detail page may return to when it was opened from them (Per-app is reachable from Settings and Routing). */
 private val hubPages = setOf(Page.Main, Page.Settings, Page.Routing, Page.Logs, Page.Vpn, Page.Interface, Page.SetCores, Page.SetNet, Page.SetSubAuto)
 
 private fun parentOf(p: Page): Page = when (p) {
-    Page.Main, Page.Settings, Page.SpeedTest, Page.NetTools -> Page.Main
+    Page.Main, Page.Settings, Page.SpeedTest, Page.NetTools, Page.LanSend, Page.LanRecv -> Page.Main
     Page.RoutingEdit -> Page.Routing
     Page.Excluded -> Page.Settings
     Page.AdBlock, Page.GeoFiles -> Page.Routing
@@ -233,6 +236,12 @@ fun AppRoot(vm: AppViewModel) {
         // Detail pages remember which page opened them.
         var backTo by rememberSaveable { mutableStateOf<String?>(null) }
         val page = Page.valueOf(pageName)
+        // 2.0.12: TV «Принять с телефона» → receive screen (big QR)
+        val tvNow = LocalIsTv.current
+        DisposableEffect(tvNow) {
+            TvHooks.receiveFromPhone = if (tvNow) { _ -> backTo = pageName; pageName = Page.LanRecv.name } else null
+            onDispose { TvHooks.receiveFromPhone = null }
+        }
         fun open(p: Page) { backTo = pageName; pageName = p.name }
         fun back() {
             val target = backTo?.let { Page.valueOf(it) }?.takeIf { it != page && (it in hubPages || parentOf(page) == it) } ?: parentOf(page)
@@ -246,7 +255,10 @@ fun AppRoot(vm: AppViewModel) {
             // 2.0.11: TV — Main is full-width (side rail + two panes); other pages are a centred column.
             TvColumn(enabled = LocalIsTv.current && page != Page.Main) {
             when (page) {
-                Page.Main -> MainScreen(vm, ui, onOpenSettings = { open(Page.Settings) }, onOpenSpeedTest = { open(Page.SpeedTest) }, onOpenNet = { open(Page.NetTools) })
+                Page.Main -> MainScreen(vm, ui, onOpenSettings = { open(Page.Settings) }, onOpenSpeedTest = { open(Page.SpeedTest) }, onOpenNet = { open(Page.NetTools) },
+                    onLanSend = { open(Page.LanSend) }, onLanRecv = { open(Page.LanRecv) })
+                Page.LanSend -> LanSendPage(vm, onBack = { back() })
+                Page.LanRecv -> LanRecvPage(vm, onBack = { back() })
                 Page.NetTools -> NetToolsPage(vm, onBack = { back() })
                 Page.SpeedTest -> SpeedTestPage(vm, onBack = { back() })
                 Page.Settings, Page.Vpn, Page.Interface, Page.SetCores, Page.SetNet, Page.SetSubAuto ->
@@ -353,7 +365,7 @@ internal fun UpdateDialog(vm: AppViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> Unit, onOpenSpeedTest: () -> Unit, onOpenNet: () -> Unit = {}) {
+private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> Unit, onOpenSpeedTest: () -> Unit, onOpenNet: () -> Unit = {}, onLanSend: () -> Unit = {}, onLanRecv: () -> Unit = {}) {
     val st by vm.state.collectAsState()
     val vpn by VpnState.status.collectAsState()
     val pings by vm.pings.collectAsState()
@@ -767,6 +779,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                     scanningUnreachable = sub.id in unreachableScan,
                                     extraMenu = { close ->
                                         GroupingMenuItems(vm, st.adv.serverGrouping, sub.id, close)
+                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Передать на устройство") }, onClick = { close(); onLanSend() })
+                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Принять с устройства") }, onClick = { close(); onLanRecv() })
                                         // 2.0.11: TV has no long-press drag → move up / down in the ⋮ menu
                                         if (isTv) {
                                             val order = shownGroups.mapNotNull { it.subscription?.id }
@@ -1012,10 +1026,11 @@ internal fun ConnectionCard(
                     }
                     if (pingStyle == null || pingStyle.show) {
                         val view = androidx.compose.ui.platform.LocalView.current
-                        BannerPing("VPN пинг", if (active) pingMs else null, pingBusy && active, active, pingStyle) {
+                        Spacer(Modifier.height(2.dp))
+                        BannerPing("VPN пинг", VpnPingLabel, if (active) pingMs else null, pingBusy && active, active, pingStyle) {
                             AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); onPing?.invoke()
                         }
-                        BannerPing("Прямой пинг", directMs, directBusy, true, pingStyle) {
+                        BannerPing("VK пинг", VkPingLabel, directMs, directBusy, true, pingStyle) {
                             AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); onPingDirect?.invoke()
                         }
                     }
@@ -1082,21 +1097,26 @@ internal fun ConnectionCard(
     }
 }
 
-/** 2.0.8: «VPN пинг: N мс» / «Прямой пинг: N мс» — threshold colour, tap = ping now. */
+/** 2.0.8: «VPN пинг: N мс» / «VK пинг: N мс» — 2.0.12: label colour fixed (VPN red, VK blue), value by [PingLevel]; tap = ping now. */
 @Composable
-private fun BannerPing(label: String, ms: Long?, busy: Boolean, active: Boolean, style: net.antibs.client.data.PingChipStyle?, onTap: () -> Unit) {
+private fun BannerPing(label: String, labelColor: Color, ms: Long?, busy: Boolean, active: Boolean, style: net.antibs.client.data.PingChipStyle?, onTap: () -> Unit) {
     val cs = MaterialTheme.colorScheme
-    val tone = when {
-        !active || busy || ms == null -> cs.onSurfaceVariant
-        else -> when (net.antibs.client.data.PingChipStyle.tone(ms)) { 0 -> Color(0xFF1FA463); 1 -> Color(0xFFF59E0B); else -> Color(0xFFE5484D) }
-    }
+    val neutral = cs.onSurfaceVariant
+    val tone = if (!active || busy || ms == null) neutral else pingLevelColor(ms, neutral)
     val fg = if (style != null && style.text != 0L) Color(style.text.toInt()) else tone
     val v = when { !active || ms == null -> if (busy) "…" else "—"; busy -> "…"; ms < 0 -> "нет ответа"; else -> "$ms мс" }
-    Text("$label: $v", color = fg, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 1, fontWeight = FontWeight.SemiBold,
+    Text(androidx.compose.ui.text.buildAnnotatedString {
+            withStyle(androidx.compose.ui.text.SpanStyle(color = labelColor)) { append("$label: ") }
+            withStyle(androidx.compose.ui.text.SpanStyle(color = fg)) { append(v) }
+        }, fontSize = 11.sp, lineHeight = 12.sp, maxLines = 1, fontWeight = FontWeight.SemiBold,
         style = TabularNums,
-        modifier = Modifier.padding(top = 2.dp).clip(RoundedCornerShape(5.dp))
-            .clickable(onClickLabel = "Проверить: $label", onClick = onTap).padding(horizontal = 3.dp, vertical = 1.dp))
+        modifier = Modifier.clip(RoundedCornerShape(5.dp))
+            .clickable(onClickLabel = "Проверить: $label", onClick = onTap).padding(horizontal = 3.dp, vertical = 0.dp))
 }
+
+/** 2.0.12: label colours of the banner pings (readable on dark and light). */
+internal val VpnPingLabel = Color(0xFFE5484D)
+internal val VkPingLabel = Color(0xFF3B82F6)
 
 /** Speed-card row metrics: two 14dp rows with a 2dp gap; the sparkline spans both. */
 private val RowH = 14.dp

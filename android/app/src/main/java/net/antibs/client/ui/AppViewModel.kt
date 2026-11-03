@@ -100,7 +100,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _tunnelPing = MutableStateFlow(UiLogic.TunnelPing.UNKNOWN)
     /** Result of the latest check through the running tunnel (see [UiLogic.statusDot]). */
     val tunnelPing: StateFlow<UiLogic.TunnelPing> = _tunnelPing
-    // 2.0.8: banner «VPN пинг» / «Прямой пинг» + health (red power button)
+    // 2.0.8: banner «VPN пинг» / «VK пинг» + health (red power button)
     private val _vpnPingMs = MutableStateFlow<Long?>(null); val vpnPingMs: StateFlow<Long?> = _vpnPingMs
     private val _vpnFails = MutableStateFlow(0); val vpnFails: StateFlow<Int> = _vpnFails
     private val _directMs = MutableStateFlow<Long?>(null); val directMs: StateFlow<Long?> = _directMs
@@ -139,7 +139,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } finally { _directBusy.value = false }
     }
 
-    /** Tap on «Прямой пинг». */
+    /** Tap on «VK пинг». */
     fun pingDirect() { if (!_directBusy.value) viewModelScope.launch { measureDirect() } }
     private val tunnelKick = Channel<Unit>(Channel.CONFLATED)
     private var tunnelJob: Job? = null
@@ -608,6 +608,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun addSubscription(url: String) {
         val id = store.addSubscription(url)
         refresh(id)
+    }
+
+    /** 2.0.12: LAN receive — map ABS entries, dedupe by url, then refresh each new one from its url. */
+    fun receiveLanSubs(entries: List<kotlinx.serialization.json.JsonObject>): Int {
+        val subs = entries.mapNotNull { net.antibs.client.data.LanProtocol.fromAbs(it, "sub-" + java.util.UUID.randomUUID().toString().take(8)) }
+        val ids = store.addReceivedSubscriptions(subs)
+        ids.forEach { refresh(it) }
+        _toast.value = if (ids.isEmpty()) "Подписки уже есть" else "Получено подписок: ${ids.size}"
+        return ids.size
     }
 
     fun importRaw(text: String) {

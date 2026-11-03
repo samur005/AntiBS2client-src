@@ -31,6 +31,10 @@ import kotlinx.coroutines.launch
 /** 2.0.7 (home variant B): «Мониторинг сети» + «URL Тест» cards between the power button and the world strip. */
 
 @Composable
+/** 2.0.12: shared ping colour (banner + URL test), see [net.antibs.client.data.PingLevel]. */
+internal fun pingLevelColor(ms: Long?, neutral: Color): Color =
+    net.antibs.client.data.PingLevel.argb(net.antibs.client.data.PingLevel.of(ms))?.let { Color(it.toInt()) } ?: neutral
+
 internal fun toneColor(t: NetMonitor.Tone, muted: Color): Color = when (t) {
     NetMonitor.Tone.GOOD -> Color(0xFF22C55E)
     NetMonitor.Tone.MID -> Color(0xFFF59E0B)
@@ -85,8 +89,7 @@ private fun MonTile(letter: String, tint: Color, title: String, host: String, ms
             Text(host, color = c.onCard, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Column(horizontalAlignment = Alignment.End) {
-            val tone = NetMonitor.tone(ms)
-            Text(NetMonitor.label(ms, "—"), color = toneColor(tone, c.muted), fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(NetMonitor.label(ms, "—"), color = pingLevelColor(ms, c.muted), fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             Text("ms", color = c.muted, fontSize = 10.sp)
         }
     }
@@ -119,8 +122,7 @@ private fun UrlTile(t: NetMonitor.Target, ms: Long?, pending: Boolean, c: SsColo
         SiteIcon(t.id)
         Spacer(Modifier.width(6.dp))
         Text(t.title, color = c.onCard, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        val tone = if (pending) NetMonitor.Tone.NONE else NetMonitor.tone(ms)
-        val col = toneColor(tone, c.muted)
+        val col = if (pending) c.muted else pingLevelColor(ms, c.muted)
         if (!pending && ms != null) { Box(Modifier.size(5.dp).clip(CircleShape).background(col)); Spacer(Modifier.width(3.dp)) }
         Text(if (pending) "…" else when { ms == null -> "—"; ms < 0 -> "тайм-аут"; else -> "$ms ms" },
             color = col, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)

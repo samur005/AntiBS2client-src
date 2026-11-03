@@ -191,6 +191,15 @@ class AppStore(context: Context) {
     }
 
 
+    /** 2.0.12: subscriptions received over LAN; deduped by url (existing ones are kept). Returns the new ids. */
+    fun addReceivedSubscriptions(list: List<Subscription>): List<String> = synchronized(LOCK) {
+        val cur = snapshot().subscriptions
+        val have = cur.map { it.url.trim().trimEnd('/') }.toMutableSet()
+        val fresh = list.filter { have.add(it.url.trim().trimEnd('/')) }
+        if (fresh.isNotEmpty()) save(snapshot().copy(subscriptions = cur + fresh))
+        fresh.map { it.id }
+    }
+
     /** Drop the group when empty, restamp title, clear legacy "not supported" reasons. */
     fun pruneManualGroup(state: AppState = snapshot()): AppState {
         val n = state.servers.count { it.subscriptionId == ProtocolSupport.MANUAL_SUB_ID }
