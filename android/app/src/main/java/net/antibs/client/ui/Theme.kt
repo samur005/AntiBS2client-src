@@ -1,5 +1,6 @@
 package net.antibs.client.ui
 
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.widthIn
@@ -185,7 +186,13 @@ fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, style: ServerS
     // disappears on the dark canvas. Force onBackground for both themes.
     MaterialTheme(colorScheme = scheme, shapes = StyleTheme.shapes(style)) {
         CompositionLocalProvider(LocalContentColor provides scheme.onBackground, LocalAppStyle provides style) {
-            AdaptiveUi(scheme.background, content)
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val tv = remember(ctx) { TvMode.isTv(ctx) } || TvMode.isTvConfig(androidx.compose.ui.platform.LocalConfiguration.current)
+            CompositionLocalProvider(LocalIsTv provides tv) {
+                AdaptiveUi(scheme.background) {
+                    if (tv) TvFocusOverlay(ssColors(style).accent, content) else content()
+                }
+            }
         }
     }
 }
@@ -218,7 +225,8 @@ val LocalUiScale = androidx.compose.runtime.staticCompositionLocalOf { 1f }
 private fun AdaptiveUi(bg: Color, content: @Composable () -> Unit) {
     val cfg = androidx.compose.ui.platform.LocalConfiguration.current
     val d = androidx.compose.ui.platform.LocalDensity.current
-    val k = UiScale.scale(cfg.screenWidthDp, cfg.screenHeightDp)
+    val tv = LocalIsTv.current
+    val k = if (tv) TvMode.scale(cfg.screenWidthDp, cfg.screenHeightDp) else UiScale.scale(cfg.screenWidthDp, cfg.screenHeightDp)
     val scaled = androidx.compose.ui.unit.Density(d.density * k, UiScale.fontScale(d.fontScale))
     CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides scaled, LocalUiScale provides k) {
         androidx.compose.foundation.layout.Box(
@@ -226,7 +234,8 @@ private fun AdaptiveUi(bg: Color, content: @Composable () -> Unit) {
             contentAlignment = androidx.compose.ui.Alignment.TopCenter,
         ) {
             androidx.compose.foundation.layout.Box(
-                androidx.compose.ui.Modifier.widthIn(max = (UiScale.MAX_CONTENT_DP / k).dp).fillMaxSize(),
+                // TV: full width (two-pane Home); single-column pages cap themselves (TvMode.TV_COLUMN_DP)
+                if (tv) androidx.compose.ui.Modifier.fillMaxSize() else androidx.compose.ui.Modifier.widthIn(max = (UiScale.MAX_CONTENT_DP / k).dp).fillMaxSize(),
             ) { content() }
         }
     }

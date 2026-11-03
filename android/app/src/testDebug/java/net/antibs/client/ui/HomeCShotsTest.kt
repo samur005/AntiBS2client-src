@@ -58,6 +58,7 @@ class HomeCShotsTest {
                 directMs = direct, status = status, statusColor = statusColor,
                 subLine = null,
             )
+            Spacer(Modifier.height(BANNER_TRIM))
             Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
                 PowerToggle(state = state, since = System.currentTimeMillis() - 754_000, problem = problem, onClick = {})
             }

@@ -1,5 +1,6 @@
 package net.antibs.client.ui
 
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.runtime.collectAsState
@@ -116,6 +117,11 @@ fun AddServersSheet(
                     val t = clip.getText()?.text.orEmpty()
                     if (t.isBlank()) vm.message("Буфер пуст") else text = t
                 }
+                // 2.0.11: no camera (Android TV) → no QR tile; «Принять с телефона» slot for the upcoming LAN/QR transfer
+                TvHooks.receiveFromPhone?.let { recv ->
+                    ImportTile(Modifier.weight(1f), Icons.Filled.PhoneAndroid, androidx.compose.ui.graphics.Color(0xFF8E6BFF), "Принять с телефона", "По локальной сети") { recv(ctx) }
+                }
+                if (ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY))
                 ImportTile(Modifier.weight(1f), Icons.Filled.QrCodeScanner, androidx.compose.ui.graphics.Color(0xFF1FA89A), "QR-камера", "Сканировать код") {
                     scanLauncher.launch(
                         ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)

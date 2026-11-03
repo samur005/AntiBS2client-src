@@ -1,5 +1,9 @@
 package net.antibs.client.ui
 
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Vibration
@@ -238,7 +242,9 @@ fun AppRoot(vm: AppViewModel) {
         BackHandler(enabled = page != Page.Main) { back() }
         val payReturn by net.antibs.client.MainActivity.paymentReturn.collectAsState()
         LaunchedEffect(payReturn) { if (payReturn != null) { backTo = null; pageName = Page.Main.name } }
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.TopCenter) {
+            // 2.0.11: TV — Main is full-width (side rail + two panes); other pages are a centred column.
+            TvColumn(enabled = LocalIsTv.current && page != Page.Main) {
             when (page) {
                 Page.Main -> MainScreen(vm, ui, onOpenSettings = { open(Page.Settings) }, onOpenSpeedTest = { open(Page.SpeedTest) }, onOpenNet = { open(Page.NetTools) })
                 Page.NetTools -> NetToolsPage(vm, onBack = { back() })
@@ -249,6 +255,7 @@ fun AppRoot(vm: AppViewModel) {
                 Page.Logs -> LogsTab(vm, onBack = { back() })
                 Page.RoutingEdit -> RoutingEditPage(vm, st, routingId ?: "", onBack = { pageName = Page.Routing.name })
                 else -> SettingsDetail(page, vm, ui, onBack = { back() }, onOpen = { open(it) })
+            }
             }
             // 2.0.6 (ABS): snow + garland over the main screen (draw-only, no touch handling)
             if (page == Page.Main) {
@@ -366,7 +373,9 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             AntiBSVpnService.disconnect(ctx); return
         }
         val prep = VpnService.prepare(ctx)
-        if (prep != null) launcher.launch(prep) else AntiBSVpnService.connect(ctx)
+        // 2.0.11: some TV boxes ship without the system VPN-consent activity → report instead of crashing
+        if (prep != null) runCatching { launcher.launch(prep) }.onFailure { vm.message("Система не показала запрос VPN: ${it.message ?: it.javaClass.simpleName}") }
+        else AntiBSVpnService.connect(ctx)
     }
     // 1.0.40: «Вибрация» when the tunnel comes up
     var wasConnected by remember { mutableStateOf(vpn.state == ConnState.CONNECTED) }
@@ -437,7 +446,10 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val opts = sOpts[sStyle] ?: ServerStyleLogic.defaultOptions(sStyle)
     val effLayout = ServerStyleLogic.effectiveLayout(sStyle, opts)
     val bg = ssBackground(sStyle)
-    Column(Modifier.fillMaxSize().then(if (bg != null && tab == MainTab.Servers) Modifier.background(bg) else Modifier).windowInsetsPadding(WindowInsets.statusBars)) {
+    val isTv = LocalIsTv.current
+    Row(Modifier.fillMaxSize()) {
+    if (isTv) MainSideRail(tab, onSelect = { tabName = it.name })
+    Column(Modifier.weight(1f).fillMaxHeight().then(if (bg != null && tab == MainTab.Servers) Modifier.background(bg) else Modifier).windowInsetsPadding(WindowInsets.statusBars)) {
         if (tab == MainTab.Servers) {
             val ids = st.subscriptions.map { it.id }
             val curSub = if (effLayout == SubLayout.RIBBON) ServerStyleLogic.validRibbon(sRibbon[sStyle] ?: "", ids).let { id -> st.subscriptions.firstOrNull { it.id == id } } else null
@@ -475,7 +487,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             label = "main-tab",
         ) { shown ->
         if (shown == MainTab.Shop) {
-            ShopScreen(vm, onOpenServers = { tabName = MainTab.Servers.name })
+            TvColumn(isTv) { ShopScreen(vm, onOpenServers = { tabName = MainTab.Servers.name }) }
             return@AnimatedContent
         }
         // 1.0.46: «Главная» = speed card, power button and the globe / map filling the rest (no list).
@@ -492,10 +504,11 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                             Modifier.fillMaxWidth().height(run {
                                 // 2.0.7: variant B — keep ≥170 dp for the world strip; scroll only when the screen is too short
                                 val extra = if (st.adv.homeUrlTest) 140.dp else 0.dp
-                                if (extra.value == 0f) fullH else maxOf(fullH, 470.dp + extra)
+                                if (extra.value == 0f || isTv) fullH else maxOf(fullH, 470.dp + extra)
                             }).padding(start = 12.dp, end = 12.dp, top = 2.dp),
                             verticalArrangement = Arrangement.spacedBy(3.dp),
                         ) {
+                HomeSplit(isTv, left = {
                 // 2.0.8: health → red power button + red banner status
                 val vpnPingMs by vm.vpnPingMs.collectAsState()
                 val vpnBusy by vm.vpnBusy.collectAsState()
@@ -582,6 +595,9 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         subStyle = st.adv.subRemain,
                     )
                 }
+                // 2.0.11: the banner got 13 dp shorter; the same height goes here, so the power button keeps its place
+                // and the gap banner ↔ power glow (halo ≤ ~13 dp outside the track) grows to ≥ 20 dp.
+                if (!isTv) Spacer(Modifier.height(BANNER_TRIM))
                 run {
                     Box(Modifier.fillMaxWidth().padding(vertical = if (st.adv.homeUrlTest) 4.dp else 10.dp), contentAlignment = Alignment.Center) {
                         PowerToggle(state = vpn.state, since = vpn.since, problem = health != net.antibs.client.engine.NetMonitor.Health.OK, onClick = ::toggle)
@@ -640,6 +656,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (captcha != null) {
                     run { CaptchaCard(captcha!!) }
                 }
+                }, right = {
                             val liveName = if (connected || vpn.state == ConnState.CONNECTING) UiLogic.liveHostName(vpn.serverName, vpn.pickName, connected).ifEmpty { server?.name.orEmpty() } else server?.name.orEmpty()
                             HomeWorld(
                                 holiday = runCatching {
@@ -674,6 +691,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                             )
                                 },
                             )
+                })
                         }
                     }
                 }
@@ -689,6 +707,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             val subListState = androidx.compose.foundation.lazy.rememberLazyListState()
             val vDrag = remember { VReorderState() }
             val dragHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+            TvColumn(isTv) {
             LazyColumn(
                 state = subListState,
                 modifier = Modifier.fillMaxSize(),
@@ -746,7 +765,18 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                     onRestoreHidden = { vm.restoreHiddenHosts(sub.id) },
                                     onDeleteUnreachable = { vm.askDeleteUnreachable(sub.id) },
                                     scanningUnreachable = sub.id in unreachableScan,
-                                    extraMenu = { close -> GroupingMenuItems(vm, st.adv.serverGrouping, sub.id, close) },
+                                    extraMenu = { close ->
+                                        GroupingMenuItems(vm, st.adv.serverGrouping, sub.id, close)
+                                        // 2.0.11: TV has no long-press drag → move up / down in the ⋮ menu
+                                        if (isTv) {
+                                            val order = shownGroups.mapNotNull { it.subscription?.id }
+                                            val i = order.indexOf(sub.id)
+                                            if (i > 0) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить выше") },
+                                                onClick = { close(); vm.moveSubscription(sub.id, order[i - 1], sp.subNewestFirst.value) })
+                                            if (i in 0 until order.lastIndex) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить ниже") },
+                                                onClick = { close(); vm.moveSubscription(sub.id, order[i + 1], sp.subNewestFirst.value) })
+                                        }
+                                    },
                                     onCopy = {
                                         copyText(ctx, sub.url)
                                         vm.message("Ссылка скопирована")
@@ -791,9 +821,11 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     }
                 }
             }
+            }
         }
         }
-        MainBottomBar(tab, onSelect = { tabName = it.name })
+        if (!isTv) MainBottomBar(tab, onSelect = { tabName = it.name })
+    }
     }
     if (showAdd) AddServersSheet(vm = vm, servers = st.servers, onDismiss = { showAdd = false })
     if (showStyle) StyleViewDialog(onDismiss = { showStyle = false })
@@ -947,7 +979,7 @@ internal fun ConnectionCard(
         modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f), shape)
             .pointerInput(Unit) { detectTapGestures(onLongPress = { onLongPress() }) },
     ) {
-        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp)) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)) { // 2.0.11: tighter (power-button gap)
             // 2.0.8: left = dot · flag · name, status under the name; right = small protocol badge, VPN / direct ping
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
@@ -959,7 +991,7 @@ internal fun ConnectionCard(
                         Text(name, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (status.isNotEmpty()) Text(status, color = if (statusColor == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else statusColor,
-                        fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, modifier = Modifier.padding(start = 16.dp, top = 2.dp))
+                        fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, modifier = Modifier.padding(start = 16.dp))
                 }
                 Column(horizontalAlignment = Alignment.End, modifier = Modifier.offset(y = (-3).dp)) {
                     if (proto.isNotEmpty()) {
@@ -999,7 +1031,7 @@ internal fun ConnectionCard(
                     androidx.compose.animation.slideOutVertically(androidx.compose.animation.core.tween(320)) { -it / 3 },
             ) {
             Column {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(3.dp))
             // 1.0.13: static layout. Every value has a fixed-width, end-aligned slot sized for the widest
             // possible string ("999.9 МБ/с" / "999.9 МБ", measured with the real text style so font scaling is
             // respected), tabular digits, one decimal always — nothing shifts as numbers change. Blue (VPN) and
@@ -1045,7 +1077,7 @@ internal fun ConnectionCard(
             }
             }
             // 2.0.6 (ABS): «Остаток подписки» — the last row inside the card
-            if (subLine != null && subStyle.show) SubRemainRow(subLine, subStyle, Modifier.padding(top = 8.dp))
+            if (subLine != null && subStyle.show) SubRemainRow(subLine, subStyle, Modifier.padding(top = 4.dp))
         }
     }
 }
@@ -1584,6 +1616,12 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
     val busy = connecting || disconnecting
     val trackW = 168.dp
     val trackH = 76.dp
+    // 2.0.11: TV — initial D-pad focus lands on the power button; focused = slight scale-up
+    val isTv = LocalIsTv.current
+    val tvFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    var tvFocused by remember { mutableStateOf(false) }
+    if (isTv) LaunchedEffect(Unit) { delay(150); runCatching { tvFocus.requestFocus() } }
+    val tvScale by animateFloatAsState(if (tvFocused) 1.06f else 1f, tween(160), label = "tv-power")
     val pad = 6.dp
     val thumb = trackH - pad * 2
     val shape = RoundedCornerShape(50)
@@ -1642,7 +1680,7 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
     // 2.0.8: red state (VPN on, but no internet / server down)
     val red by animateFloatAsState(if (problem && on) 1f else 0f, animationSpec = tween(420), label = "red")
     val haloColor = androidx.compose.ui.graphics.lerp(AntiBSColors.Blue, AntiBSColors.Err, red)
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.graphicsLayer { scaleX = tvScale; scaleY = tvScale }, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
                 .size(width = trackW, height = trackH)
@@ -1676,6 +1714,7 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
                 .shadow(elevation, shape, ambientColor = haloColor, spotColor = haloColor)
                 .clip(shape)
                 .background(AntiBSColors.FabStopped)
+                .then(if (isTv) Modifier.focusRequester(tvFocus).onFocusChanged { tvFocused = it.isFocused } else Modifier)
                 .toggleable(value = on, enabled = !busy, role = Role.Switch, onValueChange = { onClick() })
                 .semantics { contentDescription = if (connected) "$desc, подключено $caption" else desc },
             contentAlignment = Alignment.CenterStart,
@@ -2291,6 +2330,8 @@ internal fun copyText(ctx: Context, text: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeHost(key: String, canDelete: Boolean, onPing: () -> Unit, onDelete: () -> Unit, content: @Composable () -> Unit) {
+    // 2.0.11: no swipe on TV — «Пинг» / «Удалить» are in the row's ⋮ menu (D-pad reachable)
+    if (LocalIsTv.current) { content(); return }
     val ping by rememberUpdatedState(onPing)
     val del by rememberUpdatedState(onDelete)
     // One action per gesture even if the state machine asks twice.
@@ -2366,3 +2407,67 @@ private fun HostEditDialog(s: net.antibs.client.data.ServerEntry, onDismiss: () 
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
     )
 }
+
+
+/** 2.0.11: TV single-column pages are centred at [TvMode.TV_COLUMN_DP]. */
+@Composable
+internal fun TvColumn(enabled: Boolean, content: @Composable () -> Unit) {
+    if (!enabled) { content(); return }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = TvMode.TV_COLUMN_DP.dp).fillMaxSize()) { content() }
+    }
+}
+
+/** 2.0.11: Home — phone: one column; TV: left = banner + power, right = icon row + URL test + map/globe. */
+@Composable
+internal fun ColumnScope.HomeSplit(tv: Boolean, left: @Composable ColumnScope.() -> Unit, right: @Composable ColumnScope.() -> Unit) {
+    if (!tv) { left(); right(); return }
+    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.weight(0.44f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Spacer(Modifier.height(6.dp))
+            left()
+        }
+        Column(Modifier.weight(0.56f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(3.dp)) { right() }
+    }
+}
+
+/** 2.0.11: TV navigation as a side rail (D-pad ←/→ between rail and content). */
+@Composable
+internal fun MainSideRail(tab: MainTab, onSelect: (MainTab) -> Unit) {
+    androidx.compose.material3.NavigationRail(
+        containerColor = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxHeight().clip(RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp)),
+    ) {
+        Spacer(Modifier.weight(1f))
+        MainTab.entries.forEach { t ->
+            val sel = t == tab
+            androidx.compose.material3.NavigationRailItem(
+                selected = sel,
+                onClick = { if (!sel) onSelect(t) },
+                icon = {
+                    Icon(
+                        when (t) {
+                            MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
+                            MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
+                            MainTab.Servers -> if (sel) Icons.Filled.Dns else Icons.Outlined.Dns
+                        },
+                        contentDescription = t.title,
+                    )
+                },
+                label = { Text(t.title, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
+                colors = androidx.compose.material3.NavigationRailItemDefaults.colors(
+                    selectedIconColor = Color.White,
+                    selectedTextColor = AntiBSColors.Blue,
+                    indicatorColor = if (LocalAppStyle.current == ServerStyle.CLASSIC) AntiBSColors.BlueDeep else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
+        }
+        Spacer(Modifier.weight(1f))
+    }
+}
+
+/** 2.0.11: height removed from the Home banner (paddings 4+4, spacer 3, status 2). */
+internal val BANNER_TRIM = 13.dp
