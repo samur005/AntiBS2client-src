@@ -78,6 +78,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Server ids whose ping is queued or being measured right now (UI shows a spinner instead of the value). */
     private val _pinging = MutableStateFlow<Set<String>>(emptySet())
     val pinging: StateFlow<Set<String>> = _pinging
+    /** 2.0.22: ids of the current/last bulk ping for the «Всего · Пропинговано · Недоступно» counter. */
+    private val _pingBatch = MutableStateFlow<Set<String>>(emptySet())
+    val pingBatch: StateFlow<Set<String>> = _pingBatch
 
     // Declared before the init that auto-pings. Shared gates so concurrent auto-pings (several subscriptions refreshing at once) stay bounded.
     private val urlPingGate = Semaphore(4)
@@ -485,7 +488,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         data object Idle : UpdateUi()
         data object Checking : UpdateUi()
         data class Available(val u: net.antibs.client.data.UpdateLogic.Update) : UpdateUi()
-        data class Downloading(val u: net.antibs.client.data.UpdateLogic.Update, val progress: Float) : UpdateUi()
+        data class Downloading(
+            val u: net.antibs.client.data.UpdateLogic.Update, val progress: Float,
+            val done: Long = 0, val total: Long = 0, val bps: Double = 0.0,
+            val startedAt: Long = System.currentTimeMillis(), val minimized: Boolean = false,
+        ) : UpdateUi()
         data class Ready(val u: net.antibs.client.data.UpdateLogic.Update, val file: java.io.File) : UpdateUi()
         data class NeedPermission(val u: net.antibs.client.data.UpdateLogic.Update, val file: java.io.File) : UpdateUi()
         data class Error(val message: String) : UpdateUi()
@@ -521,12 +528,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun downloadUpdate(u: net.antibs.client.data.UpdateLogic.Update) {
-        _update.value = UpdateUi.Downloading(u, 0f)
-        viewModelScope.launch {
+        val t0 = System.currentTimeMillis()
+        _update.value = UpdateUi.Downloading(u, 0f, total = u.apk.size, startedAt = t0)
+        downloadJob?.cancel()
+        downloadJob = viewModelScope.launch {
+            var lastT = System.nanoTime(); var lastB = 0L
             runCatching {
-                net.antibs.client.engine.Updater.download(getApplication(), u) { p -> _update.value = UpdateUi.Downloading(u, p) }
-            }.fold({ f -> installUpdate(u, f) }, { e -> _update.value = UpdateUi.Error("Загрузка: ${e.message}") })
+                net.antibs.client.engine.Updater.download(getApplication(), u) { done, total ->
+                    val now = System.nanoTime(); val dt = (now - lastT) / 1e9
+                    val prev = _update.value as? UpdateUi.Downloading
+                    val bps = if (dt > 0.05) net.antibs.client.data.DownloadStats.smooth(prev?.bps ?: 0.0, (done - lastB) / dt).also { lastT = now; lastB = done } else prev?.bps ?: 0.0
+                    _update.value = UpdateUi.Downloading(u, if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f,
+                        done, total, bps, t0, prev?.minimized ?: false)
+                }
+            }.fold({ f -> installUpdate(u, f) }, { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _update.value = UpdateUi.Error("Загрузка: ${e.message}")
+            })
         }
+    }
+    private var downloadJob: kotlinx.coroutines.Job? = null
+    /** 2.0.22: «Отмена» in the download window. */
+    fun cancelUpdateDownload() { downloadJob?.cancel(); downloadJob = null; _update.value = UpdateUi.Idle }
+    fun setUpdateMinimized(m: Boolean) { _update.update { (it as? UpdateUi.Downloading)?.copy(minimized = m) ?: it } }
+    fun debugFakeDownload(u: net.antibs.client.data.UpdateLogic.Update, done: Long, total: Long, bps: Double, elapsedMs: Long, minimized: Boolean) {
+        _update.value = UpdateUi.Downloading(u, done.toFloat() / total, done, total, bps, System.currentTimeMillis() - elapsedMs, minimized)
     }
 
     fun installUpdate(u: net.antibs.client.data.UpdateLogic.Update, f: java.io.File) {
@@ -561,6 +587,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val servers = store.servers()
         if (servers.isEmpty()) { _toast.value = "Нет серверов для пинга"; return }
         _toast.value = "Пинг серверов…"
+        startBatch(servers)
         pingServers(servers)
     }
 
@@ -571,6 +598,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (targets.isEmpty()) { _toast.value = "Нет серверов для пинга"; return }
         val title = store.subscriptions().firstOrNull { it.id == subId }?.title?.ifBlank { null }
         _toast.value = if (title != null) "Пинг «$title»…" else "Пинг серверов…"
+        startBatch(targets)
         pingServers(targets)
     }
 
@@ -580,6 +608,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (targets.isEmpty()) return
         pingServers(targets)
     }
+
+    /** Screenshot/demo hook: ANTIBS_DEMO=full|mini|ping (never set in normal use). */
+    private val demoInit = System.getenv("ANTIBS_DEMO")?.let { d ->
+        val u = net.antibs.client.data.UpdateLogic.Update(net.antibs.client.data.UpdateLogic.Release("v2.0.22", "2.0.22", "", "", emptyList()),
+            net.antibs.client.data.UpdateLogic.Asset("AntiBS2client-windows-2.0.22-setup.exe", "", 98_000_000), null)
+        when (d) {
+            "full", "mini" -> debugFakeDownload(u, 41_200_000, 98_000_000, 3_400_000.0, 12_000, d == "mini")
+            "ping" -> { val ids = (1..42).map { "demo$it" }.toSet(); _pingBatch.value = ids; _pinging.value = ids.drop(30).toSet()
+                _pings.value = ids.take(30).associateWith { if (it.removePrefix("demo").toInt() % 6 == 0) -1L else 90L } }
+        }
+    }
+
+    private fun startBatch(servers: List<ServerEntry>) {
+        val ids = servers.map { it.id }.toSet()
+        val running = _pingBatch.value.any { it in _pinging.value }
+        _pingBatch.value = if (running) _pingBatch.value + ids else ids
+    }
+    fun clearPingBatch() { _pingBatch.value = emptySet() }
 
     private fun pingServers(servers: List<ServerEntry>) {
         if (servers.isEmpty()) return

@@ -7,7 +7,7 @@ plugins {
     id("org.jetbrains.compose")
 }
 
-val appVersion = "2.0.20"
+val appVersion = "2.0.22"
 
 kotlin { jvmToolchain(17) }
 
@@ -57,7 +57,7 @@ val genBuildConfig = tasks.register("genBuildConfig") {
     doLast {
         val f = out.get().file("net/antibs/client/BuildConfig.kt").asFile
         f.parentFile.mkdirs()
-        f.writeText("package net.antibs.client\n\nobject BuildConfig {\n    const val VERSION_NAME = \"$appVersion\"\n    const val VERSION_CODE = 2020\n    const val APPLICATION_ID = \"fun.antibs.client\"\n    const val DEBUG = false\n    const val XRAY_VERSION = \"26.9.30\"\n    const val SINGBOX_VERSION = \"1.14.2\"\n    const val MIHOMO_VERSION = \"—\"\n}\n")
+        f.writeText("package net.antibs.client\n\nobject BuildConfig {\n    const val VERSION_NAME = \"$appVersion\"\n    const val VERSION_CODE = 2022\n    const val APPLICATION_ID = \"fun.antibs.client\"\n    const val DEBUG = false\n    const val XRAY_VERSION = \"26.9.30\"\n    const val SINGBOX_VERSION = \"1.14.2\"\n    const val MIHOMO_VERSION = \"—\"\n}\n")
     }
 }
 kotlin.sourceSets["main"].kotlin.srcDir(genBuildConfig)

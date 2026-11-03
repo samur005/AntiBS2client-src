@@ -2,6 +2,7 @@ package net.antibs.client.engine
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import net.antibs.client.data.UpdateLogic
 import java.io.File
@@ -80,7 +81,7 @@ object Updater {
         return md.digest().joinToString("") { "%02x".format(it) }
     }
 
-    suspend fun download(ctx: Context, u: UpdateLogic.Update, progress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
+    suspend fun download(ctx: Context, u: UpdateLogic.Update, progress: (done: Long, total: Long) -> Unit): File = withContext(Dispatchers.IO) {
         val expected = u.sums?.let { s ->
             val c = open(s.url)
             try { UpdateLogic.parseSums(c.inputStream.bufferedReader().use { it.readText() })[u.apk.name] } finally { c.disconnect() }
@@ -93,8 +94,13 @@ object Updater {
             if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
             val total = c.contentLengthLong.takeIf { it > 0 } ?: u.apk.size
             c.inputStream.use { inp -> out.outputStream().use { o ->
-                val b = ByteArray(256 * 1024); var done = 0L
-                while (true) { val n = inp.read(b); if (n < 0) break; o.write(b, 0, n); done += n; if (total > 0) progress(done.toFloat() / total) }
+                val b = ByteArray(256 * 1024); var done = 0L; var lastEmit = 0L
+                while (true) {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    val n = inp.read(b); if (n < 0) break; o.write(b, 0, n); done += n
+                    val now = System.nanoTime(); if (now - lastEmit > 100_000_000L) { lastEmit = now; progress(done, total) }
+                }
+                progress(done, total)
             } }
         } finally { c.disconnect() }
         if (expected != null && !sha256(out).equals(expected, true)) { out.delete(); throw IllegalStateException("контрольная сумма не совпала") }
