@@ -116,7 +116,7 @@ fun main(args: Array<String>) {
             val toast by vm.toast.collectAsState()
             LaunchedEffect(toast) { toast?.let { snackbar.showSnackbar(it); vm.consumeToast() } }
             LaunchedEffect(Unit) { UiMessages.flow.collect { snackbar.showSnackbar(it) } }
-            LaunchedEffect(Unit) { vm.autoCheckUpdates() }
+            LaunchedEffect(Unit) { vm.autoCheckUpdates(); vm.autoRefreshMuslimHolidays() }
             val undo by vm.undo.collectAsState()
             LaunchedEffect(undo) {
                 val u = undo ?: return@LaunchedEffect

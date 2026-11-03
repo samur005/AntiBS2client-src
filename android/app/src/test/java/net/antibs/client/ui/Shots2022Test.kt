@@ -25,7 +25,7 @@ import java.io.File
 @Config(sdk = [34], qualifiers = "w400dp-h800dp-xxhdpi")
 class Shots2022Test {
     @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
-    private val out = File(System.getenv("SHOTS_DIR") ?: "/workspace/polish_shots/2023")
+    private val out = File(System.getenv("SHOTS_DIR") ?: "/workspace/polish_shots/2024")
     private val u = UpdateLogic.Update(UpdateLogic.Release("v2.0.22", "2.0.22", "", "", emptyList()), UpdateLogic.Asset("a.apk", "", 74_000_000), null)
     private val dl = AppViewModel.UpdateUi.Downloading(u, 0.42f, 31_100_000, 74_000_000, 2_350_000.0, 0, false)
 
@@ -50,4 +50,17 @@ class Shots2022Test {
         val ids = (1..42).map { "s$it" }.toSet()
         PingCounterPill(ids, ids.drop(30).toSet(), ids.take(30).associateWith { if (it in setOf("s3","s7","s11","s19","s25")) -1L else 80L }, {})
     }
+
+    private fun holiday(name: String, date: java.time.LocalDate) = shot(name) {
+        val a = net.antibs.client.data.AdvancedSettings()
+        val h = net.antibs.client.data.HolidayCalendar.current(date)!!
+        val (snow, garland) = seasonalNow(a, date)
+        Box(Modifier.fillMaxWidth().height(260.dp).background(androidx.compose.ui.graphics.Color(0xFF16222E))) {
+            SeasonalOverlay(a.seasonalFx, snow, garland, 8.dp)
+            SeasonalLabelText(h.emoji, h.name + "  ($date)", a.seasonalFx, Modifier.align(androidx.compose.ui.Alignment.Center))
+        }
+    }
+    @Test fun holidayEid() = holiday("holiday_eid_fitr_2027-03-09", java.time.LocalDate.of(2027, 3, 9))
+    @Test fun holidayVictory() = holiday("holiday_victory", java.time.LocalDate.of(2026, 5, 9))
+    @Test fun holidayNy() = holiday("holiday_newyear", java.time.LocalDate.of(2027, 1, 1))
 }

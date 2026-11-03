@@ -180,9 +180,9 @@ internal fun DrawScope.drawGarland(t: Float, blink: Boolean, speed: Float, top: 
 /** Snow / garland decision for today (used by AppRoot and the preview). */
 internal fun seasonalNow(a: AdvancedSettings, date: LocalDate = LocalDate.now()): Pair<Boolean, Boolean> {
     val holiday = runCatching {
-        if (a.seasonalDecor == "off") null else if (a.seasonalDecor == "auto") HolidayCalendar.current(custom = a.customHolidays) else HolidayCalendar.byId(a.seasonalDecor, a.customHolidays)
+        if (a.seasonalDecor == "off") null else if (a.seasonalDecor == "auto") HolidayCalendar.current(date, a.customHolidays) else HolidayCalendar.byId(a.seasonalDecor, a.customHolidays)
     }.getOrNull()
-    return a.seasonalFx.snowOn(date, a.seasonalDecor) to a.seasonalFx.garlandOn(holiday != null)
+    return a.seasonalFx.snowOn(date, a.seasonalDecor) to a.seasonalFx.garlandOn(holiday?.id == "ny")
 }
 
 // ════════════════ Settings pages
@@ -243,6 +243,7 @@ internal fun SeasonalPage(vm: AppViewModel, st: net.antibs.client.engine.AppStat
                 }
                 NavRow("Добавить свой праздник", chevron = false) { addOpen = true }
                 NavRow("Обновить мусульманские праздники", chevron = false) { vm.refreshMuslimHolidays() }
+                Text(vm.muslimStatusText(), Modifier.padding(horizontal = 16.dp, vertical = 2.dp), fontSize = 12.sp, color = if (vm.muslimStatus.intValue == 3) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             SettingsCard("Надпись") {
                 SwitchRow("Показывать название праздника", f.showLabel) { v -> set { it.copy(showLabel = v) } }

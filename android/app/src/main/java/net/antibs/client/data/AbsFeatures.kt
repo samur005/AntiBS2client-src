@@ -182,8 +182,8 @@ data class VpnScheduleCfg(val on: Boolean = false, val notify: Boolean = true, v
 
 object SnowMode {
     const val OFF = "off"; const val AUTO = "auto"; const val ON = "on"
-    /** 1 December – 28 March inclusive. */
-    fun inSeason(date: LocalDate): Boolean = date.monthValue == 12 || date.monthValue <= 2 || (date.monthValue == 3 && date.dayOfMonth <= 28)
+    /** 2.0.24: winter only — 1 December – end of February (covers the New Year period 31 Dec – 6 Jan). */
+    fun inSeason(date: LocalDate): Boolean = date.monthValue == 12 || date.monthValue <= 2
 }
 object SeasonalEffectsMode { const val OFF = "off"; const val HOLIDAY = "holiday"; const val ALWAYS = "always" }
 
@@ -211,7 +211,7 @@ data class SeasonalFx(
         SnowMode.AUTO -> holidayMode == "auto" && SnowMode.inSeason(date)
         else -> false
     }
-    /** [holidayToday] = holiday by the chosen mode, or by the calendar when the mode is «Выкл». */
+    /** 2.0.24: [holidayToday] = today's holiday is New Year — the garland is New Year only; other holidays get just the icon + label. */
     fun garlandOn(holidayToday: Boolean): Boolean = garland && when (effects) {
         SeasonalEffectsMode.ALWAYS -> true
         SeasonalEffectsMode.HOLIDAY -> holidayToday

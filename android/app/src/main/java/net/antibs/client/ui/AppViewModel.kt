@@ -1169,46 +1169,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (store.snapshot().selectedServerId == id && VpnState.status.value.state == ConnState.CONNECTED) AntiBSVpnService.connect(getApplication())
     }
 
-    fun refreshMuslimHolidays() {
+    /** 2.0.24 (ABS AladhanDates): confirmed Muslim holiday dates for this year and the next, stored with their year. */
+    /** 0 idle, 1 busy, 2 ok, 3 failed — shown under the refresh button. */
+    val muslimStatus = androidx.compose.runtime.mutableIntStateOf(0)
+    fun muslimStatusText(): String {
+        val t = net.antibs.client.data.MuslimDates.updatedAt
+        val upd = if (t == 0L) "ещё не обновлялось" else "обновлено " + java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale("ru")).format(java.util.Date(t))
+        return when (muslimStatus.intValue) { 1 -> "Обновляем…"; 3 -> "Не удалось обновить · $upd"; 2 -> "Готово · $upd"; else -> upd.replaceFirstChar { it.uppercase() } }
+    }
+    fun refreshMuslimHolidays(silent: Boolean = false) {
+        if (muslimStatus.intValue == 1) return
+        if (!silent) muslimStatus.intValue = 1
         viewModelScope.launch {
-            try {
-                val year = java.time.LocalDate.now().year
-                // Fetch special days (Hijri month/day)
-                val url = java.net.URL("https://api.aladhan.com/v1/specialDays")
-                val json = url.openStream().bufferedReader().readText()
-                val arr = kotlinx.serialization.json.Json.parseToJsonElement(json)
-                    .jsonObject["data"]?.jsonArray ?: return@launch
-                val map = mutableMapOf<String, Pair<Int, Int>>()
-                // Map known holidays
-                val wanted = mapOf(
-                    "Ashura" to "ashura",
-                    "Eid al-Fitr" to "eid_fitr",
-                    "Eid al-Adha" to "eid_adha",
-                    "Mawlid" to "mawlid",
-                )
-                for (el in arr) {
-                    val o = el.jsonObject
-                    val name = o["name"]?.jsonPrimitive?.content ?: continue
-                    val hMonth = o["month"]?.jsonPrimitive?.intOrNull ?: continue
-                    val hDay = o["day"]?.jsonPrimitive?.intOrNull ?: continue
-                    val id = wanted.entries.firstOrNull { name.contains(it.key, true) }?.value ?: continue
-                    // Convert Hijri to Gregorian for current year using Aladhan
-                    val conv = java.net.URL("https://api.aladhan.com/v1/hToG?date=$hDay-$hMonth-${year - 579}").openStream().bufferedReader().readText()
-                    val g = kotlinx.serialization.json.Json.parseToJsonElement(conv).jsonObject["data"]?.jsonObject
-                    val gDate = g?.get("gregorian")?.jsonObject?.get("date")?.jsonPrimitive?.content ?: continue
-                    val parts = gDate.split("-")
-                    if (parts.size == 3) {
-                        map[id] = parts[1].toInt() to parts[0].toInt() // month to day
-                    }
-                }
-                if (map.isNotEmpty()) {
-                    net.antibs.client.data.HolidayCalendar.applyMuslimDates(map)
-                    message("Мусульманские праздники обновлены")
-                }
-            } catch (e: Exception) {
-                message("Не удалось обновить: ${e.message?.take(40)}")
-            }
+            val dir = getApplication<Application>().filesDir
+            val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { net.antibs.client.data.MuslimDates.refresh(dir) }.getOrDefault(false) }
+            if (!silent) muslimStatus.intValue = if (ok) 2 else 3
+            if (!silent) message(if (ok) "Мусульманские праздники обновлены" else "Не удалось обновить даты (используется расчёт по календарю)")
         }
+    }
+
+    /** At launch: load stored dates; refresh in the background when older than 30 days or from another year. */
+    fun autoRefreshMuslimHolidays() {
+        val dir = getApplication<Application>().filesDir
+        net.antibs.client.data.MuslimDates.load(dir)
+        if (net.antibs.client.data.MuslimDates.stale()) refreshMuslimHolidays(silent = true)
     }
 
 }

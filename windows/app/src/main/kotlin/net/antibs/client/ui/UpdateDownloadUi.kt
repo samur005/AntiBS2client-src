@@ -164,10 +164,15 @@ internal fun PingCounterPill(batch: Set<String>, pinging: Set<String>, pings: Ma
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Тест пинга", color = cs.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.width(8.dp))
-            Text("$done/$total", color = cs.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("$done/$total", color = androidx.compose.ui.graphics.Color(0xFF34C759), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Text("недоступно: $bad", color = if (bad > 0) cs.error else cs.onSurfaceVariant, fontSize = 13.sp)
         }
-        LinearProgressIndicator(progress = { frac }, color = cs.primary, trackColor = cs.onSurface.copy(alpha = 0.12f),
-            strokeCap = StrokeCap.Round, modifier = Modifier.fillMaxWidth().height(4.dp))
+        // 2.0.24: fill = theme accent → lighter accent gradient
+        val accent = cs.primary
+        val light = androidx.compose.ui.graphics.lerp(accent, androidx.compose.ui.graphics.Color.White, 0.45f)
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(50)).background(cs.onSurface.copy(alpha = 0.12f))) {
+            Box(Modifier.fillMaxWidth(frac.coerceIn(0f, 1f)).fillMaxHeight().clip(RoundedCornerShape(50))
+                .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(accent, light))))
+        }
     }
 }

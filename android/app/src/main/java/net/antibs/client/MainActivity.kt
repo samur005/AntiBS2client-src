@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
             val snackbar = remember { SnackbarHostState() }
             val toast by vm.toast.collectAsState()
             LaunchedEffect(toast) { toast?.let { snackbar.showSnackbar(it); vm.consumeToast() } }
-            LaunchedEffect(Unit) { vm.autoCheckUpdates() }
+            LaunchedEffect(Unit) { vm.autoCheckUpdates(); vm.autoRefreshMuslimHolidays() }
             // 1.0.25: back to the app → refresh subscriptions older than the auto-update interval.
             androidx.lifecycle.compose.LifecycleStartEffect(vm) {
                 vm.refreshStale()

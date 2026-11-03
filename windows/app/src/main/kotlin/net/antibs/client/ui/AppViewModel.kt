@@ -503,6 +503,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setAutoUpdateCheck(v: Boolean) = push { it.copy(autoUpdateCheck = v) }
 
     /** Launch: at most once per 24 h, silent on errors and when up to date. */
+    /** 2.0.24: Muslim holiday dates (aladhan, year-aware) — load at launch, refresh in the background when stale. */
+    fun autoRefreshMuslimHolidays() {
+        val dir = getApplication<Application>().filesDir
+        net.antibs.client.data.MuslimDates.load(dir)
+        if (net.antibs.client.data.MuslimDates.stale()) viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { net.antibs.client.data.MuslimDates.refresh(dir) } }
+    }
+
     fun autoCheckUpdates() {
         val st = store.snapshot()
         if (!net.antibs.client.data.UpdateLogic.shouldAutoCheck(st.autoUpdateCheck, st.lastUpdateCheck, System.currentTimeMillis())) return
