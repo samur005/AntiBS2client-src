@@ -98,9 +98,9 @@ class PolishShotsTest {
         rule.setContent { AntiBSTheme(theme) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() } } }
         rule.waitForIdle()
     }
-    @Test fun s15BannerIdle() { d15(); show(ThemeMode.DARK) { banner(84, 231, false) }; save("banner_idle_dark", 700) }
-    @Test fun s15BannerPinging() { d15(); show(ThemeMode.DARK) { banner(84, 231, true) }; save("banner_pinging_dark", 700) }
-    @Test fun s15BannerTimeout() { d15(); show(ThemeMode.DARK) { banner(-1, 9999, false) }; save("banner_timeout_dark", 700) }
+    @Test fun s15BannerIdle() { dir = "/workspace/polish_shots/2016"; show(ThemeMode.DARK) { banner(84, 231, false) }; save("banner_idle_dark", 700) }
+    @Test fun s15BannerPinging() { dir = "/workspace/polish_shots/2016"; show(ThemeMode.DARK) { banner(84, 231, true) }; save("banner_pinging_dark", 700) }
+    @Test fun s15BannerTimeout() { dir = "/workspace/polish_shots/2016"; show(ThemeMode.DARK) { banner(-1, 9999, false) }; save("banner_timeout_dark", 700) }
     @Config(qualifiers = "w400dp-h2600dp-xxhdpi")
     @Test fun s16AdBlockInline() {
         dir = "/workspace/polish_shots/2016"

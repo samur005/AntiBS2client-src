@@ -1135,7 +1135,7 @@ private fun BannerPing(label: String, labelColor: Color, ms: Long?, busy: Boolea
 internal fun bannerPingText(ms: Long?): String = when { ms == null -> "—"; ms < 0 -> "тайм-аут"; else -> "${ms.coerceAtMost(9999)} мс" }
 
 /** 2.0.12: label colours of the banner pings (readable on dark and light). */
-internal val VpnPingLabel = Color(0xFFE5484D)
+internal val VpnPingLabel = Color(0xFF3B82F6) // 2.0.20: blue like «vk пинг»
 internal val VkPingLabel = Color(0xFF3B82F6)
 
 /** Speed-card row metrics: two 14dp rows with a 2dp gap; the sparkline spans both. */
