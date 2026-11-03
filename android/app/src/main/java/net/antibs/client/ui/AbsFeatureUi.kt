@@ -1,5 +1,6 @@
 package net.antibs.client.ui
 
+import androidx.compose.material.icons.filled.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -119,11 +120,12 @@ internal fun CountryHeader(code: String, count: Int, open: Boolean, best: Long?,
 @Composable
 internal fun GroupingMenuItems(vm: AppViewModel, g: ServerGrouping, subId: String?, close: () -> Unit) {
     if (subId == null) {
-        DropdownMenuItem(text = { Text((if (g.on) "✓ " else "") + "Группировать по странам") }, onClick = { close(); vm.setAdv { it.copy(serverGrouping = g.copy(on = !g.on)) } })
+        DropdownMenuItem(text = { Text((if (g.on) "✓ " else "") + "Группировать по странам") }, leadingIcon = { MenuIcon(androidx.compose.material.icons.Icons.Filled.Public) }, onClick = { close(); vm.setAdv { it.copy(serverGrouping = g.copy(on = !g.on)) } })
     } else {
         val cur = g.subs[subId]?.on
         listOf(null to "Группы: как в настройках", true to "Группы по странам: вкл", false to "Группы по странам: выкл").forEach { (v, l) ->
-            DropdownMenuItem(text = { Text((if (cur == v) "✓ " else "") + l) }, onClick = { close(); vm.setAdv { it.copy(serverGrouping = g.withSub(subId) { s -> s.copy(on = v) }) } })
+            val ic = when (v) { null -> androidx.compose.material.icons.Icons.Filled.Tune; true -> androidx.compose.material.icons.Icons.Filled.Flag; false -> androidx.compose.material.icons.Icons.Filled.ViewList }
+            DropdownMenuItem(text = { Text((if (cur == v) "✓ " else "") + l) }, leadingIcon = { MenuIcon(ic) }, onClick = { close(); vm.setAdv { it.copy(serverGrouping = g.withSub(subId) { s -> s.copy(on = v) }) } })
         }
     }
 }

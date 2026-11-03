@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Vibration
@@ -159,6 +160,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -596,7 +598,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         },
                         statusColor = when {
                             healthText != null || vpn.state == ConnState.ERROR -> AntiBSColors.Err
-                            vpn.state == ConnState.CONNECTED -> AntiBSColors.Blue
+                            vpn.state == ConnState.CONNECTED -> AntiBSColors.Ok
                             else -> Color.Unspecified
                         },
                         pingStyle = st.adv.pingChip,
@@ -780,14 +782,14 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                     scanningUnreachable = sub.id in unreachableScan,
                                     extraMenu = { close ->
                                         GroupingMenuItems(vm, st.adv.serverGrouping, sub.id, close)
-                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Передать на устройство") }, onClick = { close(); onLanSend(sub.id) })
+                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Передать на устройство") }, leadingIcon = { MenuIcon(Icons.Filled.SendToMobile) }, onClick = { close(); onLanSend(sub.id) })
                                         // 2.0.11: TV has no long-press drag → move up / down in the ⋮ menu
                                         if (isTv) {
                                             val order = shownGroups.mapNotNull { it.subscription?.id }
                                             val i = order.indexOf(sub.id)
-                                            if (i > 0) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить выше") },
+                                            if (i > 0) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить выше") }, leadingIcon = { MenuIcon(Icons.Filled.ArrowUpward) },
                                                 onClick = { close(); vm.moveSubscription(sub.id, order[i - 1], sp.subNewestFirst.value) })
-                                            if (i in 0 until order.lastIndex) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить ниже") },
+                                            if (i in 0 until order.lastIndex) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить ниже") }, leadingIcon = { MenuIcon(Icons.Filled.ArrowDownward) },
                                                 onClick = { close(); vm.moveSubscription(sub.id, order[i + 1], sp.subNewestFirst.value) })
                                         }
                                     },
@@ -1026,11 +1028,12 @@ internal fun ConnectionCard(
                     }
                     if (pingStyle == null || pingStyle.show) {
                         val view = androidx.compose.ui.platform.LocalView.current
-                        Spacer(Modifier.height(2.dp))
-                        BannerPing("VPN пинг", VpnPingLabel, if (active) pingMs else null, pingBusy && active, active, pingStyle) {
+                        Spacer(Modifier.height(3.dp))
+                        BannerPing("vpn пинг", VpnPingLabel, if (active) pingMs else null, pingBusy && active, active, pingStyle) {
                             AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); onPing?.invoke()
                         }
-                        BannerPing("VK пинг", VkPingLabel, directMs, directBusy, true, pingStyle) {
+                        Spacer(Modifier.height(2.dp))
+                        BannerPing("vk пинг", VkPingLabel, directMs, directBusy, true, pingStyle) {
                             AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); onPingDirect?.invoke()
                         }
                     }
@@ -1102,17 +1105,29 @@ internal fun ConnectionCard(
 private fun BannerPing(label: String, labelColor: Color, ms: Long?, busy: Boolean, active: Boolean, style: net.antibs.client.data.PingChipStyle?, onTap: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val neutral = cs.onSurfaceVariant
-    val tone = if (!active || busy || ms == null) neutral else pingLevelColor(ms, neutral)
+    // 2.0.14: fixed-width pill + fixed-width value slot → «…» while measuring doesn't move anything.
+    val shown = if (active && !busy) ms else null
+    val tone = if (shown == null) neutral else pingLevelColor(shown, neutral)
     val fg = if (style != null && style.text != 0L) Color(style.text.toInt()) else tone
-    val v = when { !active || ms == null -> if (busy) "…" else "—"; busy -> "…"; ms < 0 -> "нет ответа"; else -> "$ms мс" }
-    Text(androidx.compose.ui.text.buildAnnotatedString {
-            withStyle(androidx.compose.ui.text.SpanStyle(color = labelColor)) { append("$label: ") }
-            withStyle(androidx.compose.ui.text.SpanStyle(color = fg)) { append(v) }
-        }, fontSize = 11.sp, lineHeight = 12.sp, maxLines = 1, fontWeight = FontWeight.SemiBold,
-        style = TabularNums,
-        modifier = Modifier.clip(RoundedCornerShape(5.dp))
-            .clickable(onClickLabel = "Проверить: $label", onClick = onTap).padding(horizontal = 3.dp, vertical = 0.dp))
+    val v = if (busy) "…" else bannerPingText(shown)
+    val ts = TabularNums.copy(fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold)
+    Row(Modifier.clip(RoundedCornerShape(5.dp)).background(labelColor.copy(alpha = 0.14f))
+            .clickable(onClickLabel = "Проверить: $label", onClick = onTap).padding(horizontal = 5.dp, vertical = 1.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(contentAlignment = Alignment.CenterStart) {
+            Text("vpn пинг: ", style = ts, maxLines = 1, modifier = Modifier.alpha(0f))
+            Text("$label: ", style = ts, color = labelColor, maxLines = 1)
+        }
+        Box(contentAlignment = Alignment.CenterEnd) {
+            Text("тайм-аут", style = ts, maxLines = 1, modifier = Modifier.alpha(0f))
+            Text("9999 мс", style = ts, maxLines = 1, modifier = Modifier.alpha(0f))
+            Text(v, style = ts, color = fg, maxLines = 1)
+        }
+    }
 }
+
+/** 2.0.14: banner ping value text («—», «тайм-аут», «N мс», capped at 9999). */
+internal fun bannerPingText(ms: Long?): String = when { ms == null -> "—"; ms < 0 -> "тайм-аут"; else -> "${ms.coerceAtMost(9999)} мс" }
 
 /** 2.0.12: label colours of the banner pings (readable on dark and light). */
 internal val VpnPingLabel = Color(0xFFE5484D)
@@ -1428,26 +1443,27 @@ internal fun SubCard(
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Filled.MoreVert, "Меню", modifier = Modifier.size(20.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (sub.kind != "manual") {
-                            DropdownMenuItem(text = { Text("Обновить") }, onClick = { menu = false; onRefresh() })
-                            DropdownMenuItem(text = { Text("Копировать ссылку") }, onClick = { menu = false; onCopy() })
+                            DropdownMenuItem(text = { Text("Обновить") }, leadingIcon = { MenuIcon(Icons.Filled.Refresh) }, onClick = { menu = false; onRefresh() })
+                            DropdownMenuItem(text = { Text("Копировать ссылку") }, leadingIcon = { MenuIcon(Icons.Filled.Link) }, onClick = { menu = false; onCopy() })
                         }
-                        DropdownMenuItem(text = { Text("Проверить пинг") }, onClick = { menu = false; onPing() })
+                        DropdownMenuItem(text = { Text("Проверить пинг") }, leadingIcon = { MenuIcon(Icons.Filled.NetworkCheck) }, onClick = { menu = false; onPing() })
                         extraMenu?.invoke { menu = false }
                         if (realServers > 0) DropdownMenuItem(
                             text = { Text(if (scanningUnreachable) "Удалить недоступные (пинг…)" else "Удалить недоступные") },
+                            leadingIcon = { MenuIcon(Icons.Filled.DeleteSweep) },
                             enabled = !scanningUnreachable,
                             onClick = { menu = false; onDeleteUnreachable() },
                         )
                         if (sub.hiddenHosts.isNotEmpty()) {
-                            DropdownMenuItem(text = { Text("Показать удалённые хосты (${sub.hiddenHosts.size})") }, onClick = { menu = false; onRestoreHidden() })
+                            DropdownMenuItem(text = { Text("Показать удалённые хосты (${sub.hiddenHosts.size})") }, leadingIcon = { MenuIcon(Icons.Filled.Visibility) }, onClick = { menu = false; onRestoreHidden() })
                         }
                         if (sub.webPageUrl.isNotBlank()) {
-                            DropdownMenuItem(text = { Text("Страница подписки") }, onClick = { menu = false; runCatching { uri.openUri(sub.webPageUrl) } })
+                            DropdownMenuItem(text = { Text("Страница подписки") }, leadingIcon = { MenuIcon(Icons.Filled.Language) }, onClick = { menu = false; runCatching { uri.openUri(sub.webPageUrl) } })
                         }
                         if (sub.supportUrl.isNotBlank()) {
-                            DropdownMenuItem(text = { Text("Поддержка") }, onClick = { menu = false; runCatching { uri.openUri(sub.supportUrl) } })
+                            DropdownMenuItem(text = { Text("Поддержка") }, leadingIcon = { MenuIcon(Icons.Filled.SupportAgent) }, onClick = { menu = false; runCatching { uri.openUri(sub.supportUrl) } })
                         }
-                        DropdownMenuItem(text = { Text(if (sub.kind == "manual") "Очистить" else "Удалить") }, onClick = { menu = false; onDelete() })
+                        DropdownMenuItem(text = { Text(if (sub.kind == "manual") "Очистить" else "Удалить", color = AntiBSColors.Err) }, leadingIcon = { MenuIcon(Icons.Filled.Delete, danger = true) }, onClick = { menu = false; onDelete() })
                     }
                 }
             }
@@ -1595,12 +1611,12 @@ private fun ServerRow(
                 Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Filled.MoreVert, "Меню", modifier = Modifier.size(18.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        if (onPing != null) DropdownMenuItem(text = { Text("Пинг") }, onClick = { menu = false; onPing() })
-                        if (onCopy != null) DropdownMenuItem(text = { Text("Копировать имя") }, onClick = { menu = false; onCopy() })
-                        if (onEdit != null) DropdownMenuItem(text = { Text("Изменить") }, onClick = { menu = false; onEdit() })
-                        if (onReset != null) DropdownMenuItem(text = { Text("Сбросить изменения") }, onClick = { menu = false; onReset() })
-                        if (onToggleAuto != null) DropdownMenuItem(text = { Text(if (autoExcluded) "Вернуть в автовыбор" else "Исключить из автовыбора") }, onClick = { menu = false; onToggleAuto() })
-                        if (onDelete != null) DropdownMenuItem(text = { Text("Удалить", color = AntiBSColors.Err) }, onClick = { menu = false; onDelete() })
+                        if (onPing != null) DropdownMenuItem(text = { Text("Пинг") }, leadingIcon = { MenuIcon(Icons.Filled.NetworkCheck) }, onClick = { menu = false; onPing() })
+                        if (onCopy != null) DropdownMenuItem(text = { Text("Копировать имя") }, leadingIcon = { MenuIcon(Icons.Filled.ContentCopy) }, onClick = { menu = false; onCopy() })
+                        if (onEdit != null) DropdownMenuItem(text = { Text("Изменить") }, leadingIcon = { MenuIcon(Icons.Filled.Edit) }, onClick = { menu = false; onEdit() })
+                        if (onReset != null) DropdownMenuItem(text = { Text("Сбросить изменения") }, leadingIcon = { MenuIcon(Icons.Filled.Restore) }, onClick = { menu = false; onReset() })
+                        if (onToggleAuto != null) DropdownMenuItem(text = { Text(if (autoExcluded) "Вернуть в автовыбор" else "Исключить из автовыбора") }, leadingIcon = { MenuIcon(if (autoExcluded) Icons.Filled.AddCircleOutline else Icons.Filled.Block) }, onClick = { menu = false; onToggleAuto() })
+                        if (onDelete != null) DropdownMenuItem(text = { Text("Удалить", color = AntiBSColors.Err) }, leadingIcon = { MenuIcon(Icons.Filled.Delete, danger = true) }, onClick = { menu = false; onDelete() })
                     }
                 }
             }
@@ -2491,3 +2507,8 @@ internal fun MainSideRail(tab: MainTab, onSelect: (MainTab) -> Unit) {
 
 /** 2.0.11: height removed from the Home banner (paddings 4+4, spacer 3, status 2). */
 internal val BANNER_TRIM = 13.dp
+
+/** 2.0.14: leading icon for ⋮ menu items (uniform size/tint; destructive = red). */
+@Composable
+internal fun MenuIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, danger: Boolean = false) =
+    Icon(icon, null, modifier = Modifier.size(20.dp), tint = if (danger) AntiBSColors.Err else MaterialTheme.colorScheme.onSurfaceVariant)
