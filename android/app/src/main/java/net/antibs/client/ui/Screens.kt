@@ -1750,8 +1750,9 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
                     style = TabularNums.copy(lineHeight = 20.sp),
                     color = Color.White.copy(alpha = 0.95f),
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (connected) 16.sp else 15.sp,
-                    letterSpacing = if (connected) 0.5.sp else 1.sp,
+                    // 2.0.10: fixed-size track → the caption ignores the user font scale (it already scales with LocalUiScale).
+                    fontSize = fixedSp(if (connected) 16f else 15f),
+                    letterSpacing = fixedSp(if (connected) 0.5f else 1f),
                     maxLines = 1,
                     softWrap = false,
                 )

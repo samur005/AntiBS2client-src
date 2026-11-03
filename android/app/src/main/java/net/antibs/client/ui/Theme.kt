@@ -1,5 +1,9 @@
 package net.antibs.client.ui
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxSize
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -180,9 +184,55 @@ fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, style: ServerS
     // Material3 does not set LocalContentColor, so it stays Color.Black and body text
     // disappears on the dark canvas. Force onBackground for both themes.
     MaterialTheme(colorScheme = scheme, shapes = StyleTheme.shapes(style)) {
-        CompositionLocalProvider(LocalContentColor provides scheme.onBackground, LocalAppStyle provides style, content = content)
+        CompositionLocalProvider(LocalContentColor provides scheme.onBackground, LocalAppStyle provides style) {
+            AdaptiveUi(scheme.background, content)
+        }
     }
 }
 
 @Composable
 fun isDark(mode: ThemeMode): Boolean = ThemeResolver.isDark(mode, isSystemInDarkTheme())
+
+
+/** 2.0.10: adaptive UI scale. Layouts are designed for ~392 dp wide; narrower/wider phones are scaled proportionally. */
+object UiScale {
+    const val BASE_DP = 392f
+    const val MIN = 0.85f
+    const val MAX = 1.12f
+    const val MAX_FONT_SCALE = 1.3f
+    /** Content never gets wider than this (tablets / landscape): centred column. */
+    const val MAX_CONTENT_DP = 600
+
+    /** [widthDp] = the narrower usable width (landscape uses the shorter side, wide screens are capped). */
+    fun scale(widthDp: Int, heightDp: Int): Float {
+        val w = minOf(widthDp, heightDp.takeIf { it > 0 } ?: widthDp, MAX_CONTENT_DP).toFloat()
+        return (w / BASE_DP).coerceIn(MIN, MAX)
+    }
+    /** User font size is respected up to [MAX_FONT_SCALE] so fixed-size pills/banner numbers don't overflow. */
+    fun fontScale(user: Float): Float = user.coerceIn(0.85f, MAX_FONT_SCALE)
+}
+
+val LocalUiScale = androidx.compose.runtime.staticCompositionLocalOf { 1f }
+
+@Composable
+private fun AdaptiveUi(bg: Color, content: @Composable () -> Unit) {
+    val cfg = androidx.compose.ui.platform.LocalConfiguration.current
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    val k = UiScale.scale(cfg.screenWidthDp, cfg.screenHeightDp)
+    val scaled = androidx.compose.ui.unit.Density(d.density * k, UiScale.fontScale(d.fontScale))
+    CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides scaled, LocalUiScale provides k) {
+        androidx.compose.foundation.layout.Box(
+            androidx.compose.ui.Modifier.fillMaxSize().background(bg),
+            contentAlignment = androidx.compose.ui.Alignment.TopCenter,
+        ) {
+            androidx.compose.foundation.layout.Box(
+                androidx.compose.ui.Modifier.widthIn(max = (UiScale.MAX_CONTENT_DP / k).dp).fillMaxSize(),
+            ) { content() }
+        }
+    }
+}
+
+/** sp that does not grow with the user font scale — for text inside fixed-size elements (power-button track). */
+@Composable
+fun fixedSp(v: Float): androidx.compose.ui.unit.TextUnit =
+    androidx.compose.ui.unit.TextUnit(v / androidx.compose.ui.platform.LocalDensity.current.fontScale, androidx.compose.ui.unit.TextUnitType.Sp)
