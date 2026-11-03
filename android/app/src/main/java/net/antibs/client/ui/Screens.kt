@@ -1,5 +1,20 @@
 package net.antibs.client.ui
 
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.SwitchColors
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.asPaddingValues
 import net.antibs.client.data.ProtocolSupport
 
@@ -476,11 +491,33 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         Column(
                             Modifier.fillMaxWidth().height(run {
                                 // 2.0.7: variant B — keep ≥170 dp for the world strip; scroll only when the screen is too short
-                                val extra = (if (st.adv.homeNetMonitor) 112.dp else 0.dp) + (if (st.adv.homeUrlTest) 140.dp else 0.dp)
+                                val extra = if (st.adv.homeUrlTest) 140.dp else 0.dp
                                 if (extra.value == 0f) fullH else maxOf(fullH, 470.dp + extra)
                             }).padding(start = 12.dp, end = 12.dp, top = 2.dp),
                             verticalArrangement = Arrangement.spacedBy(3.dp),
                         ) {
+                // 2.0.8: health → red power button + red banner status
+                val vpnPingMs by vm.vpnPingMs.collectAsState()
+                val vpnBusy by vm.vpnBusy.collectAsState()
+                val directMs by vm.directMs.collectAsState()
+                val directBusy by vm.directBusy.collectAsState()
+                val vpnFails by vm.vpnFails.collectAsState()
+                val directFails by vm.directFails.collectAsState()
+                val netOk by vm.netValidated.collectAsState()
+                val health = net.antibs.client.engine.NetMonitor.health(
+                    active = connected || vpn.state == ConnState.CONNECTING, connected = connected,
+                    vpnFails = vpnFails, directFails = directFails, netValidated = netOk)
+                val healthText = net.antibs.client.engine.NetMonitor.healthText(health)
+                val homeOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+                DisposableEffect(homeOwner) {
+                    val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                        if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.setHomeVisible(true)
+                        if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) vm.setHomeVisible(false)
+                    }
+                    homeOwner.lifecycle.addObserver(obs)
+                    if (homeOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) vm.setHomeVisible(true)
+                    onDispose { homeOwner.lifecycle.removeObserver(obs); vm.setHomeVisible(false) }
+                }
                 run {
                     // 1.0.31: the host line always stays; only the speeds/graphs section shows as soon as the VPN
                     // connects (or is connecting) and hides 5 s after it goes off (reconnect within 5 s cancels).
@@ -518,8 +555,24 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         onLongPress = onOpenSpeedTest,
                         statsVisible = speedCardVisible,
                         speedTemplate = Format.speedTemplate(st.adv.speedUnits == "bits"),
-                        pingMs = vm.currentPingId()?.let { pings[it] }?.takeIf { it >= -1 },
-                        pingBusy = vm.currentPingId()?.let { it in pinging } == true,
+                        pingMs = vpnPingMs,
+                        pingBusy = vpnBusy,
+                        directMs = directMs,
+                        directBusy = directBusy,
+                        onPingDirect = { vm.pingDirect() },
+                        haptics = st.adv.haptics,
+                        status = healthText ?: when (vpn.state) {
+                            ConnState.CONNECTED -> "Подключено"
+                            ConnState.CONNECTING -> "Подключение…"
+                            ConnState.DISCONNECTING -> "Отключение…"
+                            ConnState.ERROR -> "Ошибка подключения"
+                            else -> "Не подключено"
+                        },
+                        statusColor = when {
+                            healthText != null || vpn.state == ConnState.ERROR -> AntiBSColors.Err
+                            vpn.state == ConnState.CONNECTED -> AntiBSColors.Blue
+                            else -> Color.Unspecified
+                        },
                         pingStyle = st.adv.pingChip,
                         onPing = { vm.pingCurrent() },
                         subLine = run {
@@ -530,8 +583,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     )
                 }
                 run {
-                    Box(Modifier.fillMaxWidth().padding(vertical = if (st.adv.homeNetMonitor || st.adv.homeUrlTest) 4.dp else 10.dp), contentAlignment = Alignment.Center) {
-                        PowerToggle(state = vpn.state, since = vpn.since, onClick = ::toggle)
+                    Box(Modifier.fillMaxWidth().padding(vertical = if (st.adv.homeUrlTest) 4.dp else 10.dp), contentAlignment = Alignment.Center) {
+                        PowerToggle(state = vpn.state, since = vpn.since, problem = health != net.antibs.client.engine.NetMonitor.Health.OK, onClick = ::toggle)
                     }
                 }
                 val engineDetail by net.antibs.client.engine.VpnState.detail.collectAsState()
@@ -587,13 +640,6 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (captcha != null) {
                     run { CaptchaCard(captcha!!) }
                 }
-                            HomeMonitorSection(
-                                connected = connected,
-                                socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
-                                showMonitor = st.adv.homeNetMonitor,
-                                showUrl = st.adv.homeUrlTest,
-                                haptics = st.adv.haptics,
-                            )
                             val liveName = if (connected || vpn.state == ConnState.CONNECTING) UiLogic.liveHostName(vpn.serverName, vpn.pickName, connected).ifEmpty { server?.name.orEmpty() } else server?.name.orEmpty()
                             HomeWorld(
                                 holiday = runCatching {
@@ -618,6 +664,15 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                 seasonalFx = st.adv.seasonalFx,
                                 onNet = onOpenNet,
                                 onSpeed = onOpenSpeedTest,
+                                // 2.0.8: icons right under the power button, then «URL Тест», then the map fills the rest
+                                middle = {
+                            HomeMonitorSection(
+                                connected = connected,
+                                socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
+                                                                showUrl = st.adv.homeUrlTest,
+                                haptics = st.adv.haptics,
+                            )
+                                },
                             )
                         }
                     }
@@ -877,6 +932,12 @@ internal fun ConnectionCard(
     onPing: (() -> Unit)? = null,
     subLine: net.antibs.client.data.SubLineData? = null,
     subStyle: net.antibs.client.data.SubRemainStyle = net.antibs.client.data.SubRemainStyle(),
+    status: String = "",
+    statusColor: Color = Color.Unspecified,
+    directMs: Long? = null,
+    directBusy: Boolean = false,
+    onPingDirect: (() -> Unit)? = null,
+    haptics: Boolean = true,
 ) {
     val shape = RoundedCornerShape(16.dp)
     Surface(
@@ -887,34 +948,46 @@ internal fun ConnectionCard(
             .pointerInput(Unit) { detectTapGestures(onLongPress = { onLongPress() }) },
     ) {
         Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusDot(dot)
-                Spacer(Modifier.width(8.dp))
-                Text(flag, fontSize = 16.sp)
-                Spacer(Modifier.width(6.dp))
-                Text(name, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                if (proto.isNotEmpty()) {
-                    Spacer(Modifier.width(8.dp))
-                    val chipBg = when (protoTone) {
-                        UiLogic.ProtoChipTone.OK -> AntiBSColors.ChipOk
-                        UiLogic.ProtoChipTone.ERR -> AntiBSColors.Err
-                        UiLogic.ProtoChipTone.OFF -> AntiBSColors.ChipOff
+            // 2.0.8: left = dot · flag · name, status under the name; right = small protocol badge, VPN / direct ping
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatusDot(dot)
+                        Spacer(Modifier.width(8.dp))
+                        Text(flag, fontSize = 16.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(name, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    // Light label on every tone: never dark text on the dark canvas.
-                    Text(
-                        proto,
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        lineHeight = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        modifier = Modifier.clip(RoundedCornerShape(7.dp)).background(chipBg).padding(horizontal = 7.dp, vertical = 2.dp),
-                    )
+                    if (status.isNotEmpty()) Text(status, color = if (statusColor == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else statusColor,
+                        fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, modifier = Modifier.padding(start = 16.dp, top = 2.dp))
                 }
-            }
-            // 2.0.6 (ABS): «пинг: 131 мс» under the protocol badge — auto-ping updates it, a tap pings at once
-            if (pingStyle != null && pingStyle.show) Row(Modifier.fillMaxWidth().padding(top = 3.dp), horizontalArrangement = Arrangement.End) {
-                HomePingChip(pingMs, pingBusy, pingStyle, active, onPing)
+                Column(horizontalAlignment = Alignment.End, modifier = Modifier.offset(y = (-3).dp)) {
+                    if (proto.isNotEmpty()) {
+                        val chipBg = when (protoTone) {
+                            UiLogic.ProtoChipTone.OK -> AntiBSColors.ChipOk
+                            UiLogic.ProtoChipTone.ERR -> AntiBSColors.Err
+                            UiLogic.ProtoChipTone.OFF -> AntiBSColors.ChipOff
+                        }
+                        Text(
+                            proto,
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            lineHeight = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(chipBg).padding(horizontal = 5.dp, vertical = 1.dp),
+                        )
+                    }
+                    if (pingStyle == null || pingStyle.show) {
+                        val view = androidx.compose.ui.platform.LocalView.current
+                        BannerPing("VPN пинг", if (active) pingMs else null, pingBusy && active, active, pingStyle) {
+                            AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); onPing?.invoke()
+                        }
+                        BannerPing("Прямой пинг", directMs, directBusy, true, pingStyle) {
+                            AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); onPingDirect?.invoke()
+                        }
+                    }
+                }
             }
             androidx.compose.animation.AnimatedVisibility(
                 visible = statsVisible,
@@ -975,6 +1048,22 @@ internal fun ConnectionCard(
             if (subLine != null && subStyle.show) SubRemainRow(subLine, subStyle, Modifier.padding(top = 8.dp))
         }
     }
+}
+
+/** 2.0.8: «VPN пинг: N мс» / «Прямой пинг: N мс» — threshold colour, tap = ping now. */
+@Composable
+private fun BannerPing(label: String, ms: Long?, busy: Boolean, active: Boolean, style: net.antibs.client.data.PingChipStyle?, onTap: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val tone = when {
+        !active || busy || ms == null -> cs.onSurfaceVariant
+        else -> when (net.antibs.client.data.PingChipStyle.tone(ms)) { 0 -> Color(0xFF1FA463); 1 -> Color(0xFFF59E0B); else -> Color(0xFFE5484D) }
+    }
+    val fg = if (style != null && style.text != 0L) Color(style.text.toInt()) else tone
+    val v = when { !active || ms == null -> if (busy) "…" else "—"; busy -> "…"; ms < 0 -> "нет ответа"; else -> "$ms мс" }
+    Text("$label: $v", color = fg, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 1, fontWeight = FontWeight.SemiBold,
+        style = TabularNums,
+        modifier = Modifier.padding(top = 2.dp).clip(RoundedCornerShape(5.dp))
+            .clickable(onClickLabel = "Проверить: $label", onClick = onTap).padding(horizontal = 3.dp, vertical = 1.dp))
 }
 
 /** Speed-card row metrics: two 14dp rows with a 2dp gap; the sparkline spans both. */
@@ -1487,7 +1576,7 @@ internal fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
  * connecting/disconnecting = pulsing track + spinner, error = brief red tint.
  */
 @Composable
-private fun PowerToggle(state: ConnState, since: Long, onClick: () -> Unit) {
+internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false, onClick: () -> Unit) {
     val connected = state == ConnState.CONNECTED
     val connecting = state == ConnState.CONNECTING
     val disconnecting = state == ConnState.DISCONNECTING
@@ -1550,7 +1639,9 @@ private fun PowerToggle(state: ConnState, since: Long, onClick: () -> Unit) {
     val caption = UiLogic.toggleCaption(state, since, now)
 
     val desc = if (on) "Отключить VPN" else "Подключить VPN"
-    val haloColor = AntiBSColors.Blue
+    // 2.0.8: red state (VPN on, but no internet / server down)
+    val red by animateFloatAsState(if (problem && on) 1f else 0f, animationSpec = tween(420), label = "red")
+    val haloColor = androidx.compose.ui.graphics.lerp(AntiBSColors.Blue, AntiBSColors.Err, red)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
@@ -1582,7 +1673,7 @@ private fun PowerToggle(state: ConnState, since: Long, onClick: () -> Unit) {
                         style = Stroke(width = 1.5.dp.toPx()),
                     )
                 }
-                .shadow(elevation, shape, ambientColor = AntiBSColors.Blue, spotColor = AntiBSColors.Blue)
+                .shadow(elevation, shape, ambientColor = haloColor, spotColor = haloColor)
                 .clip(shape)
                 .background(AntiBSColors.FabStopped)
                 .toggleable(value = on, enabled = !busy, role = Role.Switch, onValueChange = { onClick() })
@@ -1646,6 +1737,9 @@ private fun PowerToggle(state: ConnState, since: Long, onClick: () -> Unit) {
                     drawCircle(Color.White.copy(alpha = a * 0.55f * fade), radius = (0.9f + 1.1f * sy).dp.toPx(), center = Offset(x, y))
                 }
             }
+            // 2.0.8: style-aware red gradient over the track while there is a problem
+            if (red > 0f) Box(Modifier.matchParentSize().graphicsLayer { alpha = red }.background(
+                Brush.linearGradient(listOf(Color(0xFFB4232F), AntiBSColors.Err, Color(0xFFFF6B5E), AntiBSColors.Err))))
             // Brief red tint on error.
             Box(Modifier.matchParentSize().graphicsLayer { alpha = errTint.value }.background(AntiBSColors.Err))
             // Track caption (timer when connected) centred in the free part of the track.
@@ -1676,28 +1770,12 @@ private fun PowerToggle(state: ConnState, since: Long, onClick: () -> Unit) {
                     .background(Color.White),
                 contentAlignment = Alignment.Center,
             ) {
-                val tint = if (on) AntiBSColors.Blue else AntiBSColors.FabStopped
+                val tint = if (on) haloColor else AntiBSColors.FabStopped
                 if (busy) CircularProgressIndicator(color = tint, modifier = Modifier.size(30.dp), strokeWidth = 3.dp)
                 else Icon(Icons.Filled.PowerSettingsNew, null, tint = tint, modifier = Modifier.size(34.dp))
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            when (state) {
-                ConnState.CONNECTED -> "Подключено"
-                ConnState.CONNECTING -> "Подключение…"
-                ConnState.DISCONNECTING -> "Отключение…"
-                ConnState.ERROR -> "Ошибка подключения"
-                else -> "Не подключено"
-            },
-            color = when (state) {
-                ConnState.CONNECTED -> AntiBSColors.Blue
-                ConnState.ERROR -> AntiBSColors.Err
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-        )
+        // 2.0.8: the status text moved into the banner (under the server name)
     }
 }
 
@@ -1858,21 +1936,57 @@ internal fun SectionLabel(text: String) {
         modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 8.dp))
 }
 
-/** 1.0.50: rounded card grouping settings rows (thin dividers between rows, none after the last). */
+/** 2.0.8: main «Настройки» page → cards start collapsed (except the first); sub-pages start expanded. */
+internal val LocalCollapseByDefault = androidx.compose.runtime.compositionLocalOf { false }
+private val SettingsOpen = androidx.compose.runtime.mutableStateMapOf<String, Boolean>()
+private const val FIRST_OPEN = "Настройки интерфейса"
+
+/** 2.0.8: collapsible, style-aware card grouping settings rows (animated chevron, dividers between rows). */
 @Composable
 internal fun SettingsCard(title: String? = null, content: @Composable () -> Unit) {
-    if (title != null) SectionLabel(title)
+    val style = LocalAppStyle.current
+    val c = ssColors(style)
+    val shape = ssShape(style, 18.dp)
+    val collapse = LocalCollapseByDefault.current
+    val key = (if (collapse) "main:" else "sub:") + (title ?: "")
+    val open = title == null || (SettingsOpen[key] ?: (!collapse || title == FIRST_OPEN))
+    val view = androidx.compose.ui.platform.LocalView.current
     Surface(
-        shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        shape = shape, color = c.card,
+        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (title != null) 10.dp else 6.dp)
+            .border(1.dp, c.cardBorder, shape),
     ) {
-        androidx.compose.runtime.CompositionLocalProvider(LocalInCard provides true) {
-            // the last row's divider is cut off by measuring the column 1 dp shorter (the card clips)
-            Column(Modifier.layout { m, c ->
-                val pl = m.measure(c)
-                val cut = 1.dp.roundToPx()
-                layout(pl.width, (pl.height - cut).coerceAtLeast(0)) { pl.place(0, 0) }
-            }) { content() }
+        Column {
+            if (title != null) {
+                val rot by animateFloatAsState(if (open) 180f else 0f, animationSpec = tween(260), label = "chev")
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                        .clickable(onClickLabel = if (open) "Свернуть" else "Развернуть") {
+                            AppHaptics.perform(view, AppHaptics.Kind.TICK, true); SettingsOpen[key] = !open
+                        }
+                        .padding(start = 16.dp, end = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(title, color = c.accent, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.ExpandMore, null, tint = c.muted, modifier = Modifier.graphicsLayer { rotationZ = rot })
+                }
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = open,
+                enter = androidx.compose.animation.expandVertically(tween(260)) + androidx.compose.animation.fadeIn(tween(220)),
+                exit = androidx.compose.animation.shrinkVertically(tween(240)) + androidx.compose.animation.fadeOut(tween(180)),
+            ) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalInCard provides true) {
+                    Column(Modifier.layout { m, cs ->
+                        val pl = m.measure(cs)
+                        val cut = 1.dp.roundToPx()
+                        layout(pl.width, (pl.height - cut).coerceAtLeast(0)) { pl.place(0, 0) }
+                    }) {
+                        if (title != null) RowDivider()
+                        content()
+                    }
+                }
+            }
         }
     }
 }
@@ -1880,39 +1994,84 @@ internal fun SettingsCard(title: String? = null, content: @Composable () -> Unit
 @Composable
 internal fun RowDivider() {
     val inCard = LocalInCard.current
-    HorizontalDivider(Modifier.padding(start = if (inCard) 16.dp else 0.dp, end = if (inCard) 16.dp else 0.dp), thickness = 1.dp,
-        color = MaterialTheme.colorScheme.outline.copy(alpha = if (inCard) 0.28f else 0.4f))
+    val c = ssColors(LocalAppStyle.current)
+    HorizontalDivider(Modifier.padding(start = if (inCard) 60.dp else 0.dp, end = if (inCard) 14.dp else 0.dp), thickness = 1.dp,
+        color = c.cardBorder.copy(alpha = if (inCard) 0.9f else 1f))
 }
 
 @Composable
 private fun RowTexts(title: String, subtitle: String?, modifier: Modifier) {
+    val c = ssColors(LocalAppStyle.current)
     Column(modifier) {
-        Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, lineHeight = 21.sp)
-        if (!subtitle.isNullOrBlank()) Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 17.sp,
-            modifier = Modifier.padding(top = 2.dp))
+        Text(title, color = c.onCard, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium)
+        if (!subtitle.isNullOrBlank()) Text(subtitle, color = c.muted, fontSize = 12.5.sp, lineHeight = 16.sp,
+            maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
+    }
+}
+
+/** 2.0.8: leading icon for a settings row, picked by keywords in its title. */
+internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.ImageVector {
+    val t = title.lowercase()
+    fun has(vararg k: String) = k.any { t.contains(it) }
+    return when {
+        has("тем", "оформлен", "стиль", "цвет", "интерфейс", "украшен") -> Icons.Filled.Palette
+        has("вибрац") -> Icons.Filled.Vibration
+        has("пинг", "скорост", "единиц") -> Icons.Filled.Speed
+        has("подписк", "обновлен") -> Icons.Filled.Sync
+        has("уведомл") -> Icons.Filled.Notifications
+        has("запуск", "автозапуск", "расписан", "фон") -> Icons.Filled.Schedule
+        has("dns") -> Icons.Filled.Dns
+        has("маршрут", "сеть", "сети", "lan", "локальн") -> Icons.Filled.Router
+        has("блок", "защит", "kill", "конфиденц", "hwid", "безопас") -> Icons.Filled.Lock
+        has("vpn", "туннел", "ядр", "xray", "протокол", "qwdtt", "mieru", "sing", "mihomo") -> Icons.Filled.VpnKey
+        has("приложен", "о программе", "версия") -> Icons.Filled.Info
+        has("сервер", "список", "хост") -> Icons.Filled.Dns
+        has("лог", "инструмент", "экспорт", "импорт", "резерв") -> Icons.Filled.Build
+        has("главн", "карт", "url") -> Icons.Filled.Public
+        else -> Icons.Filled.Tune
+    }
+}
+
+/** 2.0.8: one frame for every settings row — same height, icon, title/subtitle, trailing control. */
+@Composable
+internal fun SettingsRowFrame(title: String, subtitle: String?, onClick: (() -> Unit)?, trailing: @Composable RowScope.() -> Unit) {
+    val style = LocalAppStyle.current
+    val c = ssColors(style)
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 60.dp).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(32.dp).clip(ssShape(style, 9.dp)).background(c.accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+            Icon(settingsIcon(title), null, tint = c.accent, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        RowTexts(title, subtitle, Modifier.weight(1f).padding(end = 8.dp))
+        trailing()
     }
 }
 
 /**
- * 1.0.50 settings row. Chevron row: [value] (or [subtitle]) is the gray line under the title, «>» opens a page.
- * [dropdown]: inline choice — [subtitle] describes the setting, the current [value] is blue with «↕».
+ * Settings row. Chevron row: [value] (or [subtitle]) is the gray line under the title, «>» opens a page.
+ * [dropdown]: inline choice — [subtitle] describes the setting, the current [value] is accent-coloured with «↕».
  */
 @Composable
 internal fun NavRow(title: String, value: String? = null, dropdown: Boolean = false, subtitle: String? = null, chevron: Boolean = true, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    val c = ssColors(LocalAppStyle.current)
+    SettingsRowFrame(title, if (dropdown) subtitle else value ?: subtitle, onClick) {
         if (dropdown) {
-            RowTexts(title, subtitle, Modifier.weight(1f).padding(end = 8.dp))
-            if (value != null) Text(value, color = AntiBSColors.Blue, fontSize = 15.sp, maxLines = 1)
-            Icon(Icons.Filled.UnfoldMore, null, tint = AntiBSColors.Blue, modifier = Modifier.padding(start = 2.dp).size(18.dp))
-        } else {
-            RowTexts(title, value ?: subtitle, Modifier.weight(1f).padding(end = 8.dp))
-            if (chevron) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+            if (value != null) Text(value, color = c.accent, fontSize = 14.sp, maxLines = 1)
+            Icon(Icons.Filled.UnfoldMore, null, tint = c.accent, modifier = Modifier.padding(start = 2.dp).size(18.dp))
+        } else if (chevron) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = c.muted)
     }
     RowDivider()
+}
+
+@Composable
+internal fun settingsSwitchColors(): SwitchColors {
+    val c = ssColors(LocalAppStyle.current)
+    return SwitchDefaults.colors(checkedTrackColor = c.accent, checkedThumbColor = Color.White,
+        disabledCheckedTrackColor = c.accent.copy(alpha = 0.6f), disabledCheckedThumbColor = Color.White)
 }
 
 @Composable
@@ -1920,10 +2079,8 @@ internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null
     // 1.0.55: toggles give the firmer click
     val hf = androidx.compose.ui.platform.LocalHapticFeedback.current
     val onChange: (Boolean) -> Unit = { hf.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onChange0(it) }
-    Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        RowTexts(title, subtitle, Modifier.weight(1f).padding(vertical = 4.dp).padding(end = 8.dp))
-        Switch(checked, onChange, colors = SwitchDefaults.colors(checkedTrackColor = AntiBSColors.Blue, checkedThumbColor = Color.White))
+    SettingsRowFrame(title, subtitle, { onChange(!checked) }) {
+        Switch(checked, onChange, colors = settingsSwitchColors())
     }
     RowDivider()
 }
@@ -1931,10 +2088,8 @@ internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null
 /** 1.0.32: a switch that is always on and cannot be turned off (HWID). */
 @Composable
 internal fun LockedOnRow(title: String, caption: String) {
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        RowTexts(title, caption, Modifier.weight(1f).padding(vertical = 4.dp))
-        Switch(checked = true, onCheckedChange = null, enabled = false,
-            colors = SwitchDefaults.colors(checkedTrackColor = AntiBSColors.Blue, checkedThumbColor = Color.White, disabledCheckedTrackColor = AntiBSColors.Blue, disabledCheckedThumbColor = Color.White))
+    SettingsRowFrame(title, caption, null) {
+        Switch(checked = true, onCheckedChange = null, enabled = false, colors = settingsSwitchColors())
     }
     RowDivider()
 }

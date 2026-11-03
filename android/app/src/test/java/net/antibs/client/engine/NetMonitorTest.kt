@@ -25,10 +25,37 @@ class NetMonitorTest {
     }
     @Test fun defaultsOnAndOldJsonKeepsThemOn() {
         val a = AdvancedSettings()
-        assertTrue(a.homeNetMonitor && a.homeUrlTest)
+        assertTrue(a.homeUrlTest && a.revokeNotify)
         val j = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         val old = j.decodeFromString(AdvancedSettings.serializer(), "{\"speedUnits\":\"bits\"}")
-        assertTrue(old.homeNetMonitor && old.homeUrlTest)
+        assertTrue(old.homeUrlTest && old.revokeNotify)
+    }
+    @Test fun healthOffWhenVpnOff() {
+        assertEquals(NetMonitor.Health.OK, NetMonitor.health(false, false, 9, 9, false))
+    }
+    @Test fun healthNeedsTwoVpnFailures() {
+        assertEquals(NetMonitor.Health.OK, NetMonitor.health(true, true, 1, 0, true))
+        assertEquals(NetMonitor.Health.SERVER_DOWN, NetMonitor.health(true, true, 2, 0, true))
+    }
+    @Test fun healthNoInternetNeedsDirectFailAndNoValidatedNet() {
+        assertEquals(NetMonitor.Health.NO_INTERNET, NetMonitor.health(true, true, 2, 1, false))
+        assertEquals(NetMonitor.Health.NO_INTERNET, NetMonitor.health(true, false, 0, 2, false))   // while connecting
+        assertEquals(NetMonitor.Health.SERVER_DOWN, NetMonitor.health(true, true, 3, 2, true))     // validated net → server
+        assertEquals(NetMonitor.Health.OK, NetMonitor.health(true, true, 0, 0, false))
+    }
+    @Test fun failCounterResetsOnSuccess() {
+        var f = 0
+        f = NetMonitor.nextFails(f, false); f = NetMonitor.nextFails(f, false)
+        assertEquals(2, f)
+        assertEquals(0, NetMonitor.nextFails(f, true))
+        assertEquals("Нет интернета", NetMonitor.healthText(NetMonitor.Health.NO_INTERNET))
+        assertEquals("Сервер недоступен", NetMonitor.healthText(NetMonitor.Health.SERVER_DOWN))
+        assertEquals(null, NetMonitor.healthText(NetMonitor.Health.OK))
+    }
+    @Test fun revokeHold() {
+        assertTrue(net.antibs.client.service.RevokeGuard.holding(1000L, 900L))
+        assertTrue(!net.antibs.client.service.RevokeGuard.holding(900L + net.antibs.client.service.RevokeGuard.HOLD_MS + 1, 900L))
+        assertTrue(!net.antibs.client.service.RevokeGuard.holding(1000L, 0L))
     }
     @Test fun failedProbeIsMinusOne() {
         val c = okhttp3.OkHttpClient.Builder().connectTimeout(300, java.util.concurrent.TimeUnit.MILLISECONDS).build()

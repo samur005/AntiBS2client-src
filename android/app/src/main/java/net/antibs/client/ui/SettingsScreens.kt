@@ -105,14 +105,10 @@ internal fun HintText(text: String) {
 /** Switch with a tappable title that opens a details page (title/subtitle + «>» opens, switch toggles). */
 @Composable
 internal fun SwitchNavRow(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit, onOpen: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
-            Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, lineHeight = 21.sp)
-            if (subtitle != null) Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 17.sp,
-                maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-        }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Настроить", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
-        Switch(checked, onChange, colors = SwitchDefaults.colors(checkedTrackColor = AntiBSColors.Blue, checkedThumbColor = Color.White))
+    val c = ssColors(LocalAppStyle.current)
+    SettingsRowFrame(title, subtitle, onOpen) {
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Настроить", tint = c.muted, modifier = Modifier.padding(horizontal = 4.dp))
+        Switch(checked, onChange, colors = settingsSwitchColors())
     }
     RowDivider()
 }

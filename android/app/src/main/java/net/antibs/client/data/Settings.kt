@@ -118,7 +118,8 @@ data class AdvancedSettings(
     val pingChip: PingChipStyle = PingChipStyle(),
     val autoPing: AutoPing = AutoPing(),
     // 2.0.7: home variant B cards
-    val homeNetMonitor: Boolean = true,
+    /** 2.0.8: notification when another VPN app takes over (onRevoke). */
+    val revokeNotify: Boolean = true,
     val homeUrlTest: Boolean = true,
 ) {
     val perAppSelected: List<String> get() = if (perAppMode == "bypass") perAppBypass else perAppInclude

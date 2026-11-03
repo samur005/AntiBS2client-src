@@ -72,18 +72,6 @@ private fun LiveBadge() {
 }
 
 @Composable
-internal fun NetMonitorCard(vpnMs: Long?, directMs: Long?, onTap: () -> Unit = {}) {
-    val style = LocalAppStyle.current
-    val c = ssColors(style)
-    MonCard("Мониторинг сети", badge = { LiveBadge() }) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MonTile("V", Color(0xFF38BDF8), "VPN", "gstatic", vpnMs, c, Modifier.weight(1f), onTap)
-            MonTile("D", Color(0xFFF59E0B), "Прямой", "vk.ru", directMs, c, Modifier.weight(1f), onTap)
-        }
-    }
-}
-
-@Composable
 private fun MonTile(letter: String, tint: Color, title: String, host: String, ms: Long?, c: SsColors, modifier: Modifier, onTap: () -> Unit) {
     val style = LocalAppStyle.current
     val shape = ssShape(style, 12.dp)
@@ -164,25 +152,16 @@ private fun SiteIcon(id: String) {
  * activity is resumed; URL test on open / (re)connect / refresh tap.
  */
 @Composable
-internal fun HomeMonitorSection(connected: Boolean, socksPort: Int, showMonitor: Boolean, showUrl: Boolean, haptics: Boolean) {
-    if (!showMonitor && !showUrl) return
+internal fun HomeMonitorSection(connected: Boolean, socksPort: Int, showUrl: Boolean, haptics: Boolean) {
+    if (!showUrl) return
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
     val life = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     val lifeState by life.currentStateFlow.collectAsState()
     val resumed = lifeState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
-    var mon by remember { mutableStateOf(NetMonitor.Monitor(null, null)) }
     var urls by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var urlBusy by remember { mutableStateOf(false) }
     var urlRun by remember { mutableIntStateOf(0) }
-    var monKick by remember { mutableIntStateOf(0) }
-    if (showMonitor) LaunchedEffect(connected, socksPort, resumed, monKick) {
-        if (!connected) mon = mon.copy(vpn = null)
-        while (resumed) {
-            mon = NetMonitor.monitor(ctx, connected, socksPort)
-            kotlinx.coroutines.delay(NetMonitor.MONITOR_PERIOD_MS)
-        }
-    }
     if (showUrl) LaunchedEffect(connected, socksPort, urlRun) {
         urlBusy = true; urls = emptyMap()
         val m = mutableMapOf<String, Long>()
@@ -198,9 +177,6 @@ internal fun HomeMonitorSection(connected: Boolean, socksPort: Int, showMonitor:
         urlBusy = false
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (showMonitor) NetMonitorCard(mon.vpn.takeIf { connected }, mon.direct) {
-            AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); monKick++
-        }
         if (showUrl) UrlTestCard(urls, urlBusy) { AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); urlRun++ }
     }
 }

@@ -72,6 +72,7 @@ class AntiBSVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CONNECT -> {
+                RevokeGuard.clear(this)   // auto paths check the guard before sending CONNECT
                 startForegroundCompat("Подключение…")
                 thread(name = "vpn-connect") { connect() }
             }
@@ -82,7 +83,17 @@ class AntiBSVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        thread { disconnect() }
+        // 2.0.8: another VPN app took over — tear down (core, TUN, watchdog/auto threads via stopAll), mark the
+        // revoke so automatic restarts hold off, and tell the user once.
+        VpnState.log("VPN отключён системой: включена другая VPN-программа")
+        RevokeGuard.mark(this)
+        val notify = runCatching { AppStore(this).snapshot().adv.revokeNotify }.getOrDefault(true)
+        thread(name = "vpn-revoke") {
+            disconnect()
+            VpnState.set(VpnStatus(ConnState.DISCONNECTED, message = "Включена другая VPN-программа"))
+            VpnTileService.refresh(this)
+            if (notify) RevokeGuard.notifyRevoked(this)
+        }
         super.onRevoke()
     }
 

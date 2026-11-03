@@ -100,6 +100,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _tunnelPing = MutableStateFlow(UiLogic.TunnelPing.UNKNOWN)
     /** Result of the latest check through the running tunnel (see [UiLogic.statusDot]). */
     val tunnelPing: StateFlow<UiLogic.TunnelPing> = _tunnelPing
+    // 2.0.8: banner «VPN пинг» / «Прямой пинг» + health (red power button)
+    private val _vpnPingMs = MutableStateFlow<Long?>(null); val vpnPingMs: StateFlow<Long?> = _vpnPingMs
+    private val _vpnFails = MutableStateFlow(0); val vpnFails: StateFlow<Int> = _vpnFails
+    private val _directMs = MutableStateFlow<Long?>(null); val directMs: StateFlow<Long?> = _directMs
+    private val _directFails = MutableStateFlow(0); val directFails: StateFlow<Int> = _directFails
+    private val _netValidated = MutableStateFlow(true); val netValidated: StateFlow<Boolean> = _netValidated
+    private val _vpnBusy = MutableStateFlow(false); val vpnBusy: StateFlow<Boolean> = _vpnBusy
+    private val _directBusy = MutableStateFlow(false); val directBusy: StateFlow<Boolean> = _directBusy
+    private val directKick = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+    private var directJob: kotlinx.coroutines.Job? = null
+    private fun noteVpn(ms: Long?) { _vpnPingMs.value = ms ?: -1L; _vpnFails.value = net.antibs.client.engine.NetMonitor.nextFails(_vpnFails.value, ms != null) }
+
+    /** Home on screen + app resumed → direct ping loop (auto-ping interval, 30 s when auto-ping is off). */
+    fun setHomeVisible(visible: Boolean) {
+        if (!visible) { directJob?.cancel(); directJob = null; return }
+        if (directJob?.isActive == true) return
+        directJob = viewModelScope.launch {
+            while (true) {
+                measureDirect()
+                val ap = store.snapshot().adv.autoPing
+                val period = if (ap.on) ap.periodMs else 30_000L
+                if (withTimeoutOrNull(period) { directKick.receive() } != null) delay(800)
+            }
+        }
+    }
+
+    private suspend fun measureDirect() {
+        _directBusy.value = true
+        try {
+            val app = getApplication<Application>()
+            val ms = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                net.antibs.client.engine.NetMonitor.probe(net.antibs.client.engine.NetMonitor.directClient(app), net.antibs.client.engine.NetMonitor.DIRECT_URL)
+            }
+            _netValidated.value = net.antibs.client.engine.NetMonitor.netValidated(app)
+            _directMs.value = ms
+            _directFails.value = net.antibs.client.engine.NetMonitor.nextFails(_directFails.value, ms >= 0)
+        } finally { _directBusy.value = false }
+    }
+
+    /** Tap on «Прямой пинг». */
+    fun pingDirect() { if (!_directBusy.value) viewModelScope.launch { measureDirect() } }
     private val tunnelKick = Channel<Unit>(Channel.CONFLATED)
     private var tunnelJob: Job? = null
     @Volatile private var tunnelKey: String? = null
@@ -119,6 +160,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 tunnelKey = key
                 tunnelJob?.cancel()
                 tunnelJob = null
+                _vpnFails.value = 0; _vpnPingMs.value = null
+                directKick.trySend(Unit)
                 if (key == null) {
                     _tunnelPing.value = UiLogic.TunnelPing.UNKNOWN
                 } else {
@@ -144,7 +187,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         delay(UiLogic.TUNNEL_PING_FIRST_DELAY_MS)
         var last: UiLogic.TunnelPing? = null
         while (true) {
-            val ms = tunnelCheck(serverId)
+            _vpnBusy.value = true
+            val ms = try { tunnelCheck(serverId) } finally { _vpnBusy.value = false }
+            noteVpn(ms)
+            if (ms == null) directKick.trySend(Unit)   // tell «no internet» from «server down»
             val now = if (ms != null) UiLogic.TunnelPing.OK else UiLogic.TunnelPing.FAIL
             _tunnelPing.value = now
             val ap = store.snapshot().adv.autoPing
@@ -170,7 +216,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _pinging.update { it + id }
             viewModelScope.launch {
                 try {
-                    val ms = tunnelCheck(id)
+                    _vpnBusy.value = true
+                    val ms = try { tunnelCheck(id) } finally { _vpnBusy.value = false }
+                    noteVpn(ms)
                     _pings.update { it + (id to UiLogic.tunnelPingValue(ms)) }
                     _tunnelPing.value = if (ms != null) UiLogic.TunnelPing.OK else UiLogic.TunnelPing.FAIL
                 } finally { _pinging.update { it - id } }
@@ -260,8 +308,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val cm = getApplication<Application>().getSystemService(ConnectivityManager::class.java) ?: return
             val cb = object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) { if (tunnelKey != null) tunnelKick.trySend(Unit) }
-                override fun onLost(network: Network) { if (tunnelKey != null) tunnelKick.trySend(Unit) }
+                override fun onAvailable(network: Network) { directKick.trySend(Unit); if (tunnelKey != null) tunnelKick.trySend(Unit) }
+                override fun onLost(network: Network) { directKick.trySend(Unit); if (tunnelKey != null) tunnelKick.trySend(Unit) }
             }
             cm.registerDefaultNetworkCallback(cb)
             netCallback = cb

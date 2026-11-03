@@ -16,6 +16,7 @@ package net.antibs.client.ui
  * inbound, falls back to the host's country when offline) with the arc between them while connected.
  */
 
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.animation.animateColorAsState
@@ -291,7 +292,9 @@ data class WorldPing(val busy: Boolean = false, val ms: Long? = null, val stamp:
 @Composable
 fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.compose.ui.unit.Dp = 0.dp, onServers: () -> Unit = {},
               ping: WorldPing = WorldPing(), onPing: (() -> Unit)? = null, onNet: (() -> Unit)? = null, onSpeed: (() -> Unit)? = null, holiday: net.antibs.client.data.Holiday? = null,
-              seasonalFx: net.antibs.client.data.SeasonalFx = net.antibs.client.data.SeasonalFx()) {
+              seasonalFx: net.antibs.client.data.SeasonalFx = net.antibs.client.data.SeasonalFx(),
+              /** 2.0.8: when set, the icon row sits on top, then [middle] (URL test), then the map/globe fills the rest. */
+              middle: (@Composable () -> Unit)? = null) {
     val ctx = LocalContext.current
     remember { WorldOpacity.init(ctx); 0 }
     var panel by remember { mutableStateOf<String?>(null) }
@@ -375,24 +378,15 @@ fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.
     val shown: GeoPoint? = if (input.connected) exit else user
     val data = WorldData(user, exit, shown, input.connected, WorldLogic.secured(input.connected, exit, user), countries, hot)
 
-    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
-        // 1.0.50c: icon row sits just above the map's top border (bottom edge ICON_GAP above it)
-        val iconsBottom = (maxHeight * (1f - MAP_FRACTION) - ICON_GAP).coerceAtLeast(PILL_H)
-        androidx.compose.animation.Crossfade(mode, animationSpec = androidx.compose.animation.core.tween(380), label = "world-mode") { m ->
-            // the map runs edge to edge and takes ~85 % of the free height, anchored to the bottom
-            if (m == "map") Box(Modifier.fillMaxSize()) {
-                MapView(data, Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(MAP_FRACTION).bleedX(bleed), onServers)
-            }
-            else GlobeView(data, Modifier.fillMaxSize().padding(bottom = 8.dp).offset(y = GLOBE_DROP), onServers)
-        }
+    val modePill: @Composable (Modifier) -> Unit = { m ->
         ModePill(mode, geo,
             onMode = { mode = it; prefs.edit().putString("mode", it).apply() },
             onGeo = { toggleGeo() },
             onLong = { k -> mode = k; prefs.edit().putString("mode", k).apply(); panel = k },
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = iconsBottom - PILL_H))
-        // 2.0.2: «Сеть» (network monitoring) sits next to the ping pill, same pill style
-        // 2.0.5: left group, left→right: «Сеть» (monitoring), speed test, ping — same pill style
-        if (onPing != null || onNet != null || onSpeed != null) Row(Modifier.align(Alignment.TopStart).padding(top = iconsBottom - PILL_H), verticalAlignment = Alignment.CenterVertically) {
+            modifier = m)
+    }
+    val tools: @Composable (Modifier) -> Unit = { m ->
+        if (onPing != null || onNet != null || onSpeed != null) Row(m, verticalAlignment = Alignment.CenterVertically) {
             var first = true
             @Composable fun gap() { if (!first) Spacer(Modifier.width(8.dp)); first = false }
             if (onNet != null) {
@@ -415,6 +409,43 @@ fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.
             }
             if (onPing != null) { gap(); PingPill(ping, onPing, Modifier) }
         }
+    }
+    if (middle != null) {
+        Column(modifier) {
+            Box(Modifier.fillMaxWidth().height(PILL_H)) {
+                tools(Modifier.align(Alignment.CenterStart))
+                modePill(Modifier.align(Alignment.CenterEnd))
+            }
+            Spacer(Modifier.height(6.dp))
+            middle()
+            Spacer(Modifier.height(4.dp))
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                androidx.compose.animation.Crossfade(mode, animationSpec = androidx.compose.animation.core.tween(380), label = "world-mode") { m ->
+                    if (m == "map") Box(Modifier.fillMaxSize()) {
+                        MapView(data, Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight().bleedX(bleed), onServers)
+                    }
+                    else GlobeView(data, Modifier.fillMaxSize().padding(bottom = 4.dp).offset(y = GLOBE_DROP), onServers)
+                }
+                if (holiday != null && seasonalFx.showLabel) Row(Modifier.align(Alignment.TopCenter).padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SeasonalLabelText(holiday.emoji, holiday.name, seasonalFx, base = 14f, defColor = Color.White.copy(alpha = 0.92f))
+                }
+                panel?.let { k -> OpacityPanel(k == "map", 4.dp) { panel = null } }
+            }
+        }
+        return
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
+        // 1.0.50c: icon row sits just above the map's top border (bottom edge ICON_GAP above it)
+        val iconsBottom = (maxHeight * (1f - MAP_FRACTION) - ICON_GAP).coerceAtLeast(PILL_H)
+        androidx.compose.animation.Crossfade(mode, animationSpec = androidx.compose.animation.core.tween(380), label = "world-mode") { m ->
+            // the map runs edge to edge and takes ~85 % of the free height, anchored to the bottom
+            if (m == "map") Box(Modifier.fillMaxSize()) {
+                MapView(data, Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(MAP_FRACTION).bleedX(bleed), onServers)
+            }
+            else GlobeView(data, Modifier.fillMaxSize().padding(bottom = 8.dp).offset(y = GLOBE_DROP), onServers)
+        }
+        modePill(Modifier.align(Alignment.TopEnd).padding(top = iconsBottom - PILL_H))
+        tools(Modifier.align(Alignment.TopStart).padding(top = iconsBottom - PILL_H))
         if (holiday != null && seasonalFx.showLabel) {
             Row(
                 Modifier.align(Alignment.TopCenter).padding(top = (iconsBottom - PILL_H - 40.dp).coerceAtLeast(4.dp)),

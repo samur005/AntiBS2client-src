@@ -88,6 +88,7 @@ object SubscriptionSync {
     fun isConnected(): Boolean = VpnState.status.value.state == ConnState.CONNECTED
 
     fun reconnect(ctx: Context, why: String) {
+        if (net.antibs.client.service.RevokeGuard.holdingNow(ctx)) { VpnState.log("переподключение пропущено: VPN занят другой программой"); return }
         VpnState.log("переподключение: $why")
         try { AntiBSVpnService.connect(ctx) } catch (e: Throwable) { VpnState.log("переподключение не удалось: ${e.message}") }
     }

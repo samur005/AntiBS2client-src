@@ -83,4 +83,37 @@ object NetMonitor {
         val client = if (connected) vpnClient(socksPort) else directClient(ctx)
         coroutineScope { URL_TARGETS.map { t -> async { t.id to probe(client, t.url) } }.awaitAll().toMap() }
     }
+
+    // ───── 2.0.8: connection health → red power button + red banner status
+    enum class Health { OK, NO_INTERNET, SERVER_DOWN }
+    const val FAILS_TO_ALERT = 2
+
+    /**
+     * [active] = CONNECTED or CONNECTING. [vpnFails]/[directFails] = consecutive failed pings (0 after a success).
+     * «Нет интернета»: direct ping fails AND the physical network is not validated. «Сервер недоступен»: internet
+     * is fine but the tunnel ping failed [FAILS_TO_ALERT]× in a row. Any successful VPN ping clears the alert.
+     */
+    fun health(active: Boolean, connected: Boolean, vpnFails: Int, directFails: Int, netValidated: Boolean): Health = when {
+        !active -> Health.OK
+        directFails >= 1 && !netValidated -> Health.NO_INTERNET
+        connected && vpnFails >= FAILS_TO_ALERT -> Health.SERVER_DOWN
+        else -> Health.OK
+    }
+
+    fun healthText(h: Health): String? = when (h) {
+        Health.NO_INTERNET -> "Нет интернета"
+        Health.SERVER_DOWN -> "Сервер недоступен"
+        Health.OK -> null
+    }
+
+    fun nextFails(prev: Int, ok: Boolean): Int = if (ok) 0 else (prev + 1).coerceAtMost(99)
+
+    fun netValidated(ctx: Context): Boolean = try {
+        val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+        val n = cm?.let { SpeedNet.physicalNetwork(it) }
+        n != null && cm.getNetworkCapabilities(n)?.let {
+            it.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                it.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        } == true
+    } catch (_: Throwable) { true }
 }

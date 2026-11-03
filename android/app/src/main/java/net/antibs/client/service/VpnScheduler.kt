@@ -57,6 +57,7 @@ object VpnScheduler {
                 when {
                     running -> null
                     VpnService.prepare(ctx) != null -> "Расписание: нет разрешения VPN — откройте приложение"
+                    RevokeGuard.holdingNow(ctx) -> "Расписание: пропущено — VPN занят другой программой"
                     else -> try { AntiBSVpnService.connect(ctx); "VPN включён по расписанию" } catch (e: Exception) { "Расписание: ${e.message}" }
                 }
             } else if (running) { try { AntiBSVpnService.disconnect(ctx); "VPN выключен по расписанию" } catch (e: Exception) { "Расписание: ${e.message}" } } else null

@@ -95,7 +95,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             when (section) {
                 // ───────────── main screen: only the most important items, details behind «>»
-                "Settings" -> {
+                "Settings" -> androidx.compose.runtime.CompositionLocalProvider(LocalCollapseByDefault provides true) {
                     SettingsCard("Настройки интерфейса") {
                         NavRow("Сезонные украшения", when (a.seasonalDecor) {
                             "off" -> "Выключено"
@@ -243,7 +243,6 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         NavRow("Единицы скорости", if (a.speedUnits == "bits") "Биты" else "Байты", dropdown = true, subtitle = "На карточке скорости: КБ/с, МБ/с или кбит/с, Мбит/с") { dialog = "speedUnits" }
                     }
                     SettingsCard("Главный экран") {
-                        SwitchRow("Мониторинг сети", a.homeNetMonitor, subtitle = "Задержка через VPN (gstatic) и напрямую (vk.ru), обновляется вживую") { v -> vm.setAdv { it.copy(homeNetMonitor = v) } }
                         SwitchRow("URL Тест", a.homeUrlTest, subtitle = "Google, Telegram, Запретgram, YouTube") { v -> vm.setAdv { it.copy(homeUrlTest = v) } }
                     }
                     SettingsCard("Список серверов") {
@@ -278,6 +277,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                 "Vpn" -> {
                     SettingsCard("Запуск") {
                         SwitchRow("Автозапуск после перезагрузки", ui.autostart) { vm.setAutostart(it) }
+                        SwitchRow("Уведомлять о другой VPN-программе", a.revokeNotify, subtitle = "Если включили другой VPN, наш отключается и 5 мин не переподключается сам; показать уведомление") { v -> vm.setAdv { it.copy(revokeNotify = v) } }
                         SwitchRow("Подключаться при запуске приложения", a.autoConnectOnLaunch) { v -> vm.setAdv { it.copy(autoConnectOnLaunch = v) } }
                         NavRow("Расписание VPN", net.antibs.client.service.VpnScheduler.load(ctx).let { c -> if (c.on) "Вкл · правил: ${c.rules.size}" else "Выкл" }, subtitle = "Включать и выключать VPN по времени и дням") { open("Schedule") }
                         NavRow("Кнопка VPN в шторке", if (Build.VERSION.SDK_INT >= 33) "Добавить плитку" else "Добавьте вручную: шторка → ✎") {
