@@ -113,8 +113,8 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         NavRow("Маршрутизация", routingValue) { open("Routing") }
                         NavRow("Прокси для выбранных приложений", when (a.perAppMode) { "include" -> "Только выбранные · ${a.perAppInclude.size}"; "bypass" -> "Все, кроме выбранных · ${a.perAppBypass.size}"; else -> "Все приложения" }) { open("PerApp") }
                         NavRow("Надёжность и запуск", listOfNotNull(
-                            if (ui.autostart) "Автозапуск" else null, if (a.autoConnectOnLaunch) "Подключение при запуске" else null,
-                            if (a.tunnelBindBlock) "Блокировка обхода" else null).joinToString(" · ").ifEmpty { "Автозапуск, работа в фоне, защита" }) { open("Vpn") }
+                            if (a.autoConnectOnLaunch) "Подключение при запуске" else null,
+                            if (a.tunnelBindBlock) "Блокировка обхода" else null).joinToString(" · ").ifEmpty { "Работа в фоне, защита" }) { open("Vpn") }
                         NavRow("Ядра и протоколы", "Xray ${BuildConfig.XRAY_VERSION} · ${if (st.xrayTun) "Xray TUN" else "hev-tunnel"} · qWDTT") { open("SetCores") }
                         NavRow("Сеть и DNS", listOfNotNull("MTU ${a.tunMtu}", if (a.localDns) "локальный DNS" else null, if (st.bypassLan) "обход LAN" else null).joinToString(" · ")) { open("SetNet") }
                         SwitchNavRow("Использовать фрагментирование", "Дробить TLS ClientHello к серверу — обход DPI · ${a.fragPackets} · ${a.fragLength} · ${a.fragDelay} мс",
@@ -276,7 +276,6 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                 // ───────────── «Надёжность и запуск»
                 "Vpn" -> {
                     SettingsCard("Запуск") {
-                        SwitchRow("Автозапуск после перезагрузки", ui.autostart) { vm.setAutostart(it) }
                         SwitchRow("Уведомлять о другой VPN-программе", a.revokeNotify, subtitle = "Если включили другой VPN, наш отключается и 5 мин не переподключается сам; показать уведомление") { v -> vm.setAdv { it.copy(revokeNotify = v) } }
                         SwitchRow("Подключаться при запуске приложения", a.autoConnectOnLaunch) { v -> vm.setAdv { it.copy(autoConnectOnLaunch = v) } }
                         NavRow("Расписание VPN", net.antibs.client.service.VpnScheduler.load(ctx).let { c -> if (c.on) "Вкл · правил: ${c.rules.size}" else "Выкл" }, subtitle = "Включать и выключать VPN по времени и дням") { open("Schedule") }

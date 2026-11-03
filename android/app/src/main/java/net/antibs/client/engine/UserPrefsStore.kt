@@ -96,7 +96,7 @@ class UserPrefsStore(context: Context) {
         mux = p[Keys.MUX] ?: false,
         ipType = p[Keys.IP] ?: "auto",
         allowLan = p[Keys.LAN] ?: false,
-        autostart = p[Keys.AUTO] ?: false,
+        autostart = false,   // 2.0.9: start-on-boot removed; old saved value ignored
         xrayTun = p[Keys.XTUN] ?: false,
         bypassLan = p[Keys.BYPASS] ?: true,
         subsExpanded = p[Keys.SUBS] ?: true,

@@ -360,7 +360,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setIpType(v: String) = pushTunnel { it.copy(ipType = v) }
     fun setAllowLan(v: Boolean) = pushTunnel { it.copy(allowLan = v) }
     fun setBypassLan(v: Boolean) = pushTunnel { it.copy(bypassLan = v) }
-    fun setAutostart(v: Boolean) = push { it.copy(autostart = v) }
+    fun setAutostart(@Suppress("UNUSED_PARAMETER") v: Boolean) = push { it.copy(autostart = false) }   // 2.0.9: removed
     fun setXrayTun(v: Boolean) {
         push { it.copy(xrayTun = v) }
         _toast.value = if (v) "Xray TUN: применится при следующем подключении" else "Туннель hev-socks5: применится при следующем подключении"
