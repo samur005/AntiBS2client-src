@@ -25,7 +25,7 @@ import java.io.File
 @Config(sdk = [34], qualifiers = "w400dp-h800dp-xxhdpi")
 class Shots2022Test {
     @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
-    private val out = File(System.getenv("SHOTS_DIR") ?: "/workspace/polish_shots/2022")
+    private val out = File(System.getenv("SHOTS_DIR") ?: "/workspace/polish_shots/2023")
     private val u = UpdateLogic.Update(UpdateLogic.Release("v2.0.22", "2.0.22", "", "", emptyList()), UpdateLogic.Asset("a.apk", "", 74_000_000), null)
     private val dl = AppViewModel.UpdateUi.Downloading(u, 0.42f, 31_100_000, 74_000_000, 2_350_000.0, 0, false)
 

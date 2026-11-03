@@ -760,10 +760,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 2.0.22: collapse / restore the download window; the download keeps running. */
     fun setUpdateMinimized(m: Boolean) { _update.update { (it as? UpdateUi.Downloading)?.copy(minimized = m) ?: it } }
 
-    /** Debug/screenshot: fake progress source for the download window. */
-    fun debugFakeDownload(u: net.antibs.client.data.UpdateLogic.Update, done: Long, total: Long, bps: Double, elapsedMs: Long, minimized: Boolean) {
-        _update.value = UpdateUi.Downloading(u, done.toFloat() / total, done, total, bps, System.currentTimeMillis() - elapsedMs, minimized)
-    }
 
     fun dismissUpdate() { _update.value = UpdateUi.Idle }
 

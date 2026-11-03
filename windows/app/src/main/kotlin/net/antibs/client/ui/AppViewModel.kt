@@ -551,9 +551,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 2.0.22: «Отмена» in the download window. */
     fun cancelUpdateDownload() { downloadJob?.cancel(); downloadJob = null; _update.value = UpdateUi.Idle }
     fun setUpdateMinimized(m: Boolean) { _update.update { (it as? UpdateUi.Downloading)?.copy(minimized = m) ?: it } }
-    fun debugFakeDownload(u: net.antibs.client.data.UpdateLogic.Update, done: Long, total: Long, bps: Double, elapsedMs: Long, minimized: Boolean) {
-        _update.value = UpdateUi.Downloading(u, done.toFloat() / total, done, total, bps, System.currentTimeMillis() - elapsedMs, minimized)
-    }
 
     fun installUpdate(u: net.antibs.client.data.UpdateLogic.Update, f: java.io.File) {
         val ctx = getApplication<Application>()
@@ -607,17 +604,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val targets = servers.filter { it.id !in _pinging.value }
         if (targets.isEmpty()) return
         pingServers(targets)
-    }
-
-    /** Screenshot/demo hook: ANTIBS_DEMO=full|mini|ping (never set in normal use). */
-    private val demoInit = System.getenv("ANTIBS_DEMO")?.let { d ->
-        val u = net.antibs.client.data.UpdateLogic.Update(net.antibs.client.data.UpdateLogic.Release("v2.0.22", "2.0.22", "", "", emptyList()),
-            net.antibs.client.data.UpdateLogic.Asset("AntiBS2client-windows-2.0.22-setup.exe", "", 98_000_000), null)
-        when (d) {
-            "full", "mini" -> debugFakeDownload(u, 41_200_000, 98_000_000, 3_400_000.0, 12_000, d == "mini")
-            "ping" -> { val ids = (1..42).map { "demo$it" }.toSet(); _pingBatch.value = ids; _pinging.value = ids.drop(30).toSet()
-                _pings.value = ids.take(30).associateWith { if (it.removePrefix("demo").toInt() % 6 == 0) -1L else 90L } }
-        }
     }
 
     private fun startBatch(servers: List<ServerEntry>) {

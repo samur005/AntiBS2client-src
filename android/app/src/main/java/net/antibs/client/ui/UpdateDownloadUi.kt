@@ -152,18 +152,22 @@ private fun StatGrid(items: List<Pair<String, String>>) {
 /** 2.0.22: «Всего · Пропинговано · Недоступно» for the current/last bulk ping. */
 @Composable
 internal fun PingCounterPill(batch: Set<String>, pinging: Set<String>, pings: Map<String, Long>, onClose: () -> Unit) {
+    // 2.0.23: ABS-proxy style bulk-ping progress — «14/18 · недоступно: 4» over a thin bar; hides 2.5 s after the batch ends.
     val (total, done, bad) = DS.pingCounts(batch, pinging, pings)
     val running = done < total
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(50))
-        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)).padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (running) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = AntiBSColors.Blue)
-        Text("Всего $total", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        Text("·", fontSize = 12.sp)
-        Text("Пропинговано $done", fontSize = 12.sp, color = AntiBSColors.Blue)
-        Text("·", fontSize = 12.sp)
-        Text("Недоступно $bad", fontSize = 12.sp, color = if (bad > 0) AntiBSColors.Err else MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.weight(1f))
-        if (!running) IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) { Icon(Icons.Filled.Close, "Скрыть", Modifier.size(14.dp)) }
+    LaunchedEffect(batch, running) { if (batch.isNotEmpty() && !running) { delay(2500); onClose() } }
+    val cs = MaterialTheme.colorScheme
+    val frac by animateFloatAsState(if (total == 0) 0f else done.toFloat() / total, label = "pingFrac")
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp))
+        .background(cs.surfaceVariant.copy(alpha = 0.6f)).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Тест пинга", color = cs.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(8.dp))
+            Text("$done/$total", color = cs.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("недоступно: $bad", color = if (bad > 0) cs.error else cs.onSurfaceVariant, fontSize = 13.sp)
+        }
+        LinearProgressIndicator(progress = { frac }, color = cs.primary, trackColor = cs.onSurface.copy(alpha = 0.12f),
+            strokeCap = StrokeCap.Round, modifier = Modifier.fillMaxWidth().height(4.dp))
     }
 }

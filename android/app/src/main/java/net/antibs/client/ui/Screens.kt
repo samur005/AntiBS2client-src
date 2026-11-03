@@ -712,7 +712,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 run {
-                if (pingBatch.isNotEmpty()) item(key = "ping-counter") { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }) }
+                if (pingBatch.isNotEmpty()) item(key = "ping-counter") { Box(Modifier.animateItem()) { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }) } }
                 if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
                     item { Text("Нет подписок. Нажмите «+» вверху справа или купите подписку в «Магазине».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp)) }
                 }
