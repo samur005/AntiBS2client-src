@@ -523,8 +523,6 @@ object XrayConfigBuilder {
         val routingProxyOutbound: JsonObject? = null,
         /** 1.0.19: tags of the stock geoip.dat/geosite.dat ("ip"/"site"); unknown refs are dropped. null = don't check. */
         val geoBundled: Map<String, Set<String>>? = null,
-        /** 1.0.40: prepared block lists (BlockFiles.prepare); null = defaults from [adv]. */
-        val adBlock: AdBlock.Prepared? = null,
         /** 1.0.40: tags present in the downloaded rf files ("site"/"ip"). */
         val geoExtra: Map<String, Set<String>> = emptyMap(),
         /** 1.0.34: >0 → Xray API (RoutingService / ObservatoryService / StatsService) on 127.0.0.1:[apiPort]. */
@@ -611,7 +609,9 @@ object XrayConfigBuilder {
                     putJsonArray("domains") { direct.forEach { add(it) } }
                     put("skipFallback", true)
                 })
-                if (rp != null && rp.remoteDns.isNotBlank()) add(plain(rp.remoteDns))
+                val adDns = AdBlock.dnsUrl(a)
+                if (adDns != null) add(plain(adDns)) // 2.0.15 (ABS): «ДНС-блокировщик рекламы» replaces the remote resolver
+                else if (rp != null && rp.remoteDns.isNotBlank()) add(plain(rp.remoteDns))
                 else opt.dnsServers.forEach { s ->
                     // UDP-less leaf (http/naive/ssh/http3/snell v1-2…): plain UDP DNS through it would hang
                     add(plain(s))
@@ -656,9 +656,10 @@ object XrayConfigBuilder {
             }
             putJsonObject("system") { put("statsOutboundUplink", true); put("statsOutboundDownlink", true) }
         }
-        put("dns", AdBlock.withDnsHosts(withRuDns(dnsSection(opt), opt.adv), opt.adv, opt.adBlock))
+        put("dns", withRuDns(dnsSection(opt), opt.adv))
         val sniff = buildJsonObject {
-            put("enabled", opt.sniffing)
+            // 2.0.15 (ABS): ad blocking matches domains → sniffing on while it is enabled
+            put("enabled", opt.sniffing || AdBlock.enabled(opt.adv))
             putJsonArray("destOverride") { add("http"); add("tls"); add("quic") }
             if (opt.routing != null) put("routeOnly", false)
         }
@@ -691,15 +692,16 @@ object XrayConfigBuilder {
             val freedomIp = when (opt.ipType) { "ipv6" -> "UseIPv6"; "ipv4" -> "UseIPv4"; else -> "UseIP" }
             add(buildJsonObject { put("tag", "direct"); put("protocol", "freedom"); putJsonObject("settings") { put("domainStrategy", freedomIp) } })
             add(buildJsonObject { put("tag", "block"); put("protocol", "blackhole"); putJsonObject("settings") { putJsonObject("response") { put("type", "http") } } })
+            if (AdBlock.enabled(opt.adv)) add(AdBlock.blackhole(AdBlock.TAG))
             add(buildJsonObject { put("tag", "dns-out"); put("protocol", "dns") })
         }
         putJsonObject("routing") {
             put("domainStrategy", opt.routing?.domainStrategy ?: "AsIs")
             putJsonArray("rules") {
-                // 1.0.39/1.0.40: whitelist overrides, ad / tracker block, STUN — first, for the user-facing inbounds only
+                // 2.0.15 (ABS): categories / ads → «block-ads», QUIC → block — first, for the user-facing inbounds only
                 val userInb = listOfNotNull("socks", "http".takeIf { opt.adv.httpInbound }, "tun".takeIf { opt.xrayTun })
                 val mainTarget = if (balancerTag != null) "balancerTag" to balancerTag else "outboundTag" to ((proxyOutbound["tag"] as? JsonPrimitive)?.contentOrNull ?: "proxy")
-                AdBlock.leadingRules(opt.adv, userInb, "block", mainTarget, opt.adBlock).forEach { add(it) }
+                AdBlock.leadingRules(opt.adv, userInb, "block", opt.geoBundled).forEach { add(it) }
                 extraRules.forEach { add(it) }
                 add(buildJsonObject {
                     put("type", "field")
@@ -956,7 +958,7 @@ object XrayConfigBuilder {
             putJsonArray("services") { add("RoutingService"); add("ObservatoryService"); add("StatsService") }
         }))
         // 1.0.39: the only routing change to a panel / custom config — the ad / tracker block rule on top
-        return AdBlock.patch(out, opt.adv, opt.adBlock, opt.geoExtra, opt.geoBundled)
+        return AdBlock.patch(out, opt.adv, opt.geoExtra, opt.geoBundled)
     }
 
     /**

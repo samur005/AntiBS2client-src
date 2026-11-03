@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 
-/** 1.0.40 (restored in 1.0.41): Etonify port — geo files, AdGuard list, whitelist, STUN, presets, masking. */
+/** 1.0.40 (restored in 1.0.41): Etonify port — geo files, presets, masking (2.0.15: AdGuard/whitelist/STUN removed with the ABS ad-block port). */
 class Etonify1040Test {
     private val vless = """{"protocol":"vless","settings":{"vnext":[{"address":"de.example.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"de.example.com"}}}"""
     private fun obj(s: String) = Json.parseToJsonElement(s).jsonObject
@@ -31,62 +31,6 @@ class Etonify1040Test {
         assertEquals(setOf("ADS"), got.keys)
         assertEquals(listOf(GeoPack.DOMAIN to "ads.test", GeoPack.FULL to "x.y.test"), GeoPack.domains(got["ADS"]!!))
         assertEquals("OTHER", GeoPack.tagOf(e2))
-    }
-
-    @Test fun adGuardParse() {
-        val p = AdGuardFilter.parse(
-            """
-            ! comment
-            ||ads.example.com^
-            ||track.example.org^${'$'}third-party
-            0.0.0.0 hosts.example.net
-            @@||good.example.com^
-            ||good.example.com^
-            example.com##.banner
-            /regex.*/
-            ||cdn.example.io:8080^
-            """.trimIndent()
-        )
-        assertTrue("ads.example.com" in p.block && "track.example.org" in p.block && "hosts.example.net" in p.block)
-        assertTrue("cdn.example.io" in p.block)
-        assertFalse("good.example.com" in p.block)
-        assertTrue("good.example.com" in p.allow)
-        assertFalse(p.block.any { it.contains('/') || it.contains('#') })
-    }
-
-    @Test fun userDomainsParse() {
-        val l = UserDomains.split("ads.test, full:exact.test;  *.wild.test\nhttps://u.test/path")
-        val p = UserDomains.parse(l).map { UserDomains.toXray(it) }
-        assertTrue("domain:ads.test" in p)
-        assertTrue("full:exact.test" in p)
-        assertTrue("domain:wild.test" in p)
-    }
-
-    @Test fun compilerWhitelist() {
-        val r = AdBlockCompiler.compile(
-            listOf(listOf(GeoPack.DOMAIN to "ads.test", GeoPack.DOMAIN to "a.good.test", GeoPack.DOMAIN to "tracker.test")),
-            listOf(GeoPack.DOMAIN to "good.test", GeoPack.DOMAIN to "ok.tracker.test"),
-        )
-        assertEquals(2, r.count); assertEquals(1, r.removed)
-        assertEquals(listOf("domain:ok.tracker.test"), r.allowOverrides)
-        val e = GeoPack.extract(ByteArrayInputStream(r.bytes), setOf(AdBlockCompiler.TAG)).values.single()
-        assertEquals(setOf("ads.test", "tracker.test"), GeoPack.domains(e).map { it.second }.toSet())
-    }
-
-    @Test fun whitelistInDefaultLists() {
-        val p = AdBlock.defaultPrepared(AdvancedSettings(allowCustom = listOf("mc.yandex.ru")))
-        assertFalse("domain:mc.yandex.ru" in p.block)
-        assertTrue("domain:mc.yandex.ru" in p.allow)
-    }
-
-    @Test fun stunRuleAndAllowOverride() {
-        val c = built(AdvancedSettings(blockStun = true, allowCustom = listOf("mc.yandex.ru")))
-        val rs = rules(c)
-        val stun = rs.first { tag(it) == "antibs-stun" }
-        assertEquals("block", stun["outboundTag"]!!.jsonPrimitive.content)
-        val iAllow = rs.indexOfFirst { tag(it) == "antibs-allow" }
-        val iAd = rs.indexOfFirst { tag(it) == "antibs-adblock" }
-        assertTrue(iAllow in 0 until iAd)
     }
 
     @Test fun presetRuBuilt() {

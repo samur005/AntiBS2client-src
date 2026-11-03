@@ -11,12 +11,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import net.antibs.client.desktop.FlagText as Text
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -27,89 +32,75 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import net.antibs.client.data.AdGuardFilter
+import net.antibs.client.data.AdBlock
+import net.antibs.client.data.AdBlockCounter
 import net.antibs.client.data.TrafficPresets
-import net.antibs.client.data.UserDomains
 import net.antibs.client.engine.AppState
 
-// ───────────────────────── 1.0.40: «Блокировка рекламы» ─────────────────────────
+// ───────────────────────── 2.0.15: «Блокировка рекламы» (ABS 3.1.27 AdBlockSheet port) ─────────────────────────
 
-internal fun adBlockSummary(a: net.antibs.client.data.AdvancedSettings) =
-    listOfNotNull("реклама".takeIf { a.blockAds }, "трекеры".takeIf { a.blockTrackers }, "AdGuard".takeIf { a.adGuard }, "STUN".takeIf { a.blockStun })
-        .joinToString(" · ").ifEmpty { "выкл" }
-
+/** ABS AdBlockCountSection: «Сегодня» / «Всего» from adblock_counts.json, «н/д» until a counted session ran. */
 @Composable
-internal fun AdBlockPage(vm: AppViewModel, st: AppState, onBack: () -> Unit) {
-    val a = st.adv
-    val ag by vm.adGuard.collectAsState()
-    val job by vm.adGuardJob.collectAsState()
-    var custom by remember(a.blockCustom) { mutableStateOf(a.blockCustom.joinToString("\n")) }
-    var allow by remember(a.allowCustom) { mutableStateOf(a.allowCustom.joinToString("\n")) }
-    SettingsScaffold("Блокировка рекламы", onBack) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-            item { SectionLabel("Встроенные списки") }
-            item { SwitchRow("Блокировать рекламу", a.blockAds) { v -> vm.setAdvTunnel { it.copy(blockAds = v) } } }
-            item { SwitchRow("Блокировать трекеры и аналитику", a.blockTrackers) { v -> vm.setAdvTunnel { it.copy(blockTrackers = v) } } }
-            item { HintText("Реклама — geosite category-ads-all (~114 тыс. доменов; свежая копия — после «Файлы георесурсов» → «Обновить»). Трекеры — Google Analytics, Яндекс Метрика/AppMetrica, AppsFlyer, Adjust, Amplitude, Mixpanel и др.") }
-
-            item { SectionLabel("Фильтр ${AdGuardFilter.NAME}") }
-            item {
-                SwitchRow("Использовать фильтр AdGuard", a.adGuard && ag.ready) { v ->
-                    if (v && !ag.ready) vm.updateAdGuard(enable = true) else vm.setAdvTunnel { it.copy(adGuard = v) }
+internal fun AdBlockCountTiles(c: AdBlockCounter.Counts, onReset: (() -> Unit)?) {
+    val style = LocalAppStyle.current
+    val sc = ssColors(style)
+    val day = AdBlockCounter.dayKey()
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            for ((label, v) in listOf("Сегодня" to c.todayFor(day), "Всего" to c.total)) {
+                Column(Modifier.weight(1f).clip(ssShape(style, 14.dp)).background(sc.accent.copy(alpha = 0.10f)).padding(12.dp)) {
+                    Text(label, fontSize = 12.sp, color = sc.muted)
+                    Text(AdBlockCounter.show(c.measured, v), fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = sc.accent, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
                 }
-            }
-            item {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    Text(
-                        if (ag.ready) "Фильтр готов: ${ag.blocked} доменов · исключений ${ag.allowed} · обновлён ${Format.dateTime(ag.updated)}" else "Фильтр ещё не скачан",
-                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (job.busy) {
-                        Text(job.stage, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-                        LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
-                    }
-                    job.error?.let { Text(it, fontSize = 12.sp, color = AntiBSColors.Err, modifier = Modifier.padding(top = 4.dp)) }
-                    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { vm.updateAdGuard(enable = !ag.ready) }, enabled = !job.busy) { Text(if (ag.ready) "Обновить" else "Скачать и включить") }
-                        if (ag.ready) OutlinedButton(onClick = { vm.deleteAdGuard() }, enabled = !job.busy) { Text("Удалить") }
-                    }
-                }
-            }
-            item { HintText("AdGuard DNS filter (~50–60 тыс. доменов, правила «@@» — исключения) скачивается один раз и хранится на устройстве; обновляйте вручную. Списки собираются в один локальный файл при подключении.") }
-
-            item { SectionLabel("Свои списки") }
-            item {
-                OutlinedTextField(custom, { custom = it }, label = { Text("Блокировать домены") }, minLines = 3,
-                    supportingText = { Text("По одному в строке: example.com (с поддоменами), full:host.example.com, ||ads.example^") },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
-            }
-            item {
-                OutlinedTextField(allow, { allow = it }, label = { Text("Исключения (белый список)") }, minLines = 3,
-                    supportingText = { Text("Эти домены и их поддомены никогда не блокируются") },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
-            }
-            item {
-                val cParsed = UserDomains.parse(UserDomains.split(custom)).size
-                val aParsed = UserDomains.parse(UserDomains.split(allow)).size
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
-                        val c = UserDomains.split(custom); val w = UserDomains.split(allow)
-                        vm.setAdvTunnel { it.copy(blockCustom = c, allowCustom = w) }
-                        vm.message("Сохранено: блок $cParsed, исключений $aParsed")
-                    }) { Text("Сохранить списки") }
-                    Text("$cParsed / $aParsed", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            item { SectionLabel("Утечки") }
-            item { SwitchRow("Блокировать STUN/WebRTC", a.blockStun) { v -> vm.setAdvTunnel { it.copy(blockStun = v) } } }
-            item { HintText("UDP-порты STUN/TURN (3478–3479, 5349, 19302–19309) уходят в blackhole: браузеры не смогут узнать реальный IP через WebRTC. Может мешать видеозвонкам в браузере.") }
-            item {
-                HintText("Работает в Xray для всех серверов: обычных, цепочек, балансировщиков, профилей маршрутизации, автовыбора панели и своего JSON. Блокировка по доменам (нужен сниффинг) — реклама с тех же доменов, что и контент (YouTube, ВК), не убирается. OpenVPN / OpenConnect работают без Xray — для них блокировка не действует." +
-                    if (!a.sniffing) " Сниффинг выключен — блокировка сработает только для DNS-запросов через Xray." else "")
             }
         }
+        if (onReset != null) OutlinedButton(onClick = onReset, modifier = Modifier.padding(top = 8.dp)) { Text("Сбросить") }
     }
+}
+
+/** 2.0.16: every ad-block item inline in the Settings «Блокировка рекламы» section — counters first. */
+@Composable
+internal fun AdBlockItems(vm: AppViewModel, st: AppState) {
+    val a = st.adv
+    val counts by vm.adCounts.collectAsState()
+    val sc = ssColors(LocalAppStyle.current)
+    fun cat(id: String, on: Boolean) = vm.setAdvTunnel { it.copy(adCats = if (on) (it.adCats + id).distinct() else it.adCats - id) }
+    val tunnelOn = AdBlock.enabled(a)
+    val dnsOn = AdBlock.dnsUrl(a) != null
+    SectionLabel("Заблокировано")
+    AdBlockCountTiles(counts, if (counts.measured) ({ vm.resetAdCounts() }) else null)
+    HintText((if (!tunnelOn) "Включите блокировку в туннеле — тогда запросы будут считаться."
+        else "Реальные запросы к рекламе и трекерам, отброшенные в туннеле (журнал Xray). Для OpenVPN / OpenConnect и других ядер без Xray подсчёт недоступен — н/д.") +
+        if (dnsOn) " Блокировка через DNS не считается (н/д)." else "")
+    SectionLabel("В туннеле")
+    SwitchRow("Блокировать рекламу и трекеры", a.blockAds, subtitle = "Отбрасывает известные рекламные и отслеживающие домены внутри туннеля") { v -> vm.setAdvTunnel { it.copy(blockAds = v) } }
+    SectionLabel("Категории")
+    AdBlock.CATS.filter { !it.telemetry }.forEach { c -> SwitchRow(c.title, c.id in a.adCats) { cat(c.id, it) } }
+    HintText("Работает в туннеле Xray. Списки вредоносных, азартных сайтов и майнеров в базе приложения отсутствуют, поэтому их здесь нет.")
+    SectionLabel("Телеметрия")
+    AdBlock.CATS.filter { it.telemetry }.forEach { c -> SwitchRow("Телеметрия ${c.title}", c.id in a.adCats) { cat(c.id, it) } }
+    HintText("Блокирует сбор данных через туннель Xray. Для Samsung в базе нет отдельного списка телеметрии. Блокировка Windows может мешать некоторым службам Microsoft.")
+    SectionLabel("ДНС-блокировщик рекламы")
+    SwitchRow("ДНС-блокировщик рекламы", a.adDnsOn, subtitle = "Резолвер, который отсекает рекламу и трекеры") { v ->
+        vm.setAdvTunnel { it.copy(adDnsOn = v, adDnsUrl = if (v && it.adDnsUrl.isBlank()) AdBlock.DNS_PRESETS.first().variants[1].url else it.adDnsUrl) }
+    }
+    if (a.adDnsOn) {
+        val sel = AdBlock.findDns(a.adDnsUrl)
+        AdBlock.DNS_PRESETS.forEach { pr ->
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Text(pr.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (sel?.first == pr) sc.accent else sc.onCard)
+                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    pr.variants.forEach { v ->
+                        FilterChip(selected = sel?.second == v, onClick = { vm.setAdvTunnel { it.copy(adDnsUrl = v.url) } }, label = { Text(v.kind) },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = sc.accent.copy(alpha = 0.22f), selectedLabelColor = sc.accent))
+                    }
+                }
+            }
+        }
+        SettingField("Свой адрес (udp, https://, quic://)", if (sel == null) a.adDnsUrl else "", { v -> if (v.isNotBlank()) vm.setAdvTunnel { it.copy(adDnsUrl = v.trim()) } },
+            valid = { it.isBlank() || AdBlock.dnsUrlOk(it) })
+    }
+    HintText("Пока блокировщик включён, он заменяет удалённый DNS из раздела «Сеть и DNS» (и профиля маршрутизации) для Xray. Выключите его — снова будет действовать выбранный там DNS.")
 }
 
 // ───────────────────────── 1.0.40: «Файлы георесурсов» ─────────────────────────
@@ -143,7 +134,7 @@ internal fun GeoFilesPage(vm: AppViewModel, onBack: () -> Unit) {
                 }
             }
             item {
-                HintText("Источник: github.com/runetfreedom/russia-v2ray-rules-dat (последний релиз, проверка SHA-256). Из ~90 МБ архива сохраняются только нужные списки (~6 МБ): ru-blocked (заблокированное в РФ), ru-available-only-inside, ru-whitelist, свежий category-ads-all. Их использует «.RU без VPN» и блокировка рекламы.")
+                HintText("Источник: github.com/runetfreedom/russia-v2ray-rules-dat (последний релиз, проверка SHA-256). Из ~90 МБ архива сохраняются только нужные списки (~6 МБ): ru-blocked (заблокированное в РФ), ru-available-only-inside, ru-whitelist. Их использует «.RU без VPN».")
             }
         }
     }
@@ -151,7 +142,7 @@ internal fun GeoFilesPage(vm: AppViewModel, onBack: () -> Unit) {
 
 // ───────────────────────── 1.0.40: «Правила трафика» (in «Маршрутизация») ─────────────────────────
 
-internal fun LazyListScope.trafficPresetItems(vm: AppViewModel, st: AppState, rfReady: Boolean, onOpenGeo: () -> Unit, onOpenAdBlock: () -> Unit) {
+internal fun LazyListScope.trafficPresetItems(vm: AppViewModel, st: AppState, rfReady: Boolean, onOpenGeo: () -> Unit) {
     val a = st.adv
     item { SectionLabel("Правила трафика") }
     listOf(TrafficPresets.OFF, TrafficPresets.RU, TrafficPresets.AI, TrafficPresets.SOCIAL).forEach { p ->
@@ -179,6 +170,12 @@ internal fun LazyListScope.trafficPresetItems(vm: AppViewModel, st: AppState, rf
     if (TrafficPresets.active(a)) item {
         HintText("Пресет действует для всех серверов Xray, включая автовыбор панели (его правила добавляются сверху). Профиль маршрутизации ниже, пока выбран пресет, не применяется.")
     }
-    item { NavRow("Блокировка рекламы", adBlockSummary(a)) { onOpenAdBlock() } }
     item { NavRow("Файлы георесурсов", if (rfReady) "списки РФ готовы" else "встроенные") { onOpenGeo() } }
 }
+
+// ───── desktop: Android 2.0.x server styles are not ported; classic colours only ─────
+internal object LocalAppStyle { val current: Unit @Composable get() = Unit }
+internal class DeskSsColors(val accent: androidx.compose.ui.graphics.Color, val muted: androidx.compose.ui.graphics.Color, val onCard: androidx.compose.ui.graphics.Color)
+@Composable
+internal fun ssColors(@Suppress("UNUSED_PARAMETER") style: Unit) = DeskSsColors(Accent.current, MaterialTheme.colorScheme.onSurfaceVariant, MaterialTheme.colorScheme.onSurface)
+internal fun ssShape(@Suppress("UNUSED_PARAMETER") style: Unit, r: androidx.compose.ui.unit.Dp) = androidx.compose.foundation.shape.RoundedCornerShape(r)

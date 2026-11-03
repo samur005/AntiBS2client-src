@@ -13,7 +13,20 @@ import kotlinx.serialization.json.jsonPrimitive
  * Persisted inside AppState (SharedPreferences, read synchronously by the VPN service) and mirrored to DataStore.
  */
 @Serializable
+data class CustomHoliday(
+    val id: String,
+    val name: String,
+    val emoji: String,
+    val month: Int,
+    val day: Int,
+    val endMonth: Int = 0,
+    val endDay: Int = 0,
+)
+
+@Serializable
 data class AdvancedSettings(
+    /** 1.0.55: «Единицы скорости» on the speed card: "bytes" (КБ/с, default, also for old installs) or "bits" (кбит/с). */
+    val speedUnits: String = "bytes",
     // Fragment (Xray finalmask "fragment", TCP)
     val fragType: String = "xray",
     val fragPackets: String = "tlshello",
@@ -56,11 +69,11 @@ data class AdvancedSettings(
     /** default | double | keepalive */
     val pingMode: String = "default",
     val pingTimeoutSec: Int = 5,
-    /** Ping hosts automatically on app open and after subscription refresh (default off). */
-    val autoPingServers: Boolean = false,
     val pingUrl: String = DEFAULT_PING_URL,
     /** time | color */
     val pingDisplay: String = "time",
+    /** Автопинг серверов при открытии приложения и после обновления подписок. */
+    val autoPingServers: Boolean = false,
     // Interface
     val hideEmptyManual: Boolean = true,
     val logging: Boolean = true,
@@ -75,14 +88,14 @@ data class AdvancedSettings(
     // Routing
     val routingProfiles: List<RoutingProfile> = emptyList(),
     val activeRoutingId: String? = null,
-    // 1.0.39: «Блокировка рекламы» (Xray routing → blackhole, DNS NXDOMAIN)
+    // 2.0.15: «Блокировка рекламы» — ABS 3.1.27 port (replaces the 1.0.39–1.0.40 lists / AdGuard file / STUN)
+    /** In-tunnel blocking: geosite category-ads-all + ABS ad hosts → «block-ads» (counted), QUIC (UDP 443) → block. */
     val blockAds: Boolean = true,
-    val blockTrackers: Boolean = true,
-    // 1.0.40 (Etonify port): AdGuard filter, STUN, own lists, traffic presets
-    val adGuard: Boolean = false,
-    val blockStun: Boolean = false,
-    val blockCustom: List<String> = emptyList(),
-    val allowCustom: List<String> = emptyList(),
+    /** ABS «Категории» / «Телеметрия» ids, see [AdBlock.CATS]. */
+    val adCats: List<String> = emptyList(),
+    /** ABS «ДНС-блокировщик рекламы»: when on, [adDnsUrl] replaces the remote DNS. */
+    val adDnsOn: Boolean = false,
+    val adDnsUrl: String = "",
     /** off | ru | ai | social */
     val trafficPreset: String = "off",
     val ruDns: String = "77.88.8.8",
@@ -94,6 +107,20 @@ data class AdvancedSettings(
     val notifTraffic: String = "both",
     val notifRefreshSec: Int = 2,
     val hideServerIp: Boolean = false,
+    /** off | auto | specific-id */
+    val seasonalDecor: String = "auto",
+    /** User-defined holidays: id, name, emoji, month, day (Gregorian). */
+    val customHolidays: List<CustomHoliday> = emptyList(),
+    // 2.0.6 (ABS port)
+    val seasonalFx: SeasonalFx = SeasonalFx(),
+    val subRemain: SubRemainStyle = SubRemainStyle(),
+    val serverGrouping: ServerGrouping = ServerGrouping(),
+    val pingChip: PingChipStyle = PingChipStyle(),
+    val autoPing: AutoPing = AutoPing(),
+    // 2.0.7: home variant B cards
+    /** 2.0.8: notification when another VPN app takes over (onRevoke). */
+    val revokeNotify: Boolean = true,
+    val homeUrlTest: Boolean = true,
 ) {
     val perAppSelected: List<String> get() = if (perAppMode == "bypass") perAppBypass else perAppInclude
 

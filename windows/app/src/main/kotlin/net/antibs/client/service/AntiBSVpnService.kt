@@ -83,7 +83,7 @@ object AntiBSVpnService {
             val o = opts(ctx, snap).copy(apiPort = apiPort)
             val plan0 = XrayConfigBuilder.plan(entry, store.servers(), o)
             VpnState.log("движок: ${plan0.engineLabel}")
-            val plan = plan0.copy(xray = withApi(plan0.xray, apiPort))
+            val plan = plan0.copy(xray = withAdCounter(ctx, withApi(plan0.xray, apiPort)))
             runner.start(entry, snap, if (a.mode == "proxy") "proxy" else "tun", protocol, apiPort, plan)
             if (!wd.established()) {
                 // the timeout (or a cancel) already won: tear the late connection down again
@@ -103,6 +103,43 @@ object AntiBSVpnService {
             VpnState.set(VpnStatus(ConnState.ERROR, serverName = entry.name, message = e.message ?: "ошибка"))
             runner.stopNow()
         }
+    }
+
+    // 2.0.20 (ABS AdBlockCounter, same as Android 2.0.15): access log of «block-ads» hits, drained every 2 s
+    @Volatile private var adLog: File? = null
+    @Volatile private var adLogOwn = true
+    private var adOff = 0L
+    private var adJob: Job? = null
+
+    private fun withAdCounter(ctx: Context, config: String): String {
+        adLog = null
+        return try {
+            val obj = kotlinx.serialization.json.Json.parseToJsonElement(config) as? JsonObject ?: return config
+            if (!net.antibs.client.data.AdBlockCounter.configCounts(obj)) return config
+            val own = File(Paths.logs.apply { mkdirs() }, net.antibs.client.data.AdBlockCounter.LOG_NAME)
+            val (out, path) = net.antibs.client.data.AdBlockCounter.withAccessLog(obj, own.absolutePath)
+            if (path == null) return config
+            val counts = File(ctx.filesDir, net.antibs.client.data.AdBlockCounter.COUNTS_NAME)
+            net.antibs.client.data.AdBlockCounter.markMeasured(counts)
+            val f = File(path)
+            adLogOwn = f.absolutePath == own.absolutePath
+            if (adLogOwn) try { own.writeText("") } catch (_: Throwable) {}
+            adOff = if (adLogOwn) 0L else f.length()
+            adLog = f
+            adJob?.cancel()
+            adJob = scope.launch {
+                while (true) {
+                    kotlinx.coroutines.delay(2000)
+                    val lf = adLog ?: break
+                    try {
+                        val (off, n) = net.antibs.client.data.AdBlockCounter.drain(lf, adOff, truncate = adLogOwn)
+                        adOff = off
+                        if (n > 0) net.antibs.client.data.AdBlockCounter.add(counts, n)
+                    } catch (_: Throwable) {}
+                }
+            }
+            out.toString()
+        } catch (_: Throwable) { config }
     }
 
     fun modeLabel(m: String) = if (m == "proxy") "системный прокси" else "VPN (TUN)"
@@ -151,7 +188,6 @@ object AntiBSVpnService {
             routing = routing,
             geoBundled = geoBundled,
             autoExclude = s.autoExcludeIds.toSet(),
-            adBlock = net.antibs.client.engine.BlockFiles.prepare(ctx, a) { VpnState.log(it) },
             geoExtra = net.antibs.client.engine.BlockFiles.geoExtra(ctx),
         )
     }

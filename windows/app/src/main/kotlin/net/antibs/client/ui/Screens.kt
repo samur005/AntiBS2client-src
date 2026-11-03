@@ -100,6 +100,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.CallSplit
+import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1085,25 +1089,25 @@ private fun SubCard(
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Filled.MoreVert, "Меню", modifier = Modifier.size(20.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (sub.kind != "manual") {
-                            DropdownMenuItem(text = { Text("Обновить") }, onClick = { menu = false; onRefresh() })
-                            DropdownMenuItem(text = { Text("Копировать ссылку") }, onClick = { menu = false; onCopy() })
+                            DropdownMenuItem(text = { Text("Обновить") }, leadingIcon = { MenuIcon(Icons.Filled.Refresh) }, onClick = { menu = false; onRefresh() })
+                            DropdownMenuItem(text = { Text("Копировать ссылку") }, leadingIcon = { MenuIcon(Icons.Filled.Link) }, onClick = { menu = false; onCopy() })
                         }
-                        DropdownMenuItem(text = { Text("Проверить пинг") }, onClick = { menu = false; onPing() })
+                        DropdownMenuItem(text = { Text("Проверить пинг") }, leadingIcon = { MenuIcon(Icons.Filled.NetworkCheck) }, onClick = { menu = false; onPing() })
                         if (realServers > 0) DropdownMenuItem(
                             text = { Text(if (scanningUnreachable) "Удалить недоступные (пинг…)" else "Удалить недоступные") },
                             enabled = !scanningUnreachable,
                             onClick = { menu = false; onDeleteUnreachable() },
                         )
                         if (sub.hiddenHosts.isNotEmpty()) {
-                            DropdownMenuItem(text = { Text("Показать удалённые хосты (${sub.hiddenHosts.size})") }, onClick = { menu = false; onRestoreHidden() })
+                            DropdownMenuItem(text = { Text("Показать удалённые хосты (${sub.hiddenHosts.size})") }, leadingIcon = { MenuIcon(Icons.Filled.Visibility) }, onClick = { menu = false; onRestoreHidden() })
                         }
                         if (sub.webPageUrl.isNotBlank()) {
-                            DropdownMenuItem(text = { Text("Страница подписки") }, onClick = { menu = false; runCatching { uri.openUri(sub.webPageUrl) } })
+                            DropdownMenuItem(text = { Text("Страница подписки") }, leadingIcon = { MenuIcon(Icons.Filled.Language) }, onClick = { menu = false; runCatching { uri.openUri(sub.webPageUrl) } })
                         }
                         if (sub.supportUrl.isNotBlank()) {
-                            DropdownMenuItem(text = { Text("Поддержка") }, onClick = { menu = false; runCatching { uri.openUri(sub.supportUrl) } })
+                            DropdownMenuItem(text = { Text("Поддержка") }, leadingIcon = { MenuIcon(Icons.Filled.SupportAgent) }, onClick = { menu = false; runCatching { uri.openUri(sub.supportUrl) } })
                         }
-                        DropdownMenuItem(text = { Text(if (sub.kind == "manual") "Очистить" else "Удалить") }, onClick = { menu = false; onDelete() })
+                        DropdownMenuItem(text = { Text(if (sub.kind == "manual") "Очистить" else "Удалить", color = AntiBSColors.Err) }, leadingIcon = { MenuIcon(Icons.Filled.Delete, danger = true) }, onClick = { menu = false; onDelete() })
                     }
                 }
             }
@@ -1251,12 +1255,12 @@ private fun ServerRow(
                 Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Filled.MoreVert, "Меню", modifier = Modifier.size(18.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        if (onPing != null) DropdownMenuItem(text = { Text("Пинг") }, onClick = { menu = false; onPing() })
-                        if (onCopy != null) DropdownMenuItem(text = { Text("Копировать имя") }, onClick = { menu = false; onCopy() })
-                        if (onEdit != null) DropdownMenuItem(text = { Text("Изменить") }, onClick = { menu = false; onEdit() })
-                        if (onReset != null) DropdownMenuItem(text = { Text("Сбросить изменения") }, onClick = { menu = false; onReset() })
-                        if (onToggleAuto != null) DropdownMenuItem(text = { Text(if (autoExcluded) "Вернуть в автовыбор" else "Исключить из автовыбора") }, onClick = { menu = false; onToggleAuto() })
-                        if (onDelete != null) DropdownMenuItem(text = { Text("Удалить", color = AntiBSColors.Err) }, onClick = { menu = false; onDelete() })
+                        if (onPing != null) DropdownMenuItem(text = { Text("Пинг") }, leadingIcon = { MenuIcon(Icons.Filled.NetworkCheck) }, onClick = { menu = false; onPing() })
+                        if (onCopy != null) DropdownMenuItem(text = { Text("Копировать имя") }, leadingIcon = { MenuIcon(Icons.Filled.ContentCopy) }, onClick = { menu = false; onCopy() })
+                        if (onEdit != null) DropdownMenuItem(text = { Text("Изменить") }, leadingIcon = { MenuIcon(Icons.Filled.Edit) }, onClick = { menu = false; onEdit() })
+                        if (onReset != null) DropdownMenuItem(text = { Text("Сбросить изменения") }, leadingIcon = { MenuIcon(Icons.Filled.Restore) }, onClick = { menu = false; onReset() })
+                        if (onToggleAuto != null) DropdownMenuItem(text = { Text(if (autoExcluded) "Вернуть в автовыбор" else "Исключить из автовыбора") }, leadingIcon = { MenuIcon(if (autoExcluded) Icons.Filled.AddCircleOutline else Icons.Filled.Block) }, onClick = { menu = false; onToggleAuto() })
+                        if (onDelete != null) DropdownMenuItem(text = { Text("Удалить", color = AntiBSColors.Err) }, leadingIcon = { MenuIcon(Icons.Filled.Delete, danger = true) }, onClick = { menu = false; onDelete() })
                     }
                 }
             }
@@ -1488,7 +1492,7 @@ private fun PowerToggle(state: ConnState, since: Long, onClick: () -> Unit) {
                 else -> "Не подключено"
             },
             color = when (state) {
-                ConnState.CONNECTED -> AntiBSColors.Blue
+                ConnState.CONNECTED -> AntiBSColors.Ok
                 ConnState.ERROR -> AntiBSColors.Err
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             },
@@ -1561,7 +1565,7 @@ private fun SettingsDetail(page: Page, vm: AppViewModel, ui: UiSettings, onBack:
         Page.Noise -> NoisePage(vm, st, onBack)
         Page.Mux -> MuxPage(vm, st, onBack)
         Page.Inbounds -> InboundsPage(vm, st, onBack)
-        Page.AdBlock -> AdBlockPage(vm, st, onBack)
+        Page.AdBlock -> androidx.compose.runtime.LaunchedEffect(Unit) { onBack() }
         Page.GeoFiles -> GeoFilesPage(vm, onBack)
         Page.NetScan -> SettingsScaffold("Сканер сети", onBack) { Text("Сканер сети Wi‑Fi есть только в Android-версии.", Modifier.padding(16.dp)) }
         Page.Excluded -> ExcludedRoutesPage(vm, st, onBack)
@@ -1652,10 +1656,83 @@ internal fun SectionLabel(text: String) {
         modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 8.dp))
 }
 
+
+/** 2.0.20 (Android 2.0.8/2.0.15): accent icon tile in front of settings rows and section headers. */
+@Composable
+internal fun SettingsIconTile(icon: androidx.compose.ui.graphics.vector.ImageVector, size: androidx.compose.ui.unit.Dp = 32.dp) {
+    Box(Modifier.size(size).clip(RoundedCornerShape(9.dp)).background(Accent.current.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = Accent.current, modifier = Modifier.size(18.dp))
+    }
+    Spacer(Modifier.width(12.dp))
+}
+
+/** 2.0.20 (Android 2.0.15): leading icon of a settings section header. */
+internal fun sectionIcon(title: String): androidx.compose.ui.graphics.vector.ImageVector {
+    val t = title.lowercase()
+    return when {
+        t.startsWith("настройки интерфейса") || t.startsWith("оформлен") -> Icons.Filled.Palette
+        t.startsWith("настройки туннеля") -> Icons.Filled.VpnKey
+        t.startsWith("блокировка") -> Icons.Filled.Block
+        t.startsWith("подписки") || t.startsWith("автообновлен") || t.startsWith("остаток") -> Icons.Filled.Subscriptions
+        t.startsWith("конфиденциальн") || t.startsWith("hwid") || t.startsWith("защита") -> Icons.Filled.Lock
+        t.startsWith("инструмент") -> Icons.Filled.Build
+        t.startsWith("приложение") -> Icons.Filled.DesktopWindows
+        else -> settingsIcon(title)
+    }
+}
+
+/** 2.0.8 / 2.0.15: leading icon for a settings row, picked by keywords in its title (most specific first). */
+internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.ImageVector {
+    val t = title.lowercase()
+    fun has(vararg k: String) = k.any { t.contains(it) }
+    return when {
+        has("реклам") -> Icons.Filled.Block
+        has("трекер", "телеметр", "взросл") -> Icons.Filled.Shield
+        has("сезон", "украшен", "снег", "гирлянд", "праздник") -> Icons.Filled.AcUnit
+        has("язык") -> Icons.Filled.Translate
+        has("акцент", "цвет") -> Icons.Filled.ColorLens
+        has("тем", "оформлен", "стиль", "интерфейс") -> Icons.Filled.Palette
+        has("вибрац") -> Icons.Filled.Vibration
+        has("тест скорост", "единиц", "скорост") -> Icons.Filled.Speed
+        has("пинг", "url тест") -> Icons.Filled.NetworkCheck
+        has("hwid") -> Icons.Filled.Fingerprint
+        has("автообнов", "обновлять подписки", "интервал", "автопроверк", "проверить обновлен") -> Icons.Filled.Update
+        has("wi‑fi", "wi-fi", "сканер") -> Icons.Filled.Wifi
+        has("подписк") -> Icons.Filled.Subscriptions
+        has("уведомл", "шторк") -> Icons.Filled.Notifications
+        has("расписан") -> Icons.Filled.Schedule
+        has("запуск", "надёжн", "фон") -> Icons.Filled.PowerSettingsNew
+        has("режим работы") -> Icons.Filled.SettingsEthernet
+        has("для выбранных приложен", "приложени") && !has("о приложен") -> Icons.Filled.Apps
+        has("маршрут", "исключ") -> Icons.Filled.AltRoute
+        has("dns") -> Icons.Filled.Dns
+        has("фрагмент") -> Icons.AutoMirrored.Filled.CallSplit
+        has("mux") -> Icons.Filled.MergeType
+        has("тип ip", "ipv") -> Icons.Filled.Language
+        has("mtu", "пакет", "сниффинг", "шум", "обфускац") -> Icons.Filled.Tune
+        has("lan", "локальн", "inbound", "сеть", "сети") -> Icons.Filled.Router
+        has("георесурс", "глобус", "карт", "океан") -> Icons.Filled.Public
+        has("обход", "блок", "kill", "конфиденц", "безопас", "скрывать ip") -> Icons.Filled.Lock
+        has("vpn", "туннел", "ядр", "xray", "протокол", "qwdtt", "mieru", "sing", "mihomo", "turn") -> Icons.Filled.VpnKey
+        has("лог") -> Icons.AutoMirrored.Filled.Article
+        has("экспорт") -> Icons.Filled.Upload
+        has("импорт") -> Icons.Filled.Download
+        has("версия", "о приложен", "о программе") -> Icons.Filled.Info
+        has("сервер", "список", "хост", "групп", "стран", "компакт") -> Icons.AutoMirrored.Filled.ViewList
+        has("инструмент", "резерв") -> Icons.Filled.Build
+        has("главн", "url") -> Icons.Filled.Public
+        else -> Icons.Filled.Tune
+    }
+}
+
+
 /** 1.0.50: rounded card grouping settings rows (thin dividers between rows, none after the last). */
 @Composable
 internal fun SettingsCard(title: String? = null, content: @Composable () -> Unit) {
-    if (title != null) SectionLabel(title)
+    if (title != null) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        SettingsIconTile(sectionIcon(title), 28.dp)
+        Text(title, color = Accent.current, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+    }
     Surface(
         shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -1697,6 +1774,7 @@ internal fun NavRow(title: String, value: String? = null, dropdown: Boolean = fa
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        SettingsIconTile(settingsIcon(title))
         if (dropdown) {
             RowTexts(title, subtitle, Modifier.weight(1f).padding(end = 8.dp))
             if (value != null) Text(value, color = AntiBSColors.Blue, fontSize = 15.sp, maxLines = 1)
@@ -1713,6 +1791,7 @@ internal fun NavRow(title: String, value: String? = null, dropdown: Boolean = fa
 internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
+        SettingsIconTile(settingsIcon(title))
         RowTexts(title, subtitle, Modifier.weight(1f).padding(vertical = 4.dp).padding(end = 8.dp))
         Switch(checked, onChange, colors = SwitchDefaults.colors(checkedTrackColor = AntiBSColors.Blue, checkedThumbColor = Color.White))
     }
@@ -1961,3 +2040,8 @@ private fun AdminDialog(onRestart: () -> Unit, onProxy: () -> Unit, onDismiss: (
         dismissButton = { Row { TextButton(onClick = onProxy) { Text("Системный прокси") }; TextButton(onClick = onDismiss) { Text("Отмена") } } },
     )
 }
+
+/** 2.0.20 (Android 2.0.14): leading icon for ⋮ menu items (uniform size/tint; destructive = red). */
+@Composable
+internal fun MenuIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, danger: Boolean = false) =
+    Icon(icon, null, modifier = Modifier.size(20.dp), tint = if (danger) AntiBSColors.Err else MaterialTheme.colorScheme.onSurfaceVariant)

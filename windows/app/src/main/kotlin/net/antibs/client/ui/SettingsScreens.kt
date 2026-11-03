@@ -96,6 +96,7 @@ internal fun HintText(text: String) {
 @Composable
 internal fun SwitchNavRow(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit, onOpen: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        SettingsIconTile(settingsIcon(title))
         Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
             Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, lineHeight = 21.sp)
             if (subtitle != null) Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 17.sp,
@@ -299,7 +300,7 @@ internal fun RoutingListPage(vm: AppViewModel, st: AppState, onOpenProfile: (Str
     }) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item { SwitchRow("Обход локальной сети", st.bypassLan) { vm.setBypassLan(it) } }
-            trafficPresetItems(vm, st, rf.ready, onOpenGeo = { onOpenPage("GeoFiles") }, onOpenAdBlock = { onOpenPage("AdBlock") })
+            trafficPresetItems(vm, st, rf.ready, onOpenGeo = { onOpenPage("GeoFiles") })
             item { SectionLabel("Профили маршрутизации") }
             item {
                 RoutingRow("Без профиля", "Весь трафик через выбранный сервер", a.activeRoutingId == null, onSelect = { vm.setActiveRouting(null) }, onOpen = null)

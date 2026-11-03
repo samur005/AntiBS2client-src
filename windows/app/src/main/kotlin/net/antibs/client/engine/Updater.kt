@@ -30,20 +30,48 @@ object Updater {
     fun sumsAsset(r: UpdateLogic.Release): UpdateLogic.Asset? =
         r.assets.firstOrNull { it.name.equals("SHA256SUMS-windows.txt", true) } ?: r.assets.firstOrNull { it.name.equals("SHA256SUMS.txt", true) }
 
-    suspend fun check(current: String, override: String): UpdateLogic.Update? = withContext(Dispatchers.IO) {
-        val c = open(UpdateLogic.apiUrl(override).replace("/releases/latest", "/releases?per_page=10"), "application/vnd.github+json")
+    /**
+     * 2.0.20: the update for [current] among GitHub release objects (releases/latest + the releases list): drafts and
+     * prereleases are skipped, only releases carrying a «…windows…setup.exe» count, the newest version wins.
+     */
+    fun pickUpdate(releases: List<kotlinx.serialization.json.JsonElement>, current: String): UpdateLogic.Update? =
+        releases.asSequence()
+            .filter { el ->
+                val o = el as? kotlinx.serialization.json.JsonObject ?: return@filter false
+                fun flag(k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.content == "true"
+                !flag("draft") && !flag("prerelease")
+            }
+            .mapNotNull { UpdateLogic.parseRelease(it.toString()) }
+            .distinctBy { it.tag }
+            .mapNotNull { r -> pickSetup(r)?.let { a -> UpdateLogic.Update(r, a, sumsAsset(r)) } }
+            .filter { UpdateLogic.isNewer(it.release.version, current) }
+            .maxWithOrNull { a, b -> UpdateLogic.compare(a.release.version, b.release.version) }
+
+    const val SCAN = 50
+
+    private fun fetchJson(url: String): kotlinx.serialization.json.JsonElement? {
+        val c = open(url, "application/vnd.github+json")
         try {
             val code = c.responseCode
             val headers = c.headerFields.orEmpty().filterKeys { it != null }.mapValues { it.value.lastOrNull().orEmpty() }.mapKeys { it.key!! }
             UpdateLogic.rateLimitMessage(code, headers, System.currentTimeMillis() / 1000)?.let { throw IllegalStateException(it) }
+            if (code == 404) return null
             if (code !in 200..299) throw IllegalStateException("GitHub: HTTP $code")
-            val body = c.inputStream.bufferedReader().use { it.readText() }
-            val arr = kotlinx.serialization.json.Json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonArray ?: return@withContext null
-            arr.asSequence().mapNotNull { UpdateLogic.parseRelease(it.toString()) }
-                .mapNotNull { r -> pickSetup(r)?.let { a -> UpdateLogic.Update(r, a, sumsAsset(r)) } }
-                .filter { UpdateLogic.isNewer(it.release.version, current) }
-                .maxWithOrNull { a, b -> UpdateLogic.compare(a.release.version, b.release.version) }
+            return kotlinx.serialization.json.Json.parseToJsonElement(c.inputStream.bufferedReader().use { it.readText() })
         } finally { c.disconnect() }
+    }
+
+    /** releases/latest first (never a prerelease), then the last [SCAN] releases (a Windows setup may sit on an older one). */
+    suspend fun check(current: String, override: String): UpdateLogic.Update? = withContext(Dispatchers.IO) {
+        val latestUrl = UpdateLogic.apiUrl(override)
+        val latest = try { fetchJson(latestUrl) } catch (e: Exception) { if (!latestUrl.endsWith("/releases/latest")) throw e else null }
+        val listUrl = if (latestUrl.endsWith("/releases/latest")) latestUrl.removeSuffix("/latest") + "?per_page=$SCAN" else null
+        val list = listUrl?.let { u ->
+            try { fetchJson(u) as? kotlinx.serialization.json.JsonArray }
+            catch (e: Exception) { if (latest == null) throw e else null }
+        }.orEmpty()
+        val first = (latest as? kotlinx.serialization.json.JsonArray)?.toList() ?: listOfNotNull(latest)
+        pickUpdate(first + list, current)
     }
 
     private fun sha256(f: File): String {

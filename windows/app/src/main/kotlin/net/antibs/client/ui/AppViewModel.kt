@@ -240,10 +240,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- 1.0.40: «Блокировка рекламы» files (AdGuard), «Файлы георесурсов» (runetfreedom), QS tile ----
     data class FileJob(val busy: Boolean = false, val stage: String = "", val error: String? = null)
-    private val _adGuard = MutableStateFlow(net.antibs.client.engine.BlockFiles.adGuardStatus(getApplication()))
-    val adGuard: StateFlow<net.antibs.client.engine.BlockFiles.AdGuardStatus> = _adGuard
-    private val _adGuardJob = MutableStateFlow(FileJob())
-    val adGuardJob: StateFlow<FileJob> = _adGuardJob
     private val _rf = MutableStateFlow(net.antibs.client.engine.BlockFiles.rfStatus(getApplication()))
     val rf: StateFlow<net.antibs.client.engine.BlockFiles.RfStatus> = _rf
     private val _rfJob = MutableStateFlow(FileJob())
@@ -251,29 +247,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun mb(n: Long) = String.format(java.util.Locale.US, "%.1f МБ", n / 1048576.0)
 
-    /** Download / update the AdGuard DNS filter; [enable] turns the toggle on after a successful download. */
-    fun updateAdGuard(enable: Boolean = false) {
-        if (_adGuardJob.value.busy) return
-        _adGuardJob.value = FileJob(true, "Подключаемся к AdGuard…")
+    // ---- 2.0.15: ABS ad-block counter (the service adds hits to adblock_counts.json) ----
+    private val countsFile get() = java.io.File(getApplication<android.app.Application>().filesDir, net.antibs.client.data.AdBlockCounter.COUNTS_NAME)
+    private val _adCounts = MutableStateFlow(net.antibs.client.data.AdBlockCounter.Counts())
+    val adCounts: StateFlow<net.antibs.client.data.AdBlockCounter.Counts> = _adCounts
+    init {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val st = net.antibs.client.engine.BlockFiles.downloadAdGuard(getApplication()) { done, total ->
-                    _adGuardJob.value = FileJob(true, "Скачиваем фильтр: ${mb(done)}" + if (total > 0) " из ${mb(total)}" else "")
-                }
-                _adGuard.value = st
-                _adGuardJob.value = FileJob()
-                if (enable) setAdvTunnel { it.copy(adGuard = true) }
-                _toast.value = "Фильтр AdGuard обновлён: ${st.blocked} доменов"
-            } catch (e: Exception) {
-                _adGuardJob.value = FileJob(error = "Не удалось скачать фильтр: ${e.message}")
+            try { net.antibs.client.engine.BlockFiles.cleanupLegacy(getApplication()) } catch (_: Throwable) {}
+            while (true) {
+                _adCounts.value = net.antibs.client.data.AdBlockCounter.load(countsFile)
+                kotlinx.coroutines.delay(2000)
             }
         }
     }
-
-    fun deleteAdGuard() {
-        net.antibs.client.engine.BlockFiles.deleteAdGuard(getApplication())
-        _adGuard.value = net.antibs.client.engine.BlockFiles.adGuardStatus(getApplication())
-        setAdvTunnel { it.copy(adGuard = false) }
+    fun resetAdCounts() {
+        viewModelScope.launch(Dispatchers.IO) {
+            net.antibs.client.data.AdBlockCounter.reset(countsFile)
+            _adCounts.value = net.antibs.client.data.AdBlockCounter.load(countsFile)
+        }
     }
 
     fun updateGeoFiles() {
@@ -657,7 +648,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!x.unsupportedReason.isNullOrBlank()) return@withContext -2L
         val plan = try {
             XrayConfigBuilder.plan(s, st.servers, XrayConfigBuilder.Options(
-                mux = st.mux, fragmentation = st.fragmentation, ipType = st.ipType, adv = a.copy(httpInbound = false, localDns = false, blockAds = false, blockTrackers = false, adGuard = false, blockCustom = emptyList(), blockStun = false, trafficPreset = "off"),
+                mux = st.mux, fragmentation = st.fragmentation, ipType = st.ipType, adv = a.copy(httpInbound = false, localDns = false, blockAds = false, adCats = emptyList(), adDnsOn = false, trafficPreset = "off"),
                 logLevel = "none", autoExclude = st.autoExcludeIds.toSet(),
             ))
         } catch (_: Exception) { return@withContext -1L }
