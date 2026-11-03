@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Builds libv2ray.aar (Xray-core v26.9.30 via AndroidLibXrayLite) for arm64 + x86_64
+# Builds libv2ray.aar (Xray-core v26.10.31 via AndroidLibXrayLite) for arm64 + x86_64
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-source "$ROOT/scripts/env.sh"
+source "${ENVFILE:-$ROOT/scripts/env.sh}"
 cd "$ROOT/native/AndroidLibXrayLite"
 export GOFLAGS="-p=4"
 gomobile init

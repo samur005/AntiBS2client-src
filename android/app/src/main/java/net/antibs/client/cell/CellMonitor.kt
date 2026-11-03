@@ -73,6 +73,22 @@ class CellMonitor(private val ctx: Context) {
     val rateDown = MutableStateFlow(0L) // bit/s
     val rateUp = MutableStateFlow(0L)
     val error = MutableStateFlow<String?>(null)
+    /** subId of the SIM used for mobile data, or null when unknown. */
+    val dataSub = MutableStateFlow<Int?>(null)
+    private var dataRx: android.content.BroadcastReceiver? = null
+
+    private fun activeDataSubId(): Int = runCatching {
+        if (Build.VERSION.SDK_INT < 30) return@runCatching -1
+        val cm = app.getSystemService(android.net.ConnectivityManager::class.java) ?: return@runCatching -1
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return@runCatching -1
+        if (!caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)) return@runCatching -1
+        (caps.networkSpecifier as? android.net.TelephonyNetworkSpecifier)?.subscriptionId ?: -1
+    }.getOrDefault(-1)
+
+    private fun updateDataSub() {
+        val def = runCatching { SubscriptionManager.getDefaultDataSubscriptionId() }.getOrDefault(-1)
+        dataSub.value = DataSimPick.dataSub(subs.map { it.subId }, def, activeDataSubId())
+    }
 
     private class Sub(val subId: Int, val slot: Int, val name: String, val tm: TelephonyManager) {
         var cells: List<CellInfo> = emptyList()
@@ -100,6 +116,14 @@ class CellMonitor(private val ctx: Context) {
             subs += Sub(si.subscriptionId, si.simSlotIndex, (si.carrierName?.toString() ?: si.displayName?.toString()).orEmpty().ifBlank { tm.networkOperatorName }, tm)
         }
         subs.forEach { listen(it) }
+        updateDataSub()
+        runCatching {
+            val rx = object : android.content.BroadcastReceiver() {
+                override fun onReceive(c: Context?, i: android.content.Intent?) { updateDataSub() }
+            }
+            ContextCompat.registerReceiver(app, rx, android.content.IntentFilter(SubscriptionManager.ACTION_DEFAULT_SUBSCRIPTION_CHANGED).apply { addAction("android.intent.action.ACTION_DEFAULT_DATA_SUBSCRIPTION_CHANGED") }, ContextCompat.RECEIVER_EXPORTED)
+            dataRx = rx
+        }
         scope.launch { while (isActive) { subs.forEach { refresh(it) }; delay(2000) } }
         scope.launch {
             var rx = TrafficStats.getMobileRxBytes(); var tx = TrafficStats.getMobileTxBytes(); var t = System.nanoTime()
@@ -117,6 +141,8 @@ class CellMonitor(private val ctx: Context) {
         scope.coroutineContext.cancelChildren()
         subs.forEach { s -> s.cleanups.forEach { runCatching { it() } } }
         subs.clear()
+        dataRx?.let { r -> runCatching { app.unregisterReceiver(r) } }
+        dataRx = null
     }
 
     private fun refresh(s: Sub) {

@@ -122,7 +122,10 @@ private fun MonitorTab(monitor: CellMonitor) {
     val down by monitor.rateDown.collectAsState()
     val up by monitor.rateUp.collectAsState()
     val err by monitor.error.collectAsState()
-    var sel by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
+    val dataSub by monitor.dataSub.collectAsState()
+    // Explicit tab choice (subId) for this session; reset when the data SIM changes.
+    var userSub by androidx.compose.runtime.saveable.rememberSaveable(dataSub) { mutableStateOf<Int?>(null) }
+    val sel = net.antibs.client.cell.DataSimPick.index(sims.map { it.subId }, userSub, dataSub)
     var sort by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(NSort.Signal.name) }
     val sim = sims.getOrNull(sel) ?: sims.firstOrNull()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -133,7 +136,7 @@ private fun MonitorTab(monitor: CellMonitor) {
         }
         if (sims.size > 1) item {
             TabRow(selectedTabIndex = sims.indexOf(sim).coerceAtLeast(0), containerColor = Color.Transparent) {
-                sims.forEachIndexed { i, s -> Tab(selected = sim == s, onClick = { sel = i }, text = { Text("SIM${s.slot + 1} · ${s.carrier}") }) }
+                sims.forEachIndexed { i, s -> Tab(selected = sim == s, onClick = { userSub = s.subId }, text = { Text("SIM${s.slot + 1} · ${s.carrier}" + if (s.subId == dataSub) " · данные" else "") }) }
             }
         }
         if (sim == null) return@LazyColumn
