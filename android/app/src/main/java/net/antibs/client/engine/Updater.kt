@@ -48,7 +48,7 @@ object Updater {
     }
 
     /** Downloads the APK into cacheDir/updates and verifies it against SHA256SUMS (when the release has one). */
-    suspend fun download(ctx: Context, u: UpdateLogic.Update, progress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
+    suspend fun download(ctx: Context, u: UpdateLogic.Update, progress: (done: Long, total: Long) -> Unit): File = withContext(Dispatchers.IO) {
         val expected = u.sums?.let { s ->
             val c = open(s.url)
             try {
@@ -65,6 +65,7 @@ object Updater {
             if (c.responseCode !in 200..299) throw IllegalStateException("Загрузка: HTTP ${c.responseCode}")
             val total = c.contentLengthLong.takeIf { it > 0 } ?: u.apk.size
             var done = 0L
+            var lastEmit = 0L
             c.inputStream.use { inp ->
                 out.outputStream().use { o ->
                     val b = ByteArray(128 * 1024)
@@ -72,10 +73,12 @@ object Updater {
                         kotlinx.coroutines.currentCoroutineContext().ensureActive()  // 1.0.54: «Отмена»
                         val n = inp.read(b); if (n < 0) break
                         o.write(b, 0, n); done += n
-                        if (total > 0) progress((done.toFloat() / total).coerceIn(0f, 1f))
+                        val now = System.nanoTime()
+                        if (now - lastEmit > 100_000_000L) { lastEmit = now; progress(done, total) }
                     }
                 }
             }
+            progress(done, total)
         } catch (e: Throwable) { out.delete(); throw e } finally { c.disconnect() }
         if (expected != null) {
             val got = sha256(out)

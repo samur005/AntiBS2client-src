@@ -322,27 +322,8 @@ internal fun UpdateDialog(vm: AppViewModel) {
             confirmButton = { TextButton(onClick = { vm.downloadUpdate(s.u) }) { Text("Обновить") } },
             dismissButton = { TextButton(onClick = { vm.dismissUpdate() }) { Text("Позже") } },
         )
-        is AppViewModel.UpdateUi.Downloading -> AlertDialog(
-            onDismissRequest = {},
-            title = { Text("Загрузка ${s.u.release.version}") },
-            text = {
-                Column {
-                    LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(6.dp))
-                    Text("${(s.progress * 100).toInt()}% · проверка SHA-256 после загрузки", fontSize = 12.sp)
-                }
-            },
-            confirmButton = {},
-            // 1.0.54: cancel the running download (style tokens: error colour + style shape)
-            dismissButton = {
-                androidx.compose.material3.OutlinedButton(
-                    onClick = { vm.cancelUpdateDownload() },
-                    shape = MaterialTheme.shapes.small,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f)),
-                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) { Text("Отмена") }
-            },
-        )
+        is AppViewModel.UpdateUi.Downloading -> UpdateDownloadWindow(s,
+            onMinimize = { vm.setUpdateMinimized(true) }, onRestore = { vm.setUpdateMinimized(false) }, onCancel = { vm.cancelUpdateDownload() })
         is AppViewModel.UpdateUi.NeedPermission -> AlertDialog(
             onDismissRequest = { vm.dismissUpdate() },
             title = { Text("Нужно разрешение") },
@@ -373,6 +354,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val vpn by VpnState.status.collectAsState()
     val pings by vm.pings.collectAsState()
     val pinging by vm.pinging.collectAsState()
+    val pingBatch by vm.pingBatch.collectAsState()
     val unreachableScan by vm.unreachableScan.collectAsState()
     val tunnelPing by vm.tunnelPing.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
@@ -730,6 +712,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 run {
+                if (pingBatch.isNotEmpty()) item(key = "ping-counter") { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }) }
                 if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
                     item { Text("Нет подписок. Нажмите «+» вверху справа или купите подписку в «Магазине».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp)) }
                 }
