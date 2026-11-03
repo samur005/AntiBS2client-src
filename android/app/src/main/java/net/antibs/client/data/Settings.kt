@@ -88,14 +88,14 @@ data class AdvancedSettings(
     // Routing
     val routingProfiles: List<RoutingProfile> = emptyList(),
     val activeRoutingId: String? = null,
-    // 1.0.39: «Блокировка рекламы» (Xray routing → blackhole, DNS NXDOMAIN)
+    // 2.0.15: «Блокировка рекламы» — ABS 3.1.27 port (replaces the 1.0.39–1.0.40 lists / AdGuard file / STUN)
+    /** In-tunnel blocking: geosite category-ads-all + ABS ad hosts → «block-ads» (counted), QUIC (UDP 443) → block. */
     val blockAds: Boolean = true,
-    val blockTrackers: Boolean = true,
-    // 1.0.40 (Etonify port): AdGuard filter, STUN, own lists, traffic presets
-    val adGuard: Boolean = false,
-    val blockStun: Boolean = false,
-    val blockCustom: List<String> = emptyList(),
-    val allowCustom: List<String> = emptyList(),
+    /** ABS «Категории» / «Телеметрия» ids, see [AdBlock.CATS]. */
+    val adCats: List<String> = emptyList(),
+    /** ABS «ДНС-блокировщик рекламы»: when on, [adDnsUrl] replaces the remote DNS. */
+    val adDnsOn: Boolean = false,
+    val adDnsUrl: String = "",
     /** off | ru | ai | social */
     val trafficPreset: String = "off",
     val ruDns: String = "77.88.8.8",

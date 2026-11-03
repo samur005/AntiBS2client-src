@@ -9,6 +9,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onLast
@@ -32,7 +38,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [34], qualifiers = "w400dp-h860dp-xxhdpi")
 class PolishShotsTest {
     @get:Rule val rule = androidx.compose.ui.test.junit4.createAndroidComposeRule<androidx.activity.ComponentActivity>()
-    private val dir = "/workspace/polish_shots"
+    private var dir = "/workspace/polish_shots"
 
     @Composable private fun banner(vpn: Long?, vk: Long?, busy: Boolean) = Column(Modifier.padding(12.dp)) {
         ConnectionCard(
@@ -83,5 +89,36 @@ class PolishShotsTest {
         rule.onNodeWithContentDescription("Меню").performClick()
         rule.waitForIdle()
         save("sub_menu_dark", popup = true)
+    }
+
+    // ───────── 2.0.15 ─────────
+    private fun d15() { dir = "/workspace/polish_shots/2015" }
+    private fun live(theme: ThemeMode, content: @Composable () -> Unit) {
+        Assume.assumeTrue(System.getenv("ABS_SHOTS") == "1")
+        rule.setContent { AntiBSTheme(theme) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() } } }
+        rule.waitForIdle()
+    }
+    @Test fun s15BannerIdle() { d15(); show(ThemeMode.DARK) { banner(84, 231, false) }; save("banner_idle_dark", 700) }
+    @Test fun s15BannerPinging() { d15(); show(ThemeMode.DARK) { banner(84, 231, true) }; save("banner_pinging_dark", 700) }
+    @Test fun s15BannerTimeout() { d15(); show(ThemeMode.DARK) { banner(-1, 9999, false) }; save("banner_timeout_dark", 700) }
+    @Test fun s15AdBlock() {
+        d15()
+        val f = File(rule.activity.filesDir, net.antibs.client.data.AdBlockCounter.COUNTS_NAME)
+        net.antibs.client.data.AdBlockCounter.save(f, net.antibs.client.data.AdBlockCounter.Counts(net.antibs.client.data.AdBlockCounter.dayKey(), 137, 4821, true))
+        val vm = AppViewModel(rule.activity.application)
+        vm.setAdvTunnel { it.copy(blockAds = true, adCats = listOf("tm_windows"), adDnsOn = true, adDnsUrl = net.antibs.client.data.AdBlock.DNS_PRESETS.first().variants[1].url) }
+        live(ThemeMode.DARK) { val st by vm.state.collectAsState(); AdBlockPage(vm, st) {} }
+        Thread.sleep(2500); rule.waitForIdle()
+        save("adblock_page_dark", 1500)
+        save("adblock_counters_dark", 620)
+        rule.onRoot().performTouchInput { swipeUp() }; rule.waitForIdle()
+        save("adblock_page_dark_bottom")
+    }
+    @Test fun s15SettingsCollapsed() {
+        d15(); val vm = AppViewModel(rule.activity.application)
+        live(ThemeMode.DARK) { SettingsHome(vm, vm.ui.value, {}, {}, "Settings") }
+        save("settings_collapsed_dark")
+        rule.onNodeWithText("Блокировка").performClick(); rule.waitForIdle()
+        save("settings_expanded_dark")
     }
 }

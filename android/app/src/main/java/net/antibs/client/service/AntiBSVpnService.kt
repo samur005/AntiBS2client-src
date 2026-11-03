@@ -262,8 +262,6 @@ class AntiBSVpnService : VpnService() {
             packageUids = uids,
             geoBundled = geoBundled,
             autoExclude = s.autoExcludeIds.toSet(),
-            // 1.0.40: AdGuard / whitelist / own lists compiled into one file; rf lists for presets
-            adBlock = net.antibs.client.engine.BlockFiles.prepare(this, a) { VpnState.log(it) },
             geoExtra = net.antibs.client.engine.BlockFiles.geoExtra(this),
         ).also {
             if (net.antibs.client.data.TrafficPresets.active(a)) {
@@ -441,8 +439,41 @@ class AntiBSVpnService : VpnService() {
         }
     }
 
-    private fun startXray(config: String, name: String, protocol: String, gen: Int) {
+    // 2.0.15 (ABS AdBlockCounter): access log of «block-ads» hits, drained by the stats loop
+    @Volatile private var adLog: File? = null
+    @Volatile private var adLogOwn = true
+    private var adOff = 0L
+
+    private fun withAdCounter(config: String): String {
+        adLog = null
+        return try {
+            val obj = kotlinx.serialization.json.Json.parseToJsonElement(config) as? kotlinx.serialization.json.JsonObject ?: return config
+            if (!net.antibs.client.data.AdBlockCounter.configCounts(obj)) return config
+            val own = File(File(filesDir, "logs").apply { mkdirs() }, net.antibs.client.data.AdBlockCounter.LOG_NAME)
+            val (out, path) = net.antibs.client.data.AdBlockCounter.withAccessLog(obj, own.absolutePath)
+            if (path == null) return config
+            net.antibs.client.data.AdBlockCounter.markMeasured(File(filesDir, net.antibs.client.data.AdBlockCounter.COUNTS_NAME))
+            val f = File(path)
+            adLogOwn = f.absolutePath == own.absolutePath
+            if (adLogOwn) try { own.writeText("") } catch (_: Throwable) {}
+            adOff = if (adLogOwn) 0L else f.length()
+            adLog = f
+            out.toString()
+        } catch (_: Throwable) { config }
+    }
+
+    private fun drainAdLog() {
+        val f = adLog ?: return
+        try {
+            val (off, n) = net.antibs.client.data.AdBlockCounter.drain(f, adOff, truncate = adLogOwn)
+            adOff = off
+            if (n > 0) net.antibs.client.data.AdBlockCounter.add(File(filesDir, net.antibs.client.data.AdBlockCounter.COUNTS_NAME), n)
+        } catch (_: Throwable) {}
+    }
+
+    private fun startXray(config0: String, name: String, protocol: String, gen: Int) {
         if (!isCurrent(gen)) return
+        val config = withAdCounter(config0)
         val snap = AppStore(this).snapshot()
         val a = snap.adv
         val proxyOnly = a.mode == "proxy"
@@ -584,6 +615,7 @@ class AntiBSVpnService : VpnService() {
             val ja = jsonAuto
             val jaTraffic = HashMap<String, Long>()
             var tick = 0
+            var adTick = 0
             val nAdv = AppStore(this).snapshot().adv
             val nMode = nAdv.notifTraffic
             val nEvery = nAdv.notifRefreshSec.coerceIn(1, 30)
@@ -591,6 +623,7 @@ class AntiBSVpnService : VpnService() {
             while (running) {
                 try { Thread.sleep(1000) } catch (_: InterruptedException) { break }
                 if (!running) break
+                if (++adTick % 3 == 0) drainAdLog()
                 val delta = XrayCore.queryTrafficDelta()
                 var up = delta.proxyUp
                 var down = delta.proxyDown
@@ -709,6 +742,7 @@ class AntiBSVpnService : VpnService() {
 
     private fun stopAll() {
         running = false
+        drainAdLog(); adLog = null
         watchdog?.cancel()
         statsThread?.interrupt()
         autoThread?.interrupt(); autoThread = null

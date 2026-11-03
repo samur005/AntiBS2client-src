@@ -164,7 +164,7 @@ class SettingsRoutingTest {
         val e = ServerEntry("a", EngineKind.XRAY, "A", xray = vlessTls)
         val c = cfg(XrayConfigBuilder.plan(e, listOf(e), XrayConfigBuilder.Options(routing = prof)).xray)
         val rs = rules(c)
-        val block = rs.first { it["outboundTag"]?.jsonPrimitive?.content == "block" }
+        val block = rs.first { it["outboundTag"]?.jsonPrimitive?.content == "block" && it.containsKey("domain") }
         assertEquals("geosite:category-ads-all", block["domain"]!!.jsonArray[0].jsonPrimitive.content)
         val directDomains = rs.first { it["outboundTag"]?.jsonPrimitive?.content == "direct" && it.containsKey("domain") }["domain"]!!.jsonArray.map { it.jsonPrimitive.content }
         assertEquals(listOf("domain:yandex.ru", "domain:vk.com"), directDomains)

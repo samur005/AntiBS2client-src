@@ -217,7 +217,7 @@ private fun parentOf(p: Page): Page = when (p) {
     Page.Main, Page.Settings, Page.SpeedTest, Page.NetTools, Page.LanSend, Page.LanRecv -> Page.Main
     Page.RoutingEdit -> Page.Routing
     Page.Excluded -> Page.Settings
-    Page.AdBlock, Page.GeoFiles -> Page.Routing
+    Page.GeoFiles -> Page.Routing
     else -> Page.Settings
 }
 
@@ -1105,7 +1105,7 @@ internal fun ConnectionCard(
 private fun BannerPing(label: String, labelColor: Color, ms: Long?, busy: Boolean, active: Boolean, style: net.antibs.client.data.PingChipStyle?, onTap: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val neutral = cs.onSurfaceVariant
-    // 2.0.14: fixed-width pill + fixed-width value slot → «…» while measuring doesn't move anything.
+    // 2.0.14/2.0.15: fixed-width label + fixed «9999 мс» value slot → «…» while measuring doesn't move anything.
     val shown = if (active && !busy) ms else null
     val tone = if (shown == null) neutral else pingLevelColor(shown, neutral)
     val fg = if (style != null && style.text != 0L) Color(style.text.toInt()) else tone
@@ -1118,10 +1118,15 @@ private fun BannerPing(label: String, labelColor: Color, ms: Long?, busy: Boolea
             Text("vpn пинг: ", style = ts, maxLines = 1, modifier = Modifier.alpha(0f))
             Text("$label: ", style = ts, color = labelColor, maxLines = 1)
         }
-        Box(contentAlignment = Alignment.CenterEnd) {
-            Text("тайм-аут", style = ts, maxLines = 1, modifier = Modifier.alpha(0f))
-            Text("9999 мс", style = ts, maxLines = 1, modifier = Modifier.alpha(0f))
-            Text(v, style = ts, color = fg, maxLines = 1)
+        // 2.0.15: the value slot is exactly «9999 мс» wide — the pill hugs «vpn пинг: 9999 мс», both pills match;
+        // «тайм-аут» (wider) is drawn slightly smaller so it still fits without growing the pill.
+        val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val slotPx = remember(density) { measurer.measure("9999 мс", ts).size.width }
+        val vPx = remember(v, density) { measurer.measure(v, ts).size.width }
+        val vs = if (vPx > slotPx && vPx > 0) ts.copy(fontSize = ts.fontSize * (slotPx.toFloat() / vPx) * 0.98f) else ts
+        Box(Modifier.width(with(density) { slotPx.toDp() + 0.5.dp }), contentAlignment = Alignment.CenterEnd) {
+            Text(v, style = vs, color = fg, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -2040,9 +2045,14 @@ internal fun SettingsCard(title: String? = null, content: @Composable () -> Unit
                         .clickable(onClickLabel = if (open) "Свернуть" else "Развернуть") {
                             AppHaptics.perform(view, AppHaptics.Kind.TICK, true); SettingsOpen[key] = !open
                         }
-                        .padding(start = 16.dp, end = 12.dp),
+                        .padding(start = 15.dp, end = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // 2.0.15: leading section icon, same tile as the rows (style accent, style shape)
+                    Box(Modifier.size(30.dp).clip(ssShape(style, 9.dp)).background(c.accent.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                        Icon(sectionIcon(title), null, tint = c.accent, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
                     Text(title, color = c.accent, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
                     Icon(Icons.Filled.ExpandMore, null, tint = c.muted, modifier = Modifier.graphicsLayer { rotationZ = rot })
                 }
@@ -2085,25 +2095,61 @@ private fun RowTexts(title: String, subtitle: String?, modifier: Modifier) {
     }
 }
 
-/** 2.0.8: leading icon for a settings row, picked by keywords in its title. */
+/** 2.0.15: leading icon of a collapsible settings section header (main «Настройки» and sub-pages). */
+internal fun sectionIcon(title: String): androidx.compose.ui.graphics.vector.ImageVector {
+    val t = title.lowercase()
+    return when {
+        t.startsWith("настройки интерфейса") || t.startsWith("оформлен") -> Icons.Filled.Palette
+        t.startsWith("настройки туннеля") -> Icons.Filled.VpnKey
+        t.startsWith("блокировка") -> Icons.Filled.Block
+        t.startsWith("подписки") || t.startsWith("автообновлен") || t.startsWith("остаток") -> Icons.Filled.Subscriptions
+        t.startsWith("конфиденциальн") || t.startsWith("hwid") || t.startsWith("защита") -> Icons.Filled.Lock
+        t.startsWith("инструмент") -> Icons.Filled.Build
+        t.startsWith("приложение") -> Icons.Filled.Android
+        else -> settingsIcon(title)
+    }
+}
+
+/** 2.0.8 / 2.0.15: leading icon for a settings row, picked by keywords in its title (most specific first). */
 internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.ImageVector {
     val t = title.lowercase()
     fun has(vararg k: String) = k.any { t.contains(it) }
     return when {
-        has("тем", "оформлен", "стиль", "цвет", "интерфейс", "украшен") -> Icons.Filled.Palette
+        has("реклам") -> Icons.Filled.Block
+        has("трекер", "телеметр", "взросл") -> Icons.Filled.Shield
+        has("сезон", "украшен", "снег", "гирлянд", "праздник") -> Icons.Filled.AcUnit
+        has("язык") -> Icons.Filled.Translate
+        has("акцент", "цвет") -> Icons.Filled.ColorLens
+        has("тем", "оформлен", "стиль", "интерфейс") -> Icons.Filled.Palette
         has("вибрац") -> Icons.Filled.Vibration
-        has("пинг", "скорост", "единиц") -> Icons.Filled.Speed
-        has("подписк", "обновлен") -> Icons.Filled.Sync
-        has("уведомл") -> Icons.Filled.Notifications
-        has("запуск", "автозапуск", "расписан", "фон") -> Icons.Filled.Schedule
+        has("тест скорост", "единиц", "скорост") -> Icons.Filled.Speed
+        has("пинг", "url тест") -> Icons.Filled.NetworkCheck
+        has("hwid") -> Icons.Filled.Fingerprint
+        has("автообнов", "обновлять подписки", "интервал", "автопроверк", "проверить обновлен") -> Icons.Filled.Update
+        has("wi‑fi", "wi-fi", "сканер") -> Icons.Filled.Wifi
+        has("подписк") -> Icons.Filled.Subscriptions
+        has("уведомл", "шторк") -> Icons.Filled.Notifications
+        has("расписан") -> Icons.Filled.Schedule
+        has("запуск", "надёжн", "фон") -> Icons.Filled.PowerSettingsNew
+        has("режим работы") -> Icons.Filled.SettingsEthernet
+        has("для выбранных приложен", "приложени") && !has("о приложен") -> Icons.Filled.Apps
+        has("маршрут", "исключ") -> Icons.Filled.AltRoute
         has("dns") -> Icons.Filled.Dns
-        has("маршрут", "сеть", "сети", "lan", "локальн") -> Icons.Filled.Router
-        has("блок", "защит", "kill", "конфиденц", "hwid", "безопас") -> Icons.Filled.Lock
-        has("vpn", "туннел", "ядр", "xray", "протокол", "qwdtt", "mieru", "sing", "mihomo") -> Icons.Filled.VpnKey
-        has("приложен", "о программе", "версия") -> Icons.Filled.Info
-        has("сервер", "список", "хост") -> Icons.Filled.Dns
-        has("лог", "инструмент", "экспорт", "импорт", "резерв") -> Icons.Filled.Build
-        has("главн", "карт", "url") -> Icons.Filled.Public
+        has("фрагмент") -> Icons.Filled.CallSplit
+        has("mux") -> Icons.Filled.MergeType
+        has("тип ip", "ipv") -> Icons.Filled.Language
+        has("mtu", "пакет", "сниффинг", "шум", "обфускац") -> Icons.Filled.Tune
+        has("lan", "локальн", "inbound", "сеть", "сети") -> Icons.Filled.Router
+        has("георесурс", "глобус", "карт", "океан") -> Icons.Filled.Public
+        has("обход", "блок", "kill", "конфиденц", "безопас", "скрывать ip") -> Icons.Filled.Lock
+        has("vpn", "туннел", "ядр", "xray", "протокол", "qwdtt", "mieru", "sing", "mihomo", "turn") -> Icons.Filled.VpnKey
+        has("лог") -> Icons.Filled.Article
+        has("экспорт") -> Icons.Filled.Upload
+        has("импорт") -> Icons.Filled.Download
+        has("версия", "о приложен", "о программе") -> Icons.Filled.Info
+        has("сервер", "список", "хост", "групп", "стран", "компакт") -> Icons.Filled.ViewList
+        has("инструмент", "резерв") -> Icons.Filled.Build
+        has("главн", "url") -> Icons.Filled.Public
         else -> Icons.Filled.Tune
     }
 }

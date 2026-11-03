@@ -12,132 +12,139 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** 1.0.39: «Блокировка рекламы» — block rule on top of every config type. */
+/** 2.0.15: ABS ad blocking port — block-ads outbound, categories, telemetry, ad DNS, counter. */
 class AdBlockTest {
     private val vless = """{"protocol":"vless","settings":{"vnext":[{"address":"de.example.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"de.example.com"}}}"""
     private fun obj(s: String) = Json.parseToJsonElement(s).jsonObject
     private fun rules(c: JsonObject) = c["routing"]!!.jsonObject["rules"]!!.jsonArray.map { it.jsonObject }
     private fun outs(c: JsonObject) = c["outbounds"]!!.jsonArray.map { it.jsonObject }
     private fun strs(o: JsonObject, k: String) = o[k]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
-    private fun isAd(r: JsonObject) = r["ruleTag"]?.jsonPrimitive?.content == "antibs-adblock"
-    private val off = AdvancedSettings(blockAds = false, blockTrackers = false)
+    private fun tag(r: JsonObject) = r["ruleTag"]?.jsonPrimitive?.content
+    private fun out(r: JsonObject) = r["outboundTag"]?.jsonPrimitive?.content
+    private val off = AdvancedSettings(blockAds = false)
+    private fun built(adv: AdvancedSettings = AdvancedSettings()) = obj(XrayConfigBuilder.customConfig(vless, XrayConfigBuilder.Options(adv = adv)))
 
-    private fun built(adv: AdvancedSettings = AdvancedSettings(), xrayTun: Boolean = false, routing: RoutingProfile? = null) =
-        obj(XrayConfigBuilder.customConfig(vless, XrayConfigBuilder.Options(adv = adv, xrayTun = xrayTun, routing = routing)))
+    private val panel = """{"inbounds":[{"tag":"socks","port":10808,"listen":"127.0.0.1","protocol":"socks"}],
+        "outbounds":[${vless.replaceFirst("{", "{\"tag\":\"proxy\",")},{"tag":"direct","protocol":"freedom"}],
+        "routing":{"rules":[{"type":"field","ip":["geoip:private"],"outboundTag":"direct"},{"type":"field","inboundTag":["socks"],"network":"tcp,udp","outboundTag":"proxy"}]}}"""
 
-    private val panel = """{"remarks":"auto","dns":{"servers":["1.1.1.1"],"hosts":{"domain:x.test":"1.2.3.4"}},
-        "inbounds":[{"tag":"socks-in","port":10808,"listen":"127.0.0.1","protocol":"socks"}],
-        "outbounds":[${vless.replaceFirst("{", "{\"tag\":\"proxy\",")},{"tag":"direct","protocol":"freedom"},{"tag":"block","protocol":"blackhole"}],
-        "routing":{"rules":[{"type":"field","ip":["geoip:private"],"outboundTag":"direct"},{"type":"field","inboundTag":["socks-in"],"network":"tcp,udp","balancerTag":"B"}],
-        "balancers":[{"tag":"B","selector":["proxy"]}]}}"""
-
-    @Test fun defaultsOn() {
-        val a = AdvancedSettings()
-        assertTrue(a.blockAds); assertTrue(a.blockTrackers)
-        // older saves without the fields decode to ON
-        val old = Json { ignoreUnknownKeys = true }.decodeFromString(AdvancedSettings.serializer(), "{\"mode\":\"vpn\"}")
-        assertTrue(old.blockAds && old.blockTrackers)
+    @Test fun defaultsAndOldSaves() {
+        assertTrue(AdvancedSettings().blockAds)
+        val old = Json { ignoreUnknownKeys = true }.decodeFromString(AdvancedSettings.serializer(),
+            """{"blockTrackers":true,"adGuard":true,"blockStun":true,"allowCustom":["x.test"]}""")
+        assertTrue(old.blockAds); assertTrue(old.adCats.isEmpty()); assertFalse(old.adDnsOn)
     }
 
-    @Test fun builtConfigBlocksFirst() {
+    @Test fun adsRuleOnTopToBlockAds() {
         val c = built()
-        val r0 = rules(c).first()
-        assertTrue(isAd(r0))
-        assertEquals("block", r0["outboundTag"]!!.jsonPrimitive.content)
-        assertEquals(listOf("socks"), strs(r0, "inboundTag"))
-        val d = strs(r0, "domain")
-        assertTrue("geosite:category-ads-all" in d)
-        assertTrue("domain:google-analytics.com" in d && "domain:mc.yandex.ru" in d && "domain:appmetrica.yandex.net" in d)
-        assertEquals("blackhole", outs(c).first { it["tag"]!!.jsonPrimitive.content == "block" }["protocol"]!!.jsonPrimitive.content)
-        val hosts = c["dns"]!!.jsonObject["hosts"]!!.jsonObject
-        assertEquals("#3", hosts["domain:mc.yandex.ru"]!!.jsonPrimitive.content)
-        assertEquals("#3", hosts["domain:adfox.ru"]!!.jsonPrimitive.content)
-        assertNull(hosts["geosite:category-ads-all"]) // memory: geosite only in routing
-        assertEquals("8.8.8.8", hosts["dns.google"]!!.jsonArray.first().jsonPrimitive.content)
-        assertEquals(1, rules(c).count { isAd(it) })
-    }
-
-    @Test fun tunAndHttpInboundsCovered() {
-        val r0 = rules(built(AdvancedSettings(httpInbound = true), xrayTun = true)).first()
-        assertEquals(listOf("socks", "http", "tun"), strs(r0, "inboundTag"))
-    }
-
-    @Test fun togglesIndependent() {
-        val c = built(off)
-        assertTrue(rules(c).none { isAd(it) })
-        assertNull(c["dns"]!!.jsonObject["hosts"]!!.jsonObject["domain:mc.yandex.ru"])
-        val ads = strs(rules(built(AdvancedSettings(blockTrackers = false))).first(), "domain")
-        assertTrue("geosite:category-ads-all" in ads); assertFalse("domain:api.amplitude.com" in ads)
-        val tr = strs(rules(built(AdvancedSettings(blockAds = false))).first(), "domain")
-        assertFalse("geosite:category-ads-all" in tr); assertTrue("domain:api.amplitude.com" in tr)
-    }
-
-    @Test fun beforeRoutingProfileRules() {
-        val rp = RoutingProfile(id = "r", name = "r", rules = listOf(RoutingRule("direct", "domain", "yandex.ru")))
-        val rs = rules(built(routing = rp))
-        assertTrue(isAd(rs[0]))
-        val direct = rs.indexOfFirst { "domain:yandex.ru" in strs(it, "domain") }
-        assertTrue(direct > 0)
-    }
-
-    @Test fun panelJsonMinimalPatch() {
-        val c = obj(XrayConfigBuilder.customConfig(panel, XrayConfigBuilder.Options(xrayTun = true)))
         val rs = rules(c)
-        assertTrue(isAd(rs[0]))
-        assertEquals(listOf("socks", "tun"), strs(rs[0], "inboundTag"))
-        assertEquals("block", rs[0]["outboundTag"]!!.jsonPrimitive.content)
-        // panel rules untouched, same order, after ours
-        assertEquals(listOf("geoip:private"), strs(rs[1], "ip"))
-        assertEquals("B", rs[2]["balancerTag"]!!.jsonPrimitive.content)
-        // existing blackhole reused, no outbound added
-        assertEquals(listOf("proxy", "direct", "block"), outs(c).map { it["tag"]!!.jsonPrimitive.content })
-        val hosts = c["dns"]!!.jsonObject["hosts"]!!.jsonObject
-        assertEquals("1.2.3.4", hosts["domain:x.test"]!!.jsonPrimitive.content)
-        assertEquals("#3", hosts["domain:google-analytics.com"]!!.jsonPrimitive.content)
-        assertNull(hosts["geosite:category-ads-all"])
-        assertEquals(c["balancers"], null) // balancers stay inside routing
-        assertEquals(obj(panel)["routing"]!!.jsonObject["balancers"], c["routing"]!!.jsonObject["balancers"])
+        val ad = rs.first { tag(it) == "antibs-adblock" }
+        assertEquals(AdBlock.TAG, out(ad))
+        assertTrue(AdBlock.ADS_GEOSITE in strs(ad, "domain"))
+        assertTrue("domain:doubleclick.net" in strs(ad, "domain") || strs(ad, "domain").any { it.contains("doubleclick") })
+        assertTrue(rs.indexOf(ad) < rs.indexOfFirst { it["ip"]?.toString()?.contains("geoip:private") == true }.let { if (it < 0) Int.MAX_VALUE else it })
+        assertTrue(outs(c).any { it["tag"]!!.jsonPrimitive.content == AdBlock.TAG && it["protocol"]!!.jsonPrimitive.content == "blackhole" })
     }
 
-    @Test fun panelWithoutBlackholeGetsOne() {
-        val p = obj(panel.replace(",{\"tag\":\"block\",\"protocol\":\"blackhole\"}", ""))
-        val c = AdBlock.patch(XrayConfigBuilder.patchFullConfig(p, XrayConfigBuilder.Options(adv = off)), AdvancedSettings())
-        assertEquals("blackhole", outs(c).last()["protocol"]!!.jsonPrimitive.content)
-        assertEquals("block", outs(c).last()["tag"]!!.jsonPrimitive.content)
-        val q = obj(panel.replace("{\"tag\":\"block\",\"protocol\":\"blackhole\"}", "{\"tag\":\"block\",\"protocol\":\"freedom\"}"))
-        val c2 = obj(XrayConfigBuilder.customConfig(q.toString()))
-        assertEquals("adblock", rules(c2)[0]["outboundTag"]!!.jsonPrimitive.content)
-        assertEquals("blackhole", outs(c2).first { it["tag"]!!.jsonPrimitive.content == "adblock" }["protocol"]!!.jsonPrimitive.content)
+    @Test fun offMeansNothing() {
+        val c = built(off)
+        assertTrue(rules(c).none { tag(it) in setOf("antibs-adblock", "antibs-adcats") })
+        assertTrue(outs(c).none { it["tag"]?.jsonPrimitive?.content == AdBlock.TAG })
+        assertFalse(AdBlock.enabled(off))
+        assertFalse(AdBlockCounter.configCounts(c))
     }
 
-    @Test fun patchIsIdempotentAndOffIsNoop() {
-        val c1 = obj(XrayConfigBuilder.customConfig(panel))
-        val c2 = AdBlock.patch(c1, AdvancedSettings())
-        assertEquals(1, rules(c2).count { isAd(it) })
-        assertEquals(outs(c1).size, outs(c2).size)
-        val raw = XrayConfigBuilder.patchFullConfig(obj(panel), XrayConfigBuilder.Options(adv = off))
-        assertTrue(rules(raw).none { isAd(it) })
-        assertNull(raw["dns"]!!.jsonObject["hosts"]!!.jsonObject["domain:adfox.ru"])
+    @Test fun categoriesAndTelemetry() {
+        val a = off.copy(adCats = listOf("adult", "tm_windows", "bogus"))
+        assertTrue(AdBlock.enabled(a))
+        val r = rules(built(a)).first { tag(it) == "antibs-adcats" }
+        assertEquals(AdBlock.TAG, out(r))
+        val d = strs(r, "domain")
+        assertEquals(2, d.size)
+        assertTrue(rules(built(a)).none { tag(it) == "antibs-adblock" })
+        assertFalse(AdBlock.enabled(off.copy(adCats = listOf("bogus"))))
     }
 
-    @Test fun probesAndBridgesNotFiltered() {
-        // own balancer (chain/balancer helpers) — the rule names only user inbounds
+    @Test fun missingBundledTagSkipped() {
+        val bundled = mapOf("site" to setOf("CATEGORY-ADS-ALL"))
+        val d = AdBlock.catDomains(off.copy(adCats = AdBlock.CAT_IDS.toList()), bundled)
+        assertTrue(d.isEmpty())
+        assertTrue(AdBlock.adDomains(bundled).contains(AdBlock.ADS_GEOSITE))
+        assertFalse(AdBlock.adDomains(mapOf("site" to emptySet())).contains(AdBlock.ADS_GEOSITE))
+    }
+
+    @Test fun patchPanelKeepsRoutingAndLan() {
+        val c = AdBlock.patch(obj(panel), AdvancedSettings())
+        val rs = rules(c)
+        assertEquals("antibs-adblock", tag(rs.first { tag(it) != null && tag(it) != "antibs-quic" }))
+        assertTrue(rs.any { strs(it, "ip").contains("geoip:private") && out(it) == "direct" })
+        assertTrue(rs.any { out(it) == "proxy" && strs(it, "inboundTag") == listOf("socks") })
+        assertEquals(listOf("socks"), strs(rs.first { tag(it) == "antibs-adblock" }, "inboundTag"))
+        val inb = c["inbounds"]!!.jsonArray.first().jsonObject
+        assertEquals("true", inb["sniffing"]!!.jsonObject["enabled"]!!.jsonPrimitive.content)
+        // idempotent
+        val c2 = AdBlock.patch(c, AdvancedSettings())
+        assertEquals(rules(c).size, rules(c2).size)
+        assertEquals(outs(c).size, outs(c2).size)
+    }
+
+    @Test fun dnsBlocker() {
+        assertNull(AdBlock.dnsUrl(off))
+        val u = AdBlock.DNS_PRESETS.first().variants.first().url
+        val a = off.copy(adDnsOn = true, adDnsUrl = u)
+        assertTrue(AdBlock.dnsUrl(a) != null)
+        assertEquals(AdBlock.DNS_PRESETS.first(), AdBlock.findDns(u)?.first)
+        assertTrue(AdBlock.dnsUrlOk("https://dns.example/dns-query"))
+        assertTrue(AdBlock.dnsUrlOk("quic://dns.example"))
+        assertFalse(AdBlock.dnsUrlOk("ftp://x"))
+        assertNull(AdBlock.dnsUrl(off.copy(adDnsOn = true, adDnsUrl = "ftp://x")))
+        assertTrue(built(a)["dns"].toString().contains(AdBlock.dnsUrl(a)!!))
+    }
+
+    @Test fun counterParse() {
+        val log = """
+            2026/11/03 10:00:00 from 10.0.0.2:5000 accepted tcp:ads.example:443 [socks -> block-ads]
+            2026/11/03 10:00:01 from 10.0.0.2:5001 accepted tcp:ok.example:443 [socks -> proxy]
+            2026/11/03 10:00:02 from 10.0.0.2:5002 accepted udp:t.example:443 [tun >> block-ads]
+            2026/11/03 10:00:03 from 10.0.0.2:5003 accepted tcp:x:443 [socks -> block]
+        """.trimIndent()
+        assertEquals(2, AdBlockCounter.count(log))
+    }
+
+    @Test fun accessLogInjection() {
         val c = built()
-        val r0 = rules(c).first()
-        assertTrue(strs(r0, "inboundTag").none { it.startsWith("probe-") || it.startsWith("sb-bridge") || it == "dns-in" })
+        assertTrue(AdBlockCounter.configCounts(c))
+        val (c2, p) = AdBlockCounter.withAccessLog(c, "/x/a.log")
+        assertEquals("/x/a.log", p)
+        assertEquals("/x/a.log", c2["log"]!!.jsonObject["access"]!!.jsonPrimitive.content)
+        val keep = JsonObject(c + ("log" to obj("""{"access":"/y/xray-access.log"}""")))
+        assertEquals("/y/xray-access.log", AdBlockCounter.withAccessLog(keep, "/x/a.log").second)
+        assertNull(AdBlockCounter.withAccessLog(built(off), "/x/a.log").second)
     }
 
-    @Test fun realSnapshotAllConfigs() {
-        val f = File("/workspace/backup_autoselect_20261009_164844/sub_happ_before.raw")
-        if (!f.exists()) return
-        val arr = Json.parseToJsonElement(f.readText().trim()).jsonArray
-        arr.forEach { e ->
-            val c = obj(XrayConfigBuilder.customConfig(e.toString(), XrayConfigBuilder.Options(xrayTun = true)))
-            val rs = rules(c)
-            assertTrue(isAd(rs[0])); assertEquals(1, rs.count { isAd(it) })
-            assertEquals(outs(e.jsonObject).size, outs(c).size)
-            assertEquals(e.jsonObject["routing"]!!.jsonObject["rules"]!!.jsonArray.size + 1, rs.size)
-            System.getenv("ADBLOCK_DUMP")?.let { d -> File(d).mkdirs(); File(d, "cfg-${arr.indexOf(e)}.json").writeText(XrayConfigBuilder.toJsonString(c, true)) }
-        }
+    @Test fun countsDayRollAndStore() {
+        val c = AdBlockCounter.Counts().add(3, "2026-11-02").add(2, "2026-11-03")
+        assertEquals(2, c.todayFor("2026-11-03")); assertEquals(5, c.total); assertEquals(0, c.todayFor("2026-11-04"))
+        assertEquals("н/д", AdBlockCounter.show(false, 0)); assertEquals("7", AdBlockCounter.show(true, 7))
+        val d = kotlin.io.path.createTempDirectory().toFile()
+        val f = File(d, AdBlockCounter.COUNTS_NAME)
+        assertFalse(AdBlockCounter.load(f).measured)
+        AdBlockCounter.markMeasured(f); assertTrue(AdBlockCounter.load(f).measured)
+        AdBlockCounter.add(f, 4, "2026-11-03"); assertEquals(4, AdBlockCounter.load(f).total)
+        AdBlockCounter.reset(f); assertEquals(0, AdBlockCounter.load(f).total)
+        d.deleteRecursively()
+    }
+
+    @Test fun drainIncremental() {
+        val d = kotlin.io.path.createTempDirectory().toFile()
+        val f = File(d, "a.log")
+        f.writeText("x [socks -> block-ads]\npartial [socks -> block-a")
+        val (o1, n1) = AdBlockCounter.drain(f, 0)
+        assertEquals(1, n1)
+        f.appendText("ds]\n")
+        val (o2, n2) = AdBlockCounter.drain(f, o1)
+        assertEquals(1, n2); assertEquals(f.length(), o2)
+        assertEquals(0, AdBlockCounter.drain(f, o2).second)
+        d.deleteRecursively()
     }
 }

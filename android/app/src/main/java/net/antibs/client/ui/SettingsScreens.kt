@@ -35,6 +35,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
@@ -368,11 +369,11 @@ internal fun RoutingListPage(vm: AppViewModel, st: AppState, onOpenProfile: (Str
         Box {
             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Меню") }
             DropdownMenu(menu, { menu = false }) {
-                DropdownMenuItem(text = { Text("Добавить профиль маршрутизации") }, onClick = {
+                DropdownMenuItem(text = { Text("Добавить профиль маршрутизации") }, leadingIcon = { MenuIcon(Icons.Filled.Add) }, onClick = {
                     menu = false
                     val p = vm.newRoutingProfile(); vm.upsertRouting(p); onOpenProfile(p.id)
                 })
-                DropdownMenuItem(text = { Text("Импортировать профиль из буфера") }, onClick = {
+                DropdownMenuItem(text = { Text("Импортировать профиль из буфера") }, leadingIcon = { MenuIcon(Icons.Filled.ContentPaste) }, onClick = {
                     menu = false
                     val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty()
@@ -383,7 +384,7 @@ internal fun RoutingListPage(vm: AppViewModel, st: AppState, onOpenProfile: (Str
     }) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item { SwitchRow("Обход локальной сети", st.bypassLan) { vm.setBypassLan(it) } }
-            trafficPresetItems(vm, st, rf.ready, onOpenGeo = { onOpenPage("GeoFiles") }, onOpenAdBlock = { onOpenPage("AdBlock") })
+            trafficPresetItems(vm, st, rf.ready, onOpenGeo = { onOpenPage("GeoFiles") })
             item { SectionLabel("Профили маршрутизации") }
             item {
                 RoutingRow("Без профиля", "Весь трафик через выбранный сервер", a.activeRoutingId == null, onSelect = { vm.setActiveRouting(null) }, onOpen = null)

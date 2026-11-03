@@ -151,7 +151,7 @@ private fun MonitorTab(monitor: CellMonitor) {
                 var open by remember { mutableStateOf(false) }
                 Box {
                     TextButton(onClick = { open = true }) { Text(NSort.valueOf(sort).title); Icon(Icons.Filled.ArrowDropDown, null) }
-                    DropdownMenu(open, { open = false }) { NSort.entries.forEach { s -> DropdownMenuItem(text = { Text(s.title) }, onClick = { sort = s.name; open = false }) } }
+                    DropdownMenu(open, { open = false }) { NSort.entries.forEach { s -> DropdownMenuItem(text = { Text(s.title) }, leadingIcon = { MenuIcon(when (s) { NSort.None -> Icons.Filled.FormatListBulleted; NSort.Signal -> Icons.Filled.SignalCellularAlt; NSort.Pci -> Icons.Filled.Tag; NSort.Freq -> Icons.Filled.GraphicEq }) }, onClick = { sort = s.name; open = false }) } }
                 }
             }
         }

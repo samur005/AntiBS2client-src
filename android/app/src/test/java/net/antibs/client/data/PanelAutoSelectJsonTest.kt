@@ -74,7 +74,7 @@ class PanelAutoSelectJsonTest {
 
     @Test fun panelJsonRunsAsIsWithAppInbounds() {
         val all = attached()
-        val opt = XrayConfigBuilder.Options(socksPort = 10901, apiPort = 47123, xrayTun = true, adv = AdvancedSettings(blockAds = false, blockTrackers = false))
+        val opt = XrayConfigBuilder.Options(socksPort = 10901, apiPort = 47123, xrayTun = true, adv = AdvancedSettings(blockAds = false))
         val cfg = XrayConfigBuilder.plan(all[0], all, opt).xray
         File("build/xray-configs-auto").mkdirs()
         File("build/xray-configs-auto/panel_auto.json").writeText(cfg)

@@ -124,9 +124,8 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         NavRow("Предпочтительный тип IP", ipLabel(ui.ipType), dropdown = true, subtitle = "Какие адреса использовать, если у домена есть и IPv4, и IPv6") { dialog = "ip" }
                     }
                     SettingsCard("Блокировка") {
-                        SwitchRow("Блокировать рекламу", a.blockAds, subtitle = "Рекламные домены отбрасываются в туннеле") { v -> vm.setAdvTunnel { it.copy(blockAds = v) } }
-                        SwitchRow("Блокировать трекеры и аналитику", a.blockTrackers) { v -> vm.setAdvTunnel { it.copy(blockTrackers = v) } }
-                        NavRow("AdGuard DNS, свои списки, WebRTC", adBlockSummary(a)) { open("AdBlock") }
+                        SwitchRow("Блокировать рекламу и трекеры", a.blockAds, subtitle = "Отбрасывает известные рекламные и отслеживающие домены внутри туннеля") { v -> vm.setAdvTunnel { it.copy(blockAds = v) } }
+                        NavRow("Блокировка рекламы", adBlockSummary(a), subtitle = null) { open("AdBlock") }
                     }
                     SettingsCard("Подписки") {
                         NavRow("Подписки", "${st.subscriptions.size} шт.") { open("Subs") }
