@@ -90,6 +90,7 @@ fun AddServersSheet(
     var form by remember { mutableStateOf<String?>(null) }
     val clip = LocalClipboardManager.current
     val ctx = LocalContext.current
+    val isTvSheet = LocalIsTv.current
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents ?: return@rememberLauncherForActivityResult
@@ -117,9 +118,9 @@ fun AddServersSheet(
                     val t = clip.getText()?.text.orEmpty()
                     if (t.isBlank()) vm.message("Буфер пуст") else text = t
                 }
-                // 2.0.11: no camera (Android TV) → no QR tile; «Принять с телефона» slot for the upcoming LAN/QR transfer
-                TvHooks.receiveFromPhone?.let { recv ->
-                    ImportTile(Modifier.weight(1f), Icons.Filled.PhoneAndroid, androidx.compose.ui.graphics.Color(0xFF8E6BFF), "Принять с телефона", "По локальной сети") { recv(ctx) }
+                // 2.0.13: TV — «Принять с телефона» tile in the row (no camera tile there)
+                if (isTvSheet) TvHooks.receiveFromPhone?.let { recv ->
+                    ImportTile(Modifier.weight(1f), Icons.Filled.PhoneAndroid, androidx.compose.ui.graphics.Color(0xFF8E6BFF), "Принять с телефона", "По Wi‑Fi") { recv(ctx) }
                 }
                 if (ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY))
                 ImportTile(Modifier.weight(1f), Icons.Filled.QrCodeScanner, androidx.compose.ui.graphics.Color(0xFF1FA89A), "QR-камера", "Сканировать код") {
@@ -129,6 +130,13 @@ fun AddServersSheet(
                             // 1.0.11: own full-screen scanner (dimmed overlay, scan line, torch, «QR из галереи»).
                             .setCaptureActivity(QrScanActivity::class.java),
                     )
+                }
+            }
+            // 2.0.13: phone — full-width «Принять с устройства» (works with no subscriptions)
+            if (!isTvSheet) TvHooks.receiveFromPhone?.let { recv ->
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    ImportTile(Modifier.weight(1f), Icons.Filled.PhoneAndroid, androidx.compose.ui.graphics.Color(0xFF8E6BFF), "Принять с устройства", "По Wi‑Fi из AntiBS2client или ABS") { recv(ctx) }
                 }
             }
             Spacer(Modifier.height(16.dp))

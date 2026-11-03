@@ -13,6 +13,9 @@ import net.antibs.client.data.LanProtocol
 import net.antibs.client.data.Subscription
 import net.antibs.client.engine.LanTransfer
 import net.antibs.client.engine.ThemeMode
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onLast
 import org.junit.Assume
 import org.junit.Rule
 import org.junit.Test
@@ -68,7 +71,20 @@ class LanShotsPhoneTest {
 
     @Test fun bannerDark() = LanShotData.shot(rule, dir, "banner_dark", crop = 1150) { banner(84, 231) }
     @Test fun bannerLight() = LanShotData.shot(rule, dir, "banner_light", ThemeMode.LIGHT, crop = 1150) { banner(142, 37) }
-    @Test fun sendPhone() = LanShotData.shot(rule, dir, "send_phone") { LanSendContent(LanShotData.subs, {}, LanShotData.peers) }
+    @Test fun addSheetPhone() {
+        Assume.assumeTrue(System.getenv("ABS_SHOTS") == "1")
+        TvHooks.receiveFromPhone = { _ -> }
+        val vm = AppViewModel(rule.activity.application)
+        rule.mainClock.autoAdvance = false
+        rule.setContent { AntiBSTheme(ThemeMode.DARK) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { AddServersSheet(vm, emptyList()) {} } } }
+        rule.mainClock.advanceTimeBy(1500)
+        val v = (rule.onAllNodes(androidx.compose.ui.test.isRoot()).onLast().fetchSemanticsNode().root as androidx.compose.ui.platform.ViewRootForTest).view.rootView
+        val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(0xFF0B0E14.toInt()); v.draw(android.graphics.Canvas(bmp))
+        File(dir).mkdirs(); File(dir, "add_sheet_phone.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        TvHooks.receiveFromPhone = null
+    }
+    @Test fun sendPhone() = LanShotData.shot(rule, dir, "send_phone") { LanSendContent(LanShotData.subs, {}, LanShotData.peers, preselect = "s2") }
     @Test fun recvPhone() = LanShotData.shot(rule, dir, "recv_phone") { LanRecvContent({ 0 }, {}, LanShotData.recv) }
 }
 

@@ -28,8 +28,8 @@ android {
         applicationId = "fun.antibs.client"
         minSdk = 26
         targetSdk = 36
-        versionCode = 73
-        versionName = "2.0.12"
+        versionCode = 74
+        versionName = "2.0.13"
         ndk { abiFilters += targetAbis }
         vectorDrawables { useSupportLibrary = true }
         buildConfigField("String", "XRAY_VERSION", "\"26.9.30\"")

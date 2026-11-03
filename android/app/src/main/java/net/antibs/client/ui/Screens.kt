@@ -236,10 +236,11 @@ fun AppRoot(vm: AppViewModel) {
         // Detail pages remember which page opened them.
         var backTo by rememberSaveable { mutableStateOf<String?>(null) }
         val page = Page.valueOf(pageName)
-        // 2.0.12: TV «Принять с телефона» → receive screen (big QR)
+        // 2.0.13: «+» sheet tile (TV «Принять с телефона», phone «Принять с устройства») → receive screen
+        var lanSendSub by rememberSaveable { mutableStateOf<String?>(null) }
         val tvNow = LocalIsTv.current
         DisposableEffect(tvNow) {
-            TvHooks.receiveFromPhone = if (tvNow) { _ -> backTo = pageName; pageName = Page.LanRecv.name } else null
+            TvHooks.receiveFromPhone = { _ -> backTo = pageName; pageName = Page.LanRecv.name }
             onDispose { TvHooks.receiveFromPhone = null }
         }
         fun open(p: Page) { backTo = pageName; pageName = p.name }
@@ -256,8 +257,8 @@ fun AppRoot(vm: AppViewModel) {
             TvColumn(enabled = LocalIsTv.current && page != Page.Main) {
             when (page) {
                 Page.Main -> MainScreen(vm, ui, onOpenSettings = { open(Page.Settings) }, onOpenSpeedTest = { open(Page.SpeedTest) }, onOpenNet = { open(Page.NetTools) },
-                    onLanSend = { open(Page.LanSend) }, onLanRecv = { open(Page.LanRecv) })
-                Page.LanSend -> LanSendPage(vm, onBack = { back() })
+                    onLanSend = { id -> lanSendSub = id; open(Page.LanSend) })
+                Page.LanSend -> LanSendPage(vm, lanSendSub, onBack = { back() })
                 Page.LanRecv -> LanRecvPage(vm, onBack = { back() })
                 Page.NetTools -> NetToolsPage(vm, onBack = { back() })
                 Page.SpeedTest -> SpeedTestPage(vm, onBack = { back() })
@@ -365,7 +366,7 @@ internal fun UpdateDialog(vm: AppViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> Unit, onOpenSpeedTest: () -> Unit, onOpenNet: () -> Unit = {}, onLanSend: () -> Unit = {}, onLanRecv: () -> Unit = {}) {
+private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> Unit, onOpenSpeedTest: () -> Unit, onOpenNet: () -> Unit = {}, onLanSend: (String?) -> Unit = {}) {
     val st by vm.state.collectAsState()
     val vpn by VpnState.status.collectAsState()
     val pings by vm.pings.collectAsState()
@@ -779,8 +780,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                     scanningUnreachable = sub.id in unreachableScan,
                                     extraMenu = { close ->
                                         GroupingMenuItems(vm, st.adv.serverGrouping, sub.id, close)
-                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Передать на устройство") }, onClick = { close(); onLanSend() })
-                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Принять с устройства") }, onClick = { close(); onLanRecv() })
+                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Передать на устройство") }, onClick = { close(); onLanSend(sub.id) })
                                         // 2.0.11: TV has no long-press drag → move up / down in the ⋮ menu
                                         if (isTv) {
                                             val order = shownGroups.mapNotNull { it.subscription?.id }

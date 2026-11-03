@@ -104,16 +104,16 @@ internal fun LanRecvContent(onReceive: (List<kotlinx.serialization.json.JsonObje
 
 /** «Передать на устройство»: QR scan / discovered devices / manual address + code, subscription checkboxes. */
 @Composable
-internal fun LanSendPage(vm: AppViewModel, onBack: () -> Unit) {
+internal fun LanSendPage(vm: AppViewModel, preselect: String?, onBack: () -> Unit) {
     val st by vm.state.collectAsState()
-    LanSendContent(st.subscriptions, onBack)
+    LanSendContent(st.subscriptions, onBack, preselect = preselect)
 }
 
 @Composable
-internal fun LanSendContent(all: List<net.antibs.client.data.Subscription>, onBack: () -> Unit, previewPeers: List<LanTransfer.Peer>? = null) {
+internal fun LanSendContent(all: List<net.antibs.client.data.Subscription>, onBack: () -> Unit, previewPeers: List<LanTransfer.Peer>? = null, preselect: String? = null) {
     val ctx = LocalContext.current
     val subs = remember(all) { all.filter { it.kind != "manual" && it.id != ProtocolSupport.MANUAL_SUB_ID && it.url.startsWith("http") } }
-    val checked = remember { mutableStateMapOf<String, Boolean>() }
+    val checked = remember(preselect) { mutableStateMapOf<String, Boolean>().also { m -> if (preselect != null) all.forEach { m[it.id] = it.id == preselect } } }
     val peers = remember { mutableStateListOf<LanTransfer.Peer>().also { l -> previewPeers?.let { l.addAll(it) } } }
     var searching by remember { mutableStateOf(false) }
     var host by remember { mutableStateOf("") }
