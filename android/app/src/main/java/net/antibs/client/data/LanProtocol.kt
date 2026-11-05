@@ -7,14 +7,23 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * 2.0.12: LAN subscription transfer, wire-compatible with ABS 3.1.27 (net.gozar.app.LanTransfer / LanQr).
- * TCP 45571: one connection, the sender writes one JSON body {"code":..,"subs":[ABS Subscription JSON]} (plain) or
- * {"v":2,"iv":..,"ct":..} (AES-256-GCM, AAD "abs-lan:1", key from the receiver's QR). UDP 45572: discovery.
- * Our extension (ABS ignores it): the sender half-closes, the receiver answers {"ok":true,"n":k} / {"ok":false,"err":..}.
+ * 2.0.12+/2.0.25: LAN subscription transfer over the shared wire format used by peer apps on the same Wi‑Fi/hotspot.
+ *
+ * Wire (must stay literal — changing them breaks discovery/interop with existing receivers/senders):
+ *  - TCP 45571: sender writes one UTF-8 JSON body until EOF, no mandatory ACK.
+ *    Plain: {"code":"482913","subs":[{…subscription metadata field names as on the wire…}]}
+ *    Optional sealed (AntiBS2client QR only): {"v":2,"iv":…,"ct":…} AES-256-GCM, AAD from [SCHEME].
+ *  - UDP 45572: ask [DISC_ASK], reply [DISC_REPLY]+model(max 60).
+ *  - QR session URI scheme [SCHEME] (AntiBS2client↔AntiBS2client encrypted path). Peer apps that only show
+ *    IP+PIN and do not scan this QR still accept the plain TCP body with the 6-digit code.
+ *
+ * Our optional extension (ignored if the peer closed after the write): after half-close, receiver may answer
+ * {"ok":true,"n":k} / {"ok":false,"err":…}. Send-write success alone does NOT prove the peer imported.
  */
 object LanProtocol {
     const val PORT = 45571
     const val DISC_PORT = 45572
+    // Wire literals required for interop — do not rename for branding.
     const val DISC_ASK = "ABS_DISCOVER_V1"
     const val DISC_REPLY = "ABS_HERE_V1|"
     const val SCHEME = "abs-lan:1"
@@ -37,7 +46,7 @@ object LanProtocol {
 
     fun payload(s: Session): String = "$SCHEME?h=${s.ip}&p=${s.port}&c=${s.code}&k=${b64e.encodeToString(s.key)}&e=${s.expires}"
 
-    /** Same validation as ABS LanQr.parse: host chars, port range, non-blank code, 32-byte key. */
+    /** Validate receiver QR: host chars, port range, non-blank code, 32-byte key. */
     fun parseQr(text: String): Session? = runCatching {
         val t = text.trim()
         if (!t.startsWith("$SCHEME?")) return null
@@ -64,7 +73,7 @@ object LanProtocol {
         String(c.doFinal(ct))
     }.getOrNull()
 
-    // ---- subscription JSON (ABS Subscription.toJson field names) ----
+    // ---- subscription JSON (shared wire field names) ----
     fun toAbs(s: Subscription): JsonObject = buildJsonObject {
         put("id", s.id); put("name", s.title.ifBlank { s.url }); put("url", s.url)
         put("used", s.upload + s.download); put("total", s.total); put("expire", s.expireEpoch)
@@ -98,7 +107,7 @@ object LanProtocol {
         data class Rejected(val reason: String, val wrongCode: Boolean = false) : Incoming()
     }
 
-    /** Decode one received body against the current [code] / QR [session] (ABS receiver rules). */
+    /** Decode one received body against the current [code] / optional QR [session]. */
     fun decode(text: String, code: String, session: Session?, nowSec: Long = System.currentTimeMillis() / 1000): Incoming {
         val raw = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return Incoming.Rejected("bad json")
         val sealed = raw.containsKey("ct")
@@ -115,7 +124,7 @@ object LanProtocol {
 
     fun ack(n: Int) = buildJsonObject { put("ok", true); put("n", n) }.toString()
     fun nack(err: String) = buildJsonObject { put("ok", false); put("err", err) }.toString()
-    /** true / false from our receiver's answer, null = no answer (ABS receiver) or unreadable. */
+    /** true/false from our receiver's answer; null = no answer (peer closed) or unreadable. */
     fun parseAck(text: String): Pair<Boolean, Int>? = runCatching {
         val o = Json.parseToJsonElement(text.trim()).jsonObject
         val ok = o["ok"]!!.jsonPrimitive.boolean
@@ -124,13 +133,13 @@ object LanProtocol {
 
     // ---- discovery / addresses ----
     fun parseReply(text: String): String? =
-        if (text.startsWith(DISC_REPLY)) text.removePrefix(DISC_REPLY).trim().take(60).ifEmpty { "ABS" } else null
+        if (text.startsWith(DISC_REPLY)) text.removePrefix(DISC_REPLY).trim().take(60).ifEmpty { "Устройство" } else null
     fun reply(model: String) = DISC_REPLY + model.ifBlank { "AntiBS2client" }.take(60)
 
     fun isPrivate(a: String) = a.startsWith("192.168.") || a.startsWith("10.") ||
         Regex("^172\\.(1[6-9]|2[0-9]|3[01])\\.").containsMatchIn(a)
 
-    /** ABS pickLanIp: private IPv4, VPN tun skipped; hotspot > Wi-Fi > wired/USB/BT > other. */
+    /** Best LAN IPv4: private only, VPN tun skipped; hotspot > Wi-Fi > wired/USB/BT > other. */
     fun pickLanIp(candidates: List<Pair<String, String>>): String? {
         val ok = candidates.filter { (n, a) -> a.isNotBlank() && isPrivate(a) && !n.startsWith("tun") && a != "10.10.0.2" }
         return ok.minByOrNull { rank(it.first) }?.second
@@ -141,6 +150,14 @@ object LanProtocol {
         n.startsWith("wlan") -> 1
         n.startsWith("eth") || n.startsWith("rndis") || n.startsWith("usb") || n.startsWith("bt-pan") -> 2
         else -> 3
+    }
+
+    /** Hosts of the /24 around [ip] (own address excluded). Wider prefixes are not scanned. */
+    fun subnetHosts(ip: String): List<String> {
+        val p = ip.split('.')
+        if (p.size != 4 || p.any { it.toIntOrNull() !in 0..255 }) return emptyList()
+        val base = "${p[0]}.${p[1]}.${p[2]}."
+        return (1..254).map { base + it }.filter { it != ip }
     }
 
     /** Interfaces discovery may broadcast on: Wi-Fi, hotspot, Ethernet/USB tethering only (never cellular rmnet/ccmni, never tun). */
