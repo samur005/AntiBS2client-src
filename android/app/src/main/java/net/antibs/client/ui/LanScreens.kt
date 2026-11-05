@@ -76,7 +76,7 @@ internal fun LanRecvContent(onReceive: (List<kotlinx.serialization.json.JsonObje
             if (st.error.isNotBlank()) Text(st.error, color = AntiBSColors.Err, fontSize = 13.sp)
             val qrPart: @Composable () -> Unit = {
             LanCard {
-                Text("Отсканируйте QR-код на другом устройстве (AntiBS2client или ABS) — передача будет зашифрована.", color = c.muted, fontSize = 13.sp)
+                Text("Отсканируйте этот QR в AntiBS2client на другом устройстве — передача будет зашифрована. Устройства, которые показывают только адрес и код (без сканера этого QR), принимают вручную по IP и PIN; тогда трафик идёт открытым текстом по локальной сети.", color = c.muted, fontSize = 13.sp)
                 if (qr != null) Image(qr.asImageBitmap(), "QR для передачи", filterQuality = FilterQuality.None,
                     modifier = Modifier.align(Alignment.CenterHorizontally).size(if (isTv) 300.dp else 220.dp).clip(RoundedCornerShape(8.dp)))
                 Text("QR действует 10 минут и один раз", color = c.muted, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -127,7 +127,20 @@ internal fun LanSendContent(all: List<net.antibs.client.data.Subscription>, onBa
     fun search() {
         if (previewPeers != null) return
         searching = true; peers.clear()
-        scope.launch { runCatching { LanTransfer.discover(ctx) { p -> if (peers.none { it.ip == p.ip }) peers.add(p) } }; searching = false }
+        scope.launch {
+            runCatching {
+                LanTransfer.discover(ctx) { p ->
+                    scope.launch {
+                        if (peers.none { it.ip == p.ip }) peers.add(p)
+                        else {
+                            val i = peers.indexOfFirst { it.ip == p.ip }
+                            if (i >= 0 && peers[i].name == peers[i].ip && p.name != p.ip) peers[i] = p
+                        }
+                    }
+                }
+            }
+            searching = false
+        }
     }
     LaunchedEffect(Unit) { search() }
     val camera = remember { ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY) }
@@ -169,6 +182,7 @@ internal fun LanSendContent(all: List<net.antibs.client.data.Subscription>, onBa
                 OutlinedTextField(code, { v -> code = v.filter { it.isDigit() }.take(6); qr = null }, label = { Text("Код (6 цифр)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
                 if (qr != null) Text("🔒 Передача будет зашифрована ключом из QR", color = AntiBSColors.Ok, fontSize = 12.sp)
+                else Text("⚠ Без QR передача идёт открытым текстом по локальной сети (PIN защищает только от чужого импорта). Доверяйте только своей Wi‑Fi / точке доступа; VPN-интерфейсы не используются.", color = AntiBSColors.Err, fontSize = 12.sp)
             }
             LanCard {
                 Text("Подписки", color = c.onCard, fontWeight = FontWeight.SemiBold)
@@ -189,7 +203,7 @@ internal fun LanSendContent(all: List<net.antibs.client.data.Subscription>, onBa
                     val key = qr?.takeIf { !it.expired() }?.key
                     status = when (val r = LanTransfer.send(a.first, a.second, code, chosen, key)) {
                         is LanTransfer.SendResult.Confirmed -> "Готово: принято ${r.n} из ${chosen.size}"
-                        LanTransfer.SendResult.Unknown -> "Отправлено (${chosen.size}). Проверьте на принимающем устройстве"
+                        LanTransfer.SendResult.Unknown -> "Запись на сокет прошла (${chosen.size}), но подтверждения импорта нет — проверьте на принимающем устройстве"
                         is LanTransfer.SendResult.Refused -> if (r.reason == "code") "Неверный код" else "Отклонено: ${r.reason}"
                         is LanTransfer.SendResult.Failed -> "Не удалось подключиться: ${r.message}"
                     }

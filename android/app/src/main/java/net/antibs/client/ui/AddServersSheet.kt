@@ -88,6 +88,7 @@ fun AddServersSheet(
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var text by remember { mutableStateOf("") }
     var form by remember { mutableStateOf<String?>(null) }
+    var pendingImport by remember { mutableStateOf<String?>(null) }
     val clip = LocalClipboardManager.current
     val ctx = LocalContext.current
     val isTvSheet = LocalIsTv.current
@@ -136,7 +137,7 @@ fun AddServersSheet(
             if (!isTvSheet) TvHooks.receiveFromPhone?.let { recv ->
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth()) {
-                    ImportTile(Modifier.weight(1f), Icons.Filled.PhoneAndroid, androidx.compose.ui.graphics.Color(0xFF8E6BFF), "Принять с устройства", "По Wi‑Fi из AntiBS2client или ABS") { recv(ctx) }
+                    ImportTile(Modifier.weight(1f), Icons.Filled.PhoneAndroid, androidx.compose.ui.graphics.Color(0xFF8E6BFF), "Принять с устройства", "По Wi‑Fi с другого устройства") { recv(ctx) }
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -165,10 +166,7 @@ fun AddServersSheet(
             Spacer(Modifier.height(10.dp))
             val canImport = text.isNotBlank()
             Button(
-                onClick = {
-                    vm.importRaw(text)
-                    onDismiss()
-                },
+                onClick = { pendingImport = text },
                 enabled = canImport,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(14.dp),
@@ -204,6 +202,33 @@ fun AddServersSheet(
             }
             Spacer(Modifier.height(8.dp))
         }
+    }
+    pendingImport?.let { raw ->
+        val outcome = remember(raw) { net.antibs.client.data.ImportText.classify(raw, net.antibs.client.data.ProtocolSupport.MANUAL_SUB_ID) }
+        val summary = when (outcome) {
+            is net.antibs.client.data.ImportOutcome.SubscriptionUrl -> {
+                val host = runCatching { java.net.URI(outcome.url).host }.getOrNull().orEmpty().ifBlank { "…" }
+                "Подписка:\n$host\n\nURL сам не открывается — подтвердите импорт."
+            }
+            is net.antibs.client.data.ImportOutcome.Servers -> "Серверов к добавлению: ${outcome.entries.size}"
+            is net.antibs.client.data.ImportOutcome.Failed -> "Не распознано:\n${outcome.message}"
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingImport = null },
+            title = { Text("Подтвердить импорт") },
+            text = { Text(summary) },
+            confirmButton = {
+                TextButton(
+                    enabled = outcome !is net.antibs.client.data.ImportOutcome.Failed,
+                    onClick = {
+                        vm.importRaw(raw)
+                        pendingImport = null
+                        onDismiss()
+                    },
+                ) { Text("Импорт") }
+            },
+            dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Отмена") } },
+        )
     }
     form?.let { proto ->
         if (proto == "olcrtc") {

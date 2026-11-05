@@ -12,7 +12,7 @@ import java.net.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
-/** 2.0.12: sockets for [LanProtocol] (receiver: TCP 45571 + UDP 45572 responder; sender: UDP discovery + one TCP post). */
+/** 2.0.12+/2.0.25: sockets for [LanProtocol] (receiver: TCP 45571 + UDP 45572 responder; sender: UDP discovery, /24 TCP probe fallback, one TCP post). */
 object LanTransfer {
     data class RecvState(val running: Boolean = false, val ip: String = "", val code: String = "",
                          val session: LanProtocol.Session? = null, val lastInfo: String = "", val error: String = "")
@@ -45,7 +45,7 @@ object LanTransfer {
         _recv.value = _recv.value.copy(code = code, session = LanProtocol.newSession(ip, code))
     }
 
-    /** Start receive mode. [onReceive] gets the ABS-format entries and returns how many were added. */
+    /** Start receive mode. [onReceive] gets wire-format subscription objects and returns how many were added. */
     fun startReceiver(ctx: Context, onReceive: (List<JsonObject>) -> Int) {
         stop()
         val ip = localIp(ctx)
@@ -103,7 +103,7 @@ object LanTransfer {
                 LanProtocol.nack(r.reason)
             }
         }
-        // our extension: the sender half-closed and still reads; an ABS sender has closed already (write fails silently)
+        // optional ACK extension: peer that already closed after write will not read this (write may fail silently)
         runCatching { sock.getOutputStream().apply { write(answer.toByteArray()); flush() }; sock.shutdownOutput() }
     }
 
@@ -125,28 +125,55 @@ object LanTransfer {
     // ---- sender ----
     data class Peer(val ip: String, val name: String)
 
-    /** UDP discovery only (no /24 TCP probe): Wi-Fi / hotspot / Ethernet broadcasts + 255.255.255.255, twice, 1.5 s. */
+    /**
+     * Find devices in receive mode: UDP broadcast discovery first (names), then a TCP connect probe of the receive
+     * port over each own /24 (300 ms timeout, 48 at a time). Skips VPN/cellular interfaces. Cancellable.
+     * [onFound] may be invoked from IO threads — hop to Main in the UI.
+     */
     suspend fun discover(ctx: Context, onFound: (Peer) -> Unit) = withContext(Dispatchers.IO) {
         val wifi = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         val lock = runCatching { wifi?.createMulticastLock("antibs-lan")?.apply { setReferenceCounted(false); acquire() } }.getOrNull()
         try {
             val nets = ifaceAddrs().filter { LanProtocol.isLanIface(it.first) && LanProtocol.isPrivate(it.second.hostAddress ?: "") }
             val own = nets.mapNotNull { it.second.hostAddress }.toSet()
-            val seen = HashSet<String>()
-            DatagramSocket().use { sock ->
-                sock.broadcast = true; sock.soTimeout = 250
-                val ask = LanProtocol.DISC_ASK.toByteArray(Charsets.UTF_8)
-                val targets = (nets.mapNotNull { it.third } + InetAddress.getByName("255.255.255.255")).distinct()
-                repeat(2) { targets.forEach { t -> runCatching { sock.send(DatagramPacket(ask, ask.size, t, LanProtocol.DISC_PORT)) } } }
-                val until = System.currentTimeMillis() + 1500
-                val buf = ByteArray(256)
-                while (System.currentTimeMillis() < until) {
-                    ensureActive()
-                    val pkt = DatagramPacket(buf, buf.size)
-                    try { sock.receive(pkt) } catch (_: SocketTimeoutException) { continue }
-                    val name = LanProtocol.parseReply(String(pkt.data, 0, pkt.length, Charsets.UTF_8)) ?: continue
-                    val a = pkt.address?.hostAddress ?: continue
-                    if (a !in own && seen.add(a)) withContext(Dispatchers.Main) { onFound(Peer(a, name)) }
+            val seen = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+            fun emit(ip: String, name: String) {
+                if (ip !in own && seen.add(ip)) onFound(Peer(ip, name))
+            }
+            try {
+                DatagramSocket().use { sock ->
+                    sock.broadcast = true; sock.soTimeout = 250
+                    val ask = LanProtocol.DISC_ASK.toByteArray(Charsets.UTF_8)
+                    val targets = (nets.mapNotNull { it.third } + InetAddress.getByName("255.255.255.255")).distinct()
+                    repeat(2) { targets.forEach { tgt -> runCatching { sock.send(DatagramPacket(ask, ask.size, tgt, LanProtocol.DISC_PORT)) } } }
+                    val until = System.currentTimeMillis() + 1500
+                    val buf = ByteArray(256)
+                    while (System.currentTimeMillis() < until) {
+                        ensureActive()
+                        val pkt = DatagramPacket(buf, buf.size)
+                        try { sock.receive(pkt) } catch (_: SocketTimeoutException) { continue }
+                        val name = LanProtocol.parseReply(String(pkt.data, 0, pkt.length, Charsets.UTF_8)) ?: continue
+                        pkt.address?.hostAddress?.let { emit(it, name) }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            val hosts = nets.flatMap { LanProtocol.subnetHosts(it.second.hostAddress ?: "") }.distinct().filter { it !in own }
+            val sem = kotlinx.coroutines.sync.Semaphore(48)
+            coroutineScope {
+                hosts.forEach { h ->
+                    launch {
+                        sem.acquire()
+                        try {
+                            ensureActive()
+                            if (!seen.contains(h)) {
+                                val open = runCatching {
+                                    Socket().use { it.connect(InetSocketAddress(h, LanProtocol.PORT), 300); true }
+                                }.getOrDefault(false)
+                                if (open) emit(h, h)
+                            }
+                        } finally { sem.release() }
+                    }
                 }
             }
         } finally { runCatching { lock?.release() } }
@@ -154,7 +181,7 @@ object LanTransfer {
 
     sealed class SendResult {
         data class Confirmed(val n: Int) : SendResult()
-        object Unknown : SendResult()   // ABS receiver: no answer
+        object Unknown : SendResult()   // peer closed without ACK — write success ≠ confirmed import
         data class Refused(val reason: String) : SendResult()
         data class Failed(val message: String) : SendResult()
     }

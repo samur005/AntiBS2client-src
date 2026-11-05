@@ -604,7 +604,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         refresh(id)
     }
 
-    /** 2.0.12: LAN receive — map ABS entries, dedupe by url, then refresh each new one from its url. */
+    /** 2.0.12: LAN receive — map wire-format entries, dedupe by url, then refresh each new one from its url. */
     fun receiveLanSubs(entries: List<kotlinx.serialization.json.JsonObject>): Int {
         val subs = entries.mapNotNull { net.antibs.client.data.LanProtocol.fromAbs(it, "sub-" + java.util.UUID.randomUUID().toString().take(8)) }
         val ids = store.addReceivedSubscriptions(subs)

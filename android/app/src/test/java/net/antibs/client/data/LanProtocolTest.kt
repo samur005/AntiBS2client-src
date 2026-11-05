@@ -8,20 +8,20 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 class LanProtocolTest {
-    /** Exact shape of ABS 3.1.27 Subscription.toJson(). */
+    /** Exact shape of the shared subscription wire JSON. */
     private val absSub = """{"id":"7f1c","name":"Мой VPN","url":"https://panel.example/sub/abc","used":1048576,"total":10737418240,
         "expire":1798761600,"lastUpdated":1730000000000,"title":"Мой VPN","interval":12,"updateAlways":false,
         "supportUrl":"https://t.me/sup","webPageUrl":"https://panel.example","announce":"hi","announceUrl":"",
         "routing":"happ://routing/x","hideSettings":false,"deviceLimit":false,"hwidActive":true,"lastCount":5,"lastReceived":5,"lastSkipped":0}"""
 
-    @Test fun absJsonMapsToOurs() {
+    @Test fun wireJsonMapsToOurs() {
         val s = LanProtocol.fromAbs(Json.parseToJsonElement(absSub).jsonObject, "sub-1")!!
         assertEquals("https://panel.example/sub/abc", s.url); assertEquals("Мой VPN", s.title)
         assertEquals(1048576L, s.download); assertEquals(10737418240L, s.total); assertEquals(1798761600L, s.expireEpoch)
         assertEquals(12, s.updateIntervalHours); assertEquals("https://t.me/sup", s.supportUrl); assertEquals("happ://routing/x", s.routing)
     }
 
-    @Test fun oursToAbsHasAbsFieldNamesAndRoundTrips() {
+    @Test fun oursToWireHasFieldNamesAndRoundTrips() {
         val ours = Subscription(id = "sub-x", url = "https://a.b/s", title = "T", upload = 5, download = 10, total = 100, expireEpoch = 9, updateIntervalHours = 6)
         val o = LanProtocol.toAbs(ours)
         listOf("id","name","url","used","total","expire","lastUpdated","title","interval","updateAlways","supportUrl","webPageUrl",
@@ -44,7 +44,7 @@ class LanProtocolTest {
         assertTrue(w.wrongCode)
     }
 
-    /** Replica of ABS LanQr.seal: AES/GCM/NoPadding, 128-bit tag, AAD "abs-lan:1", b64url no padding. */
+    /** Replica of sealed QR payload: AES/GCM/NoPadding, 128-bit tag, AAD "abs-lan:1", b64url no padding. */
     private fun absSeal(key: ByteArray, iv: ByteArray, plain: String): String {
         val e = java.util.Base64.getUrlEncoder().withoutPadding()
         val c = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv)) }
@@ -52,11 +52,11 @@ class LanProtocolTest {
         return """{"v":2,"iv":"${e.encodeToString(iv)}","ct":"${e.encodeToString(c.doFinal(plain.toByteArray()))}"}"""
     }
 
-    @Test fun aesGcmCompatibleWithAbs() {
+    @Test fun aesGcmSealedRoundTrip() {
         val key = ByteArray(32) { it.toByte() }; val iv = ByteArray(12) { (it + 7).toByte() }
         val plain = """{"code":"111222","subs":[$absSub]}"""
         val abs = absSeal(key, iv, plain)
-        assertEquals(abs, LanProtocol.seal(key, plain, iv))   // byte-identical to ABS
+        assertEquals(abs, LanProtocol.seal(key, plain, iv))   // byte-identical sealed form
         assertEquals(plain, LanProtocol.open(key, Json.parseToJsonElement(abs).jsonObject))
         val s = LanProtocol.Session("192.168.1.2", 45571, "111222", key, Long.MAX_VALUE)
         val r = LanProtocol.decode(abs, "111222", s) as LanProtocol.Incoming.Ok
@@ -89,7 +89,7 @@ class LanProtocolTest {
 
     @Test fun discoveryAndAck() {
         assertEquals("Pixel 8", LanProtocol.parseReply("ABS_HERE_V1|Pixel 8"))
-        assertEquals("ABS", LanProtocol.parseReply("ABS_HERE_V1|"))
+        assertEquals("Устройство", LanProtocol.parseReply("ABS_HERE_V1|"))
         assertNull(LanProtocol.parseReply("HELLO"))
         assertEquals("ABS_HERE_V1|" + "x".repeat(60), LanProtocol.reply("x".repeat(80)))
         assertEquals(true to 3, LanProtocol.parseAck(LanProtocol.ack(3)))
@@ -109,4 +109,31 @@ class LanProtocolTest {
         assertEquals(PingLevel.Level.BAD, PingLevel.of(300)); assertEquals(PingLevel.Level.BAD, PingLevel.of(5000))
         assertNotEquals(PingLevel.EXCELLENT, PingLevel.GOOD)
     }
+
+    @Test fun subnetHostsExcludesSelfAndValidates() {
+        assertEquals(253, LanProtocol.subnetHosts("192.168.1.5").size)
+        assertFalse(LanProtocol.subnetHosts("192.168.1.5").contains("192.168.1.5"))
+        assertTrue(LanProtocol.subnetHosts("192.168.1.5").contains("192.168.1.1"))
+        assertTrue(LanProtocol.subnetHosts("bad").isEmpty())
+        assertTrue(LanProtocol.subnetHosts("1.2.3").isEmpty())
+    }
+
+    @Test fun malformedAndOversizeRejected() {
+        assertTrue(LanProtocol.decode("{", "123456", null) is LanProtocol.Incoming.Rejected)
+        assertTrue(LanProtocol.decode("{}", "123456", null) is LanProtocol.Incoming.Rejected)
+        assertTrue(LanProtocol.decode("""{"code":"123456"}""", "123456", null) is LanProtocol.Incoming.Rejected)
+        val huge = "x".repeat(LanProtocol.MAX_BODY + 10)
+        assertTrue(LanProtocol.decode(huge, "123456", null) is LanProtocol.Incoming.Rejected)
+        assertNull(LanProtocol.parseQr("abs-lan:1?h=&p=45571&c=1&k=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&e=9999999999"))
+        assertNull(LanProtocol.parseQr("not-a-qr"))
+    }
+
+    @Test fun wireLiteralsUnchanged() {
+        assertEquals("ABS_DISCOVER_V1", LanProtocol.DISC_ASK)
+        assertEquals("ABS_HERE_V1|", LanProtocol.DISC_REPLY)
+        assertEquals("abs-lan:1", LanProtocol.SCHEME)
+        assertEquals(45571, LanProtocol.PORT)
+        assertEquals(45572, LanProtocol.DISC_PORT)
+    }
+
 }
