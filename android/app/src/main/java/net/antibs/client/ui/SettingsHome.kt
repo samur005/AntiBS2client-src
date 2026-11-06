@@ -60,13 +60,15 @@ import net.antibs.client.engine.UiSettings
  * [open] takes a Page name.
  */
 @Composable
-internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, open: (String) -> Unit, section: String = "Settings") {
+internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, open: (String) -> Unit, section: String = "Settings", onSearchNavigate: (SettingsSearchEntry) -> Unit = { open(it.section) }) {
     val st by vm.state.collectAsState()
     val a = st.adv
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val upd by vm.update.collectAsState()
     var dialog by remember { mutableStateOf<String?>(null) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     var hashes by remember(st.vkHashes) { mutableStateOf(st.vkHashes) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) scope.launch {
@@ -91,7 +93,20 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
     val mapPct by WorldOpacity.map.collectAsState()
     val globePct by WorldOpacity.globe.collectAsState()
     remember { WorldOpacity.init(ctx); 0 }
-    SettingsScaffold(title, onBack) {
+    if (searchOpen) {
+        SettingsSearchPanel(
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            onClose = { searchOpen = false; searchQuery = "" },
+            onSelect = { entry ->
+                searchOpen = false
+                searchQuery = ""
+                onSearchNavigate(entry)
+            },
+        )
+        return
+    }
+    SettingsScaffold(title, onBack = onBack, actions = { SettingsSearchButton { searchOpen = true } }) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             when (section) {
                 // ───────────── main screen: only the most important items, details behind «>»

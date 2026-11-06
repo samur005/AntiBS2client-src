@@ -136,4 +136,23 @@ class LanProtocolTest {
         assertEquals(45572, LanProtocol.DISC_PORT)
     }
 
+
+    @Test fun serverWireRoundTrip() {
+        val e = net.antibs.client.data.ServerEntry(
+            id = "srv1",
+            engine = net.antibs.client.data.EngineKind.XRAY,
+            name = "Test Host",
+            subscriptionId = "sub-a",
+            xray = net.antibs.client.data.XrayProfile(remarks = "Test Host", protocol = "vless", server = "example.com", port = 443),
+        )
+        val sub = LanProtocol.serverAsSub(e)
+        assertTrue(sub.url.startsWith("antibs-server:1,"))
+        val back = LanProtocol.parseServerWire(sub.url)!!
+        assertEquals("Test Host", back.name)
+        assertEquals(net.antibs.client.data.ProtocolSupport.MANUAL_SUB_ID, back.subscriptionId)
+        assertEquals("vless", back.xray!!.protocol)
+        assertEquals("example.com", back.xray!!.server)
+        // fromAbs still drops non-http (peer apps / old clients)
+        assertNull(LanProtocol.fromAbs(LanProtocol.toAbs(sub), "x"))
+    }
 }

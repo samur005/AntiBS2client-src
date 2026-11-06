@@ -102,18 +102,40 @@ internal fun LanRecvContent(onReceive: (List<kotlinx.serialization.json.JsonObje
     }
 }
 
-/** «Передать на устройство»: QR scan / discovered devices / manual address + code, subscription checkboxes. */
+/** «Передать на устройство»: QR scan / discovered devices / manual address + code, subscription checkboxes (or a single server). */
 @Composable
-internal fun LanSendPage(vm: AppViewModel, preselect: String?, onBack: () -> Unit) {
+internal fun LanSendPage(vm: AppViewModel, preselect: String?, onBack: () -> Unit, serverId: String? = null) {
     val st by vm.state.collectAsState()
-    LanSendContent(st.subscriptions, onBack, preselect = preselect)
+    val servers = remember(serverId, st.servers) {
+        if (serverId == null) emptyList()
+        else st.servers.filter { it.id == serverId }
+    }
+    LanSendContent(st.subscriptions, onBack, preselect = preselect, servers = servers)
 }
 
 @Composable
-internal fun LanSendContent(all: List<net.antibs.client.data.Subscription>, onBack: () -> Unit, previewPeers: List<LanTransfer.Peer>? = null, preselect: String? = null) {
+internal fun LanSendContent(
+    all: List<net.antibs.client.data.Subscription>,
+    onBack: () -> Unit,
+    previewPeers: List<LanTransfer.Peer>? = null,
+    preselect: String? = null,
+    servers: List<net.antibs.client.data.ServerEntry> = emptyList(),
+) {
     val ctx = LocalContext.current
-    val subs = remember(all) { all.filter { it.kind != "manual" && it.id != ProtocolSupport.MANUAL_SUB_ID && it.url.startsWith("http") } }
-    val checked = remember(preselect) { mutableStateMapOf<String, Boolean>().also { m -> if (preselect != null) all.forEach { m[it.id] = it.id == preselect } } }
+    val serverMode = servers.isNotEmpty()
+    val wireSubs = remember(servers) { servers.map { LanProtocol.serverAsSub(it) } }
+    val subs = remember(all, serverMode, wireSubs) {
+        if (serverMode) wireSubs
+        else all.filter { it.kind != "manual" && it.id != ProtocolSupport.MANUAL_SUB_ID && it.url.startsWith("http") }
+    }
+    val checked = remember(preselect, serverMode, servers) {
+        mutableStateMapOf<String, Boolean>().also { m ->
+            when {
+                serverMode -> servers.forEach { m[it.id] = true }
+                preselect != null -> all.forEach { m[it.id] = it.id == preselect }
+            }
+        }
+    }
     val peers = remember { mutableStateListOf<LanTransfer.Peer>().also { l -> previewPeers?.let { l.addAll(it) } } }
     var searching by remember { mutableStateOf(false) }
     var host by remember { mutableStateOf("") }
@@ -185,11 +207,11 @@ internal fun LanSendContent(all: List<net.antibs.client.data.Subscription>, onBa
                 else Text("⚠ Без QR передача идёт открытым текстом по локальной сети (PIN защищает только от чужого импорта). Доверяйте только своей Wi‑Fi / точке доступа; VPN-интерфейсы не используются.", color = AntiBSColors.Err, fontSize = 12.sp)
             }
             LanCard {
-                Text("Подписки", color = c.onCard, fontWeight = FontWeight.SemiBold)
-                if (subs.isEmpty()) Text("Нет подписок для передачи", color = c.muted, fontSize = 13.sp)
+                Text(if (serverMode) "Сервер" else "Подписки", color = c.onCard, fontWeight = FontWeight.SemiBold)
+                if (subs.isEmpty()) Text(if (serverMode) "Сервер не найден" else "Нет подписок для передачи", color = c.muted, fontSize = 13.sp)
                 subs.forEach { s ->
-                    Row(Modifier.fillMaxWidth().clickable { checked[s.id] = !(checked[s.id] ?: true) }, verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked[s.id] ?: true, { checked[s.id] = it })
+                    Row(Modifier.fillMaxWidth().clickable(enabled = !serverMode) { checked[s.id] = !(checked[s.id] ?: true) }, verticalAlignment = Alignment.CenterVertically) {
+                        if (!serverMode) Checkbox(checked[s.id] ?: true, { checked[s.id] = it })
                         Text(s.title.ifBlank { s.url }, color = c.onCard, maxLines = 1, modifier = Modifier.weight(1f))
                     }
                 }

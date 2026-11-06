@@ -1,7 +1,10 @@
 package net.antibs.client.data
 
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import java.security.SecureRandom
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -85,6 +88,26 @@ object LanProtocol {
 
     private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty()
     private fun JsonObject.long(k: String) = (this[k] as? JsonPrimitive)?.longOrNull ?: 0L
+
+
+    private val serverJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private const val SERVER_PREFIX = "antibs-server:1,"
+
+    /** Encode one local server so the existing LAN «subs» wire can carry it. */
+    fun serverAsSub(e: ServerEntry): Subscription {
+        val raw = serverJson.encodeToString(ServerEntry.serializer(), e.copy(subscriptionId = ProtocolSupport.MANUAL_SUB_ID))
+        val url = SERVER_PREFIX + b64e.encodeToString(raw.toByteArray(Charsets.UTF_8))
+        return Subscription(id = e.id, url = url, title = e.name.ifBlank { "Сервер" }, kind = "server")
+    }
+
+    fun parseServerWire(url: String): ServerEntry? {
+        if (!url.startsWith(SERVER_PREFIX)) return null
+        return runCatching {
+            val raw = String(b64d.decode(url.removePrefix(SERVER_PREFIX)), Charsets.UTF_8)
+            serverJson.decodeFromString(ServerEntry.serializer(), raw)
+                .copy(id = "m-" + java.util.UUID.randomUUID().toString().take(8), subscriptionId = ProtocolSupport.MANUAL_SUB_ID)
+        }.getOrNull()
+    }
 
     /** null for an entry without an http(s) url. */
     fun fromAbs(o: JsonObject, id: String): Subscription? {

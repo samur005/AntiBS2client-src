@@ -69,6 +69,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -240,6 +245,8 @@ fun AppRoot(vm: AppViewModel) {
         val page = Page.valueOf(pageName)
         // 2.0.13: «+» sheet tile (TV «Принять с телефона», phone «Принять с устройства») → receive screen
         var lanSendSub by rememberSaveable { mutableStateOf<String?>(null) }
+        var lanSendServerId by rememberSaveable { mutableStateOf<String?>(null) }
+        var settingsFlash by remember { mutableStateOf(SettingsFlash()) }
         val tvNow = LocalIsTv.current
         DisposableEffect(tvNow) {
             TvHooks.receiveFromPhone = { _ -> backTo = pageName; pageName = Page.LanRecv.name }
@@ -259,17 +266,32 @@ fun AppRoot(vm: AppViewModel) {
             TvColumn(enabled = LocalIsTv.current && page != Page.Main) {
             when (page) {
                 Page.Main -> MainScreen(vm, ui, onOpenSettings = { open(Page.Settings) }, onOpenSpeedTest = { open(Page.SpeedTest) }, onOpenNet = { open(Page.NetTools) },
-                    onLanSend = { id -> lanSendSub = id; open(Page.LanSend) })
-                Page.LanSend -> LanSendPage(vm, lanSendSub, onBack = { back() })
+                    onLanSend = { id -> lanSendServerId = null; lanSendSub = id; open(Page.LanSend) },
+                    onLanSendServer = { id -> lanSendSub = null; lanSendServerId = id; open(Page.LanSend) })
+                Page.LanSend -> LanSendPage(vm, lanSendSub, onBack = { back() }, serverId = lanSendServerId)
                 Page.LanRecv -> LanRecvPage(vm, onBack = { back() })
                 Page.NetTools -> NetToolsPage(vm, onBack = { back() })
                 Page.SpeedTest -> SpeedTestPage(vm, onBack = { back() })
                 Page.Settings, Page.Vpn, Page.Interface, Page.SetCores, Page.SetNet, Page.SetSubAuto ->
-                    SettingsHome(vm, ui, onBack = { back() }, open = { open(Page.valueOf(it)) }, section = page.name)
+                    CompositionLocalProvider(LocalSettingsFlash provides settingsFlash) {
+                        SettingsHome(
+                            vm, ui,
+                            onBack = { back() },
+                            open = { open(Page.valueOf(it)) },
+                            section = page.name,
+                            onSearchNavigate = { entry ->
+                                expandSettingsCard(entry.card, mainHub = entry.section == "Settings")
+                                settingsFlash = SettingsFlash(entry.itemId, System.nanoTime())
+                                open(Page.valueOf(entry.section))
+                            },
+                        )
+                    }
                 Page.Routing -> RoutingListPage(vm, st, onOpenProfile = { routingId = it; open(Page.RoutingEdit) }, onBack = { back() }, onOpenPage = { open(Page.valueOf(it)) })
                 Page.Logs -> LogsTab(vm, onBack = { back() })
                 Page.RoutingEdit -> RoutingEditPage(vm, st, routingId ?: "", onBack = { pageName = Page.Routing.name })
-                else -> SettingsDetail(page, vm, ui, onBack = { back() }, onOpen = { open(it) })
+                else -> CompositionLocalProvider(LocalSettingsFlash provides settingsFlash) {
+                    SettingsDetail(page, vm, ui, onBack = { back() }, onOpen = { open(it) })
+                }
             }
             }
             // 2.0.6 (ABS): snow + garland over the main screen (draw-only, no touch handling)
@@ -349,7 +371,7 @@ internal fun UpdateDialog(vm: AppViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> Unit, onOpenSpeedTest: () -> Unit, onOpenNet: () -> Unit = {}, onLanSend: (String?) -> Unit = {}) {
+private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> Unit, onOpenSpeedTest: () -> Unit, onOpenNet: () -> Unit = {}, onLanSend: (String?) -> Unit = {}, onLanSendServer: (String) -> Unit = {}) {
     val st by vm.state.collectAsState()
     val vpn by VpnState.status.collectAsState()
     val pings by vm.pings.collectAsState()
@@ -720,7 +742,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (sStyle != ServerStyle.CLASSIC && effLayout == SubLayout.RIBBON) {
                     styledServers(sStyle, effLayout, opts.bestCard, sRibbon[sStyle] ?: ServerStyleLogic.RIBBON_FIRST, { sp.setRibbon(sStyle, it) },
                         sFilter[sStyle] ?: ServerFilter.ALL, { sp.setFilter(sStyle, it) }, sFav, sSort, sSubNew,
-                        st, ui, pings, pinging, vm, ctx, nowSec, onSelected = { tabName = MainTab.Home.name })
+                        st, ui, pings, pinging, vm, ctx, nowSec, onSelected = { tabName = MainTab.Home.name },
+                        onLanSendServer = onLanSendServer)
                     return@run
                 }
                 if (sStyle != ServerStyle.CLASSIC && opts.bestCard) item(key = "ss-best") {
@@ -808,14 +831,14 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                     }
                                 }
                                 if (open) items(list, key = { it.id }) { s ->
-                                    if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name })
-                                    else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name })
+                                    if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name }, onLanSend = { onLanSendServer(s.id) })
+                                    else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name }, onLanSend = { onLanSendServer(s.id) })
                                 }
                             }
                         } else
                         items(g.servers, key = { it.id }) { s ->
-                            if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name })
-                            else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name })
+                            if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name }, onLanSend = { onLanSendServer(s.id) })
+                            else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name }, onLanSend = { onLanSendServer(s.id) })
                         }
                     }
                 }
@@ -1546,6 +1569,7 @@ private fun ServerRow(
     onDelete: (() -> Unit)? = null,
     autoExcluded: Boolean = false,
     onToggleAuto: (() -> Unit)? = null,
+    onLanSend: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -1595,12 +1619,13 @@ private fun ServerRow(
                     }
                 } else if (ping.isNotEmpty()) Text(ping, color = pingColor, fontSize = 12.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium)
             }
-            if (onPing != null || onCopy != null) {
+            if (onPing != null || onCopy != null || onLanSend != null) {
                 Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Filled.MoreVert, "Меню", modifier = Modifier.size(18.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (onPing != null) DropdownMenuItem(text = { Text("Пинг") }, leadingIcon = { MenuIcon(Icons.Filled.NetworkCheck) }, onClick = { menu = false; onPing() })
                         if (onCopy != null) DropdownMenuItem(text = { Text("Копировать имя") }, leadingIcon = { MenuIcon(Icons.Filled.ContentCopy) }, onClick = { menu = false; onCopy() })
+                        if (onLanSend != null) DropdownMenuItem(text = { Text("Передать на устройство") }, leadingIcon = { MenuIcon(Icons.Filled.SendToMobile) }, onClick = { menu = false; onLanSend() })
                         if (onEdit != null) DropdownMenuItem(text = { Text("Изменить") }, leadingIcon = { MenuIcon(Icons.Filled.Edit) }, onClick = { menu = false; onEdit() })
                         if (onReset != null) DropdownMenuItem(text = { Text("Сбросить изменения") }, leadingIcon = { MenuIcon(Icons.Filled.Restore) }, onClick = { menu = false; onReset() })
                         if (onToggleAuto != null) DropdownMenuItem(text = { Text(if (autoExcluded) "Вернуть в автовыбор" else "Исключить из автовыбора") }, leadingIcon = { MenuIcon(if (autoExcluded) Icons.Filled.AddCircleOutline else Icons.Filled.Block) }, onClick = { menu = false; onToggleAuto() })
@@ -2004,6 +2029,13 @@ internal val LocalCollapseByDefault = androidx.compose.runtime.compositionLocalO
 private val SettingsOpen = androidx.compose.runtime.mutableStateMapOf<String, Boolean>()
 private const val FIRST_OPEN = "Настройки интерфейса"
 
+/** Expand a collapsible settings card so a search hit (or deep link) is visible. */
+internal fun expandSettingsCard(title: String?, mainHub: Boolean) {
+    if (title.isNullOrBlank()) return
+    SettingsOpen[(if (mainHub) "main:" else "sub:") + title] = true
+}
+
+
 /** 2.0.8: collapsible, style-aware card grouping settings rows (animated chevron, dividers between rows). */
 @Composable
 internal fun SettingsCard(title: String? = null, content: @Composable () -> Unit) {
@@ -2137,12 +2169,36 @@ internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.Im
 }
 
 /** 2.0.8: one frame for every settings row — same height, icon, title/subtitle, trailing control. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun SettingsRowFrame(title: String, subtitle: String?, onClick: (() -> Unit)?, trailing: @Composable RowScope.() -> Unit) {
     val style = LocalAppStyle.current
     val c = ssColors(style)
+    val id = settingsItemId(title)
+    val flash = LocalSettingsFlash.current
+    val bring = remember { BringIntoViewRequester() }
+    var lit by remember { mutableStateOf(false) }
+    LaunchedEffect(flash.itemId, flash.token) {
+        if (flash.itemId != null && flash.itemId == id) {
+            delay(340)
+            runCatching { bring.bringIntoView() }
+            lit = true
+            delay(2200)
+            lit = false
+        }
+    }
+    val bg by animateColorAsState(
+        if (lit) c.accent.copy(alpha = 0.28f) else Color.Transparent,
+        animationSpec = androidx.compose.animation.core.tween(450),
+        label = "settings-flash",
+    )
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 60.dp).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+        Modifier
+            .fillMaxWidth()
+            .bringIntoViewRequester(bring)
+            .background(bg)
+            .heightIn(min = 60.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2251,6 +2307,7 @@ internal fun HostServerRow(
     vm: AppViewModel,
     ctx: Context,
     onSelected: (() -> Unit)? = null,
+    onLanSend: (() -> Unit)? = null,
 ) {
     val ping = pings[s.id]
     val isAuto = UiLogic.isAutoSelectEntry(s)
@@ -2294,6 +2351,7 @@ internal fun HostServerRow(
         onDelete = if (!isAuto) ({ confirmDelete = true }) else null,
         autoExcluded = excludedAuto,
         onToggleAuto = if (ownAuto && !isAuto) ({ vm.toggleAutoExclude(s.id) }) else null,
+        onLanSend = onLanSend,
     )
     }
 }

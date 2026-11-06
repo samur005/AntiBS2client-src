@@ -159,7 +159,7 @@ internal fun LazyListScope.styledServers(
     filter: ServerFilter, onFilter: (ServerFilter) -> Unit, favorites: Set<String>,
     sortMode: String, subNewestFirst: Boolean,
     st: AppState, ui: net.antibs.client.engine.UiSettings, pings: Map<String, Long>, pinging: Set<String>, vm: AppViewModel, ctx: Context,
-    nowSec: Long, onSelected: () -> Unit,
+    nowSec: Long, onSelected: () -> Unit, onLanSendServer: (String) -> Unit = {},
 ) {
     val all = UiLogic.hostGroups(st.subscriptions, st.servers, emptySet()).filter { it.subscription != null && (it.servers.isNotEmpty() || !UiLogic.isManualSub(it.subscription.id)) }
     val ordered = ServerStyleLogic.orderSubs(all, subNewestFirst)
@@ -206,17 +206,17 @@ internal fun LazyListScope.styledServers(
                     vm.setAdv { it.copy(serverGrouping = it.serverGrouping.toggle(sel, code)) }
                 }
             }
-            if (open) items(l, key = { "ss-" + it.id }) { s -> StyledHostRow(style, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, favorites, onSelected) }
+            if (open) items(l, key = { "ss-" + it.id }) { s -> StyledHostRow(style, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, favorites, onSelected, onLanSend = { onLanSendServer(s.id) }) }
         }
         return
     }
-    items(list, key = { "ss-" + it.id }) { s -> StyledHostRow(style, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, favorites, onSelected) }
+    items(list, key = { "ss-" + it.id }) { s -> StyledHostRow(style, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, favorites, onSelected, onLanSend = { onLanSendServer(s.id) }) }
 }
 
 /** Server row in a styled card: glow/border per style, favourite star; the row itself is the classic one (menus, swipe, edit). */
 @Composable
 internal fun StyledHostRow(style: ServerStyle, s: ServerEntry, st: AppState, pings: Map<String, Long>, busy: Boolean, compact: Boolean,
-                           vm: AppViewModel, ctx: Context, favorites: Set<String>, onSelected: () -> Unit) {
+                           vm: AppViewModel, ctx: Context, favorites: Set<String>, onSelected: () -> Unit, onLanSend: (() -> Unit)? = null) {
     val c = ssColors(style)
     val sel = s.id == st.selectedServerId
     val shape = ssShape(style, 14.dp)
@@ -228,7 +228,7 @@ internal fun StyledHostRow(style: ServerStyle, s: ServerEntry, st: AppState, pin
             .border(if (sel) 1.5.dp else 1.dp, if (sel) c.accent else c.cardBorder, shape),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.weight(1f)) { HostServerRow(s, st, pings, busy, compact, vm, ctx, onSelected = onSelected) }
+        Box(Modifier.weight(1f)) { HostServerRow(s, st, pings, busy, compact, vm, ctx, onSelected = onSelected, onLanSend = onLanSend) }
         FavoriteStar(s.id in favorites, { prefs.toggleFavorite(s.id) }, c.muted)
         Spacer(Modifier.width(4.dp))
     }

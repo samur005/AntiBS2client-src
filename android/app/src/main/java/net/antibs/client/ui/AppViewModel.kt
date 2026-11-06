@@ -606,11 +606,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 2.0.12: LAN receive — map wire-format entries, dedupe by url, then refresh each new one from its url. */
     fun receiveLanSubs(entries: List<kotlinx.serialization.json.JsonObject>): Int {
-        val subs = entries.mapNotNull { net.antibs.client.data.LanProtocol.fromAbs(it, "sub-" + java.util.UUID.randomUUID().toString().take(8)) }
+        val subs = ArrayList<net.antibs.client.data.Subscription>()
+        val servers = ArrayList<net.antibs.client.data.ServerEntry>()
+        for (o in entries) {
+            val asSub = net.antibs.client.data.LanProtocol.fromAbs(o, "sub-" + java.util.UUID.randomUUID().toString().take(8))
+            if (asSub != null) { subs += asSub; continue }
+            val url = (o["url"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+            val asServer = net.antibs.client.data.LanProtocol.parseServerWire(url)
+            if (asServer != null) servers += asServer
+        }
         val ids = store.addReceivedSubscriptions(subs)
         ids.forEach { refresh(it) }
-        _toast.value = if (ids.isEmpty()) "Подписки уже есть" else "Получено подписок: ${ids.size}"
-        return ids.size
+        if (servers.isNotEmpty()) store.addManualServers(servers)
+        val n = ids.size + servers.size
+        _toast.value = when {
+            n == 0 -> "Уже есть или не удалось принять"
+            servers.isNotEmpty() && ids.isEmpty() -> "Получено серверов: ${servers.size}"
+            servers.isEmpty() -> "Получено подписок: ${ids.size}"
+            else -> "Получено: подписок ${ids.size}, серверов ${servers.size}"
+        }
+        return n
     }
 
     fun importRaw(text: String) {
