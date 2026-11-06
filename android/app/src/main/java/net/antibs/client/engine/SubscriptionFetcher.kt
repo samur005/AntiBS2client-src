@@ -3,6 +3,7 @@ package net.antibs.client.engine
 import android.os.Build
 import net.antibs.client.data.Hwid
 import net.antibs.client.data.RemoteSubscription
+import net.antibs.client.data.NestedSubscriptions
 import net.antibs.client.data.SubscriptionParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -77,10 +78,31 @@ object SubscriptionFetcher {
         return null
     }
 
-    private fun get(url: String, hwid: String?, ua: String = UA): Raw {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 20_000
+    private fun readLimited(stream: java.io.InputStream, maxBytes: Int): String {
+        val buf = ByteArray(8192)
+        val out = java.io.ByteArrayOutputStream()
+        var total = 0
+        while (total < maxBytes) {
+            val n = stream.read(buf, 0, minOf(buf.size, maxBytes - total))
+            if (n <= 0) break
+            out.write(buf, 0, n)
+            total += n
+        }
+        return out.toString(Charsets.UTF_8.name())
+    }
+
+    private fun get(
+        url: String,
+        hwid: String?,
+        ua: String = UA,
+        connectTimeoutMs: Int = 15_000,
+        readTimeoutMs: Int = 20_000,
+        maxBytes: Int = NestedSubscriptions.MAX_BODY_BYTES,
+    ): Raw {
+        val req = NestedSubscriptions.requestUrl(url)
+        val conn = (URL(req).openConnection() as HttpURLConnection).apply {
+            connectTimeout = connectTimeoutMs
+            readTimeout = readTimeoutMs
             instanceFollowRedirects = true
             requestMethod = "GET"
             headersFor(hwid, Build.VERSION.RELEASE, Build.MODEL, ua).forEach { (k, v) -> setRequestProperty(k, v) }
@@ -88,12 +110,19 @@ object SubscriptionFetcher {
         try {
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            val body = stream?.use { readLimited(it, maxBytes) }.orEmpty()
             val headers = conn.headerFields.orEmpty().mapValues { (_, v) -> v?.lastOrNull() }
             return Raw(code, body, headers)
         } finally {
             conn.disconnect()
         }
+    }
+
+    /** Child parse only — never expands nested lists (no second level). */
+    private fun parseChildDirect(body: String, subscriptionId: String, headers: SubscriptionParser.SubHeaders): RemoteSubscription? {
+        // Exclusive nested list → treat as empty at this level (do not follow).
+        if (NestedSubscriptions.exclusiveChildUrls(body) != null) return null
+        return SubscriptionParser.parse(body, subscriptionId, headers)?.takeIf { it.servers.isNotEmpty() }
     }
 
     /**
@@ -102,8 +131,9 @@ object SubscriptionFetcher {
      */
     suspend fun fetch(url: String, subscriptionId: String, hwid: String?, kind: String = "auto"): Result<RemoteSubscription> = withContext(Dispatchers.IO) {
         try {
-            val u = url.trim()
-            require(u.startsWith("http://", true) || u.startsWith("https://", true)) { "URL должен начинаться с http(s)://" }
+            val originalUrl = url.trim()
+            require(originalUrl.startsWith("http://", true) || originalUrl.startsWith("https://", true)) { "URL должен начинаться с http(s)://" }
+            val u = NestedSubscriptions.requestUrl(originalUrl)
             val plan = Hwid.attempts(kind, hwid)
             var raw: Raw? = null
             var sent = false
@@ -123,7 +153,8 @@ object SubscriptionFetcher {
             val r = raw!!
             hwidProblem?.let { if (r.code !in 200..299 || Hwid.limitReached(r.headers)) return@withContext Result.failure(IllegalStateException(it)) }
             if (r.code !in 200..299) return@withContext Result.failure(IllegalStateException("HTTP ${r.code}"))
-            var parsed = SubscriptionParser.parse(r.body, subscriptionId, SubscriptionParser.parseHeaders(r.headers))
+            val outerHeaders = SubscriptionParser.parseHeaders(r.headers)
+            var parsed = SubscriptionParser.parse(r.body, subscriptionId, outerHeaders)
             if (parsed != null && parsed.kind == "qwdtt") {
                 // The qWDTT UA may have hidden the panel's other protocols — ask once more for the link list.
                 val second = try {
@@ -138,6 +169,26 @@ object SubscriptionFetcher {
                 // (balancer + observatory) so the app runs exactly what the panel defines.
                 val cfgs = jsonConfigs(u, if (sent) hwid else null)
                 if (cfgs != null) parsed = p0.copy(servers = net.antibs.client.data.AutoSelect.attachJson(p0.servers, cfgs))
+            }
+            // One-level nested subscription URLs (Mahsa): only when there are no direct configs.
+            if (parsed == null || parsed.servers.isEmpty()) {
+                val nested = NestedSubscriptions.expand(
+                    parentUrl = originalUrl,
+                    outerBody = r.body,
+                    outerHeaders = outerHeaders,
+                    fetchChild = { childUrl ->
+                        val cr = get(
+                            childUrl,
+                            if (sent) hwid else null,
+                            UA,
+                            connectTimeoutMs = NestedSubscriptions.CHILD_CONNECT_TIMEOUT_MS,
+                            readTimeoutMs = NestedSubscriptions.CHILD_READ_TIMEOUT_MS,
+                        )
+                        if (cr.code !in 200..299) null
+                        else parseChildDirect(cr.body, subscriptionId, SubscriptionParser.parseHeaders(cr.headers))
+                    },
+                )
+                if (nested != null) parsed = nested
             }
             if (parsed == null || parsed.servers.isEmpty()) {
                 Hwid.problemMessage(r.code, r.headers, sent, serversEmpty = true)?.let { return@withContext Result.failure(IllegalStateException(it)) }

@@ -257,7 +257,10 @@ class AppStore(private val prefs: net.antibs.client.desktop.FilePrefs = net.anti
             if (s.id != id) s else if (result == null) s.copy(lastRefresh = System.currentTimeMillis(), lastError = error ?: "ошибка")
             else s.copy(
                 kind = result.kind,
-                title = result.title?.ifBlank { null } ?: s.title.ifBlank { s.url },
+                title = result.title?.ifBlank { null }
+                    ?: s.title.takeUnless { it.isBlank() || it == s.url.trim() }
+                    ?: net.antibs.client.data.NestedSubscriptions.fragmentTitle(s.url)
+                    ?: s.title.ifBlank { s.url },
                 description = result.description,
                 upload = result.upload, download = result.download, total = result.total, expireEpoch = result.expireEpoch,
                 trafficUsedMb = result.trafficUsedMb, trafficLimitMb = result.trafficLimitMb,
