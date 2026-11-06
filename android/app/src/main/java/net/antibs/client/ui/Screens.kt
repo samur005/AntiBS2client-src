@@ -1434,10 +1434,10 @@ internal fun SubCard(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Text(UiLogic.flag(sub.title), fontSize = 15.sp)
+                Text(UiLogic.flag(subTitle(sub)), fontSize = 15.sp)
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    sub.title.ifBlank { "Подписка" },
+                    subTitle(sub),
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,

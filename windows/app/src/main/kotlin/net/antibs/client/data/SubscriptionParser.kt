@@ -87,6 +87,27 @@ object SubscriptionParser {
         val fileName: String = "",
     )
 
+    /**
+     * Comment metadata embedded in a (decoded) link-list body — same keys panels put in HTTP headers
+     * when the host (e.g. raw.githubusercontent.com) cannot set them:
+     * `#profile-title: …` / `//profile-title: …` (plain, %-encoded, or `base64:…`).
+     * Those lines are stripped so they never become hosts; the first title wins.
+     */
+    data class BodyMeta(val title: String? = null)
+
+    private val bodyProfileTitle = Regex("""^(?:#|//)\s*profile-title\s*[:=]\s*(.*)$""", RegexOption.IGNORE_CASE)
+
+    fun extractBodyMeta(text: String): Pair<String, BodyMeta> {
+        if (!text.contains("profile-title", ignoreCase = true)) return text to BodyMeta()
+        var title: String? = null
+        val kept = text.lines().filter { line ->
+            val m = bodyProfileTitle.find(line.trim()) ?: return@filter true
+            if (title == null) title = parseProfileTitle(m.groupValues[1].trim())
+            false
+        }
+        return kept.joinToString("\n") to BodyMeta(title)
+    }
+
     /** Header names are matched case-insensitively; null keys (HTTP status line) are ignored. */
     fun parseHeaders(headers: Map<String?, String?>): SubHeaders {
         val h = HashMap<String, String>()
@@ -119,16 +140,25 @@ object SubscriptionParser {
 
     private fun parseBody(body: String, subscriptionId: String?, headers: SubHeaders): RemoteSubscription? {
         val ui = headers.userInfo
-        val title = headers.title
         var text = body.trim().removePrefix("\uFEFF")
         if (text.isEmpty()) return null
         var bodyRouting: String? = null
-        SubscriptionRouting.extractFromBody(text).let { (t, r) -> text = t.trim(); bodyRouting = r }
+        var bodyTitle: String? = null
+        fun absorbMeta(src: String): String {
+            val (rest, meta) = extractBodyMeta(src)
+            if (bodyTitle == null) bodyTitle = meta.title
+            return rest
+        }
+        SubscriptionRouting.extractFromBody(text).let { (t, r) -> text = absorbMeta(t).trim(); bodyRouting = r }
         if (!looksLikePlain(text)) {
             val dec = LinkParser.b64Decode(text)
             if (dec != null && looksLikePlain(dec.trim())) text = dec.trim()
         }
-        SubscriptionRouting.extractFromBody(text).let { (t, r) -> text = t.trim(); if (bodyRouting == null) bodyRouting = r }
+        SubscriptionRouting.extractFromBody(text).let { (t, r) -> text = absorbMeta(t).trim(); if (bodyRouting == null) bodyRouting = r }
+        // Body may have #profile-title without any #routing — still absorb it after decode.
+        text = absorbMeta(text).trim()
+        // HTTP profile-title wins; else body comment; else content-disposition filename. Never invent from a node.
+        val title = headers.title ?: bodyTitle ?: headers.fileName.ifBlank { null }
         if (text.isEmpty()) return null
         if (text.startsWith("{") || text.startsWith("[")) {
             parseQwdttJson(text, subscriptionId)?.let { q ->
