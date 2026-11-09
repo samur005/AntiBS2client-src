@@ -144,6 +144,8 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                     SettingsCard("Оформление") {
                         NavRow("Тема оформления", themeLabel(ui.theme), dropdown = true, subtitle = "Светлая, тёмная, чёрная или как в системе") { dialog = "theme" }
                         NavRow("Акцентный цвет", Accent.label(a.accent), dropdown = true, subtitle = "Цвет кнопок, переключателей и значений") { dialog = "accent" }
+                        NavRow("Шрифт", AppFonts.label(a.fontFamily), dropdown = true, subtitle = "Системный или один из встроенных (кириллица)") { dialog = "font" }
+                        FontScaleRow(a.fontScalePct) { pct -> vm.setAdv { it.copy(fontScalePct = UiScale.snapFontPct(pct)) } }
                     }
                     SettingsCard("Список серверов") {
                         SwitchRow("Компактный список серверов", ui.compactServers) { vm.setCompact(it) }
