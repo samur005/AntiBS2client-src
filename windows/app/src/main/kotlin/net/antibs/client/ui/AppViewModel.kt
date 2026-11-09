@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -81,10 +82,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 2.0.22: ids of the current/last bulk ping for the «Всего · Пропинговано · Недоступно» counter. */
     private val _pingBatch = MutableStateFlow<Set<String>>(emptySet())
     val pingBatch: StateFlow<Set<String>> = _pingBatch
+    /** 2.0.29: bulk ping was stopped by the user («Проверка остановлена» until the bar hides). */
+    private val _pingStopped = MutableStateFlow(false)
+    val pingStopped: StateFlow<Boolean> = _pingStopped
+    private val pingJobs = java.util.Collections.synchronizedSet(java.util.LinkedHashSet<kotlinx.coroutines.Job>())
 
     // Declared before the init that auto-pings. Shared gates so concurrent auto-pings (several subscriptions refreshing at once) stay bounded.
-    private val urlPingGate = Semaphore(4)
-    private val sockPingGate = Semaphore(16)
+    /** 2.0.29: 16 concurrent URL/Xray probes (was 4). */
+    private val urlPingGate = Semaphore(16)
+    /** 2.0.29: TCP/ICMP parallelism (was 16). */
+    private val sockPingGate = Semaphore(32)
     /** 1.0.30: qWDTT runs over VK TURN; at most 2 handshake pings at a time (each is a short-lived Go process). */
     private val qwdttPingGate = Semaphore(2)
 
@@ -157,7 +164,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val a = st.adv
         val port = a.socksPort.takeIf { it in 1024..65535 } ?: XrayConfigBuilder.SOCKS_PORT
         val url = a.pingUrl.ifBlank { AdvancedSettings.DEFAULT_PING_URL }
-        val timeoutMs = a.pingTimeoutSec.coerceIn(5, 15) * 1000
+        val timeoutMs = a.pingTimeoutSec.coerceIn(2, 15) * 1000
         val method = UiLogic.tunnelPingMethod(a.pingType)
         repeat(2) { attempt ->
             if (attempt > 0) delay(UiLogic.TUNNEL_PING_RETRY_MS)
@@ -226,7 +233,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!cur.add(id)) cur.remove(id)
         it.copy(collapsedSubs = cur.sorted())
     }
-    fun setPingTimeout(ms: Int) = push { it.copy(pingTimeoutMs = ms, adv = it.adv.copy(pingTimeoutSec = (ms / 1000).coerceIn(5, 15))) }
+    fun setPingTimeout(ms: Int) = push { it.copy(pingTimeoutMs = ms, adv = it.adv.copy(pingTimeoutSec = (ms / 1000).coerceIn(2, 15))) }
 
     // ---- 1.0.6 advanced settings ----
     /** Tunnel-affecting edit: saved now, used on the next connect. */
@@ -237,7 +244,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun setPingSettings(block: (AdvancedSettings) -> AdvancedSettings) = push {
         val a = block(it.adv)
-        it.copy(adv = a, pingTimeoutMs = a.pingTimeoutSec.coerceIn(5, 15) * 1000)
+        it.copy(adv = a, pingTimeoutMs = a.pingTimeoutSec.coerceIn(2, 15) * 1000)
     }
     fun setHideEmptyManual(v: Boolean) = push { it.copy(adv = it.adv.copy(hideEmptyManual = v)) }
 
@@ -615,43 +622,100 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun startBatch(servers: List<ServerEntry>) {
         val ids = servers.map { it.id }.toSet()
+        if (_pingStopped.value) { _pingStopped.value = false; _pingBatch.value = emptySet() }
         val running = _pingBatch.value.any { it in _pinging.value }
         _pingBatch.value = if (running) _pingBatch.value + ids else ids
     }
-    fun clearPingBatch() { _pingBatch.value = emptySet() }
+    fun clearPingBatch() { _pingBatch.value = emptySet(); _pingStopped.value = false }
 
-    private fun pingServers(servers: List<ServerEntry>) {
+    /** 2.0.29: cancel the running ping-all / subscription ping; keep measured results. */
+    fun stopPingBatch(): Boolean {
+        val list = synchronized(pingJobs) { pingJobs.toList() }
+        list.forEach { it.cancel() }
+        if (list.isNotEmpty() || _pingBatch.value.isNotEmpty()) _pingStopped.value = true
+        _pinging.update { it - _pingBatch.value }
+        return list.isNotEmpty()
+    }
+
+    /** 2.0.29: expanded subscriptions first so the visible list fills sooner. */
+    private fun prioritizeVisible(servers: List<ServerEntry>): List<ServerEntry> {
+        val collapsed = store.snapshot().collapsedSubs.toSet()
+        return servers.sortedBy { s ->
+            val sub = s.subscriptionId.orEmpty()
+            when {
+                sub.isNotEmpty() && sub !in collapsed -> 0
+                sub.isEmpty() && net.antibs.client.ui.UiLogic.ORPHAN_GROUP !in collapsed -> 0
+                else -> 1
+            }
+        }
+    }
+
+    private val pingResultBuf = java.util.concurrent.ConcurrentLinkedQueue<Pair<String, Long>>()
+    private val pingDoneBuf = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    private var pingFlushJob: Job? = null
+
+    private fun flushPingUi() {
+        val results = mutableListOf<Pair<String, Long>>()
+        while (true) { val x = pingResultBuf.poll() ?: break; results.add(x) }
+        val done = mutableSetOf<String>()
+        while (true) { val x = pingDoneBuf.poll() ?: break; done.add(x) }
+        if (results.isNotEmpty()) _pings.update { it + results }
+        if (done.isNotEmpty()) _pinging.update { it - done }
+    }
+
+    private fun schedulePingFlush() {
+        if (pingFlushJob?.isActive == true) return
+        pingFlushJob = viewModelScope.launch {
+            delay(80)
+            flushPingUi()
+        }
+    }
+
+    private fun pingServers(servers: List<ServerEntry>, bulk: Boolean = true) {
         if (servers.isEmpty()) return
         val a = store.snapshot().adv
         val gate = if (a.pingType == "get" || a.pingType == "head") urlPingGate else sockPingGate
-        _pinging.update { it + servers.map { s -> s.id } }
-        viewModelScope.launch {
-            servers.forEach { s -> launch { gate.withPermit { recordPing(s) } } }
+        val ordered = if (bulk) prioritizeVisible(servers) else servers
+        val ids = ordered.map { it.id }.toSet()
+        _pinging.update { it + ids }
+        val job = viewModelScope.launch {
+            try {
+                ordered.map { s -> launch { gate.withPermit { recordPing(s, bulk = bulk) } } }.joinAll()
+            } finally {
+                flushPingUi()
+                _pinging.update { it - ids }
+            }
         }
+        pingJobs += job
+        job.invokeOnCompletion { pingJobs -= job }
     }
 
     fun pingOne(s: ServerEntry) {
         _pinging.update { it + s.id }
-        viewModelScope.launch { recordPing(s) }
+        viewModelScope.launch { recordPing(s, bulk = false) }
     }
 
-    private suspend fun recordPing(s: ServerEntry) {
+    private suspend fun recordPing(s: ServerEntry, bulk: Boolean) {
         _pinging.update { it + s.id }
         try {
-            val ms = measure(s)
-            _pings.update { it + (s.id to ms) }
-        } finally {
-            _pinging.update { it - s.id }
+            val ms = measure(s, bulk = bulk)
+            pingResultBuf.add(s.id to ms)
+            pingDoneBuf.add(s.id)
+            schedulePingFlush()
+        } catch (_: Throwable) {
+            pingDoneBuf.add(s.id)
+            schedulePingFlush()
         }
     }
 
     /** -1 = failed, -2 = not applicable. Type/mode/timeout/URL come from «Пинг» settings. */
-    private suspend fun measure(s: ServerEntry): Long {
+    private suspend fun measure(s: ServerEntry, bulk: Boolean = false): Long {
         val st = store.snapshot()
         val a = st.adv
-        val timeoutMs = a.pingTimeoutSec.coerceIn(5, 15) * 1000
+        // 2.0.29: bulk ping caps per-server wait at 4 s (ABS default) so dead hosts don't stall the batch.
+        val timeoutMs = (if (bulk) minOf(a.pingTimeoutSec, 4) else a.pingTimeoutSec).coerceIn(2, 15) * 1000
         // 1.0.18: auto-select / balancer / chain entries have no single host — always measure them through Xray.
-        if (s.xray?.protocol in setOf("balancer", "chain") || net.antibs.client.data.AutoSelect.isAnyAuto(s)) return urlTest(s, st, a, timeoutMs) ?: -2L
+        if (s.xray?.protocol in setOf("balancer", "chain") || net.antibs.client.data.AutoSelect.isAnyAuto(s)) return urlTest(s, st, a, timeoutMs, bulk) ?: -2L
         // 1.0.30: qWDTT has no TCP/ICMP port or Xray outbound to test — its own handshake ping (or the tunnel).
         if (s.engine == EngineKind.QWDTT) return qwdttPing(s, st, timeoutMs)
         // 1.0.41: olcRTC has no host:port — join the room with a throw-away client and GET through it.
@@ -670,7 +734,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return when (a.pingType) {
             "tcp" -> tcpPing(s, timeoutMs)
             "icmp" -> icmpPing(s, timeoutMs)
-            else -> urlTest(s, st, a, timeoutMs) ?: tcpPing(s, timeoutMs)
+            else -> urlTest(s, st, a, timeoutMs, bulk) ?: tcpPing(s, timeoutMs)
         }
     }
 
@@ -681,7 +745,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     @Suppress("UNUSED_PARAMETER") private suspend fun qwdttPing(s: ServerEntry, st: AppState, timeoutMs: Int): Long = -2L
 
     /** GET/HEAD through a throw-away Xray instance. Null → not possible here (helper engine / qWDTT), caller falls back to TCP. */
-    private suspend fun urlTest(s: ServerEntry, st: AppState, a: AdvancedSettings, timeoutMs: Int): Long? = withContext(Dispatchers.IO) {
+    private suspend fun urlTest(s: ServerEntry, st: AppState, a: AdvancedSettings, timeoutMs: Int, bulk: Boolean = false): Long? = withContext(Dispatchers.IO) {
         if (s.engine != EngineKind.XRAY) return@withContext null
         val x = s.xray ?: return@withContext -1L
         if (!x.unsupportedReason.isNullOrBlank()) return@withContext -2L
@@ -692,7 +756,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ))
         } catch (_: Exception) { return@withContext -1L }
         if (plan.singBox != null || plan.mieruInstances.isNotEmpty() || plan.mihomo != null) return@withContext null
-        val mode = when (a.pingMode) { "double" -> 1; "keepalive" -> 2; else -> 0 }
+        val mode = when {
+            bulk -> 1
+            a.pingMode == "double" -> 1
+            a.pingMode == "keepalive" -> 2
+            else -> 0
+        }
         XrayCore.measureDelayEx(getApplication(), plan.xray, a.pingUrl.ifBlank { AdvancedSettings.DEFAULT_PING_URL },
             if (a.pingType == "head") "HEAD" else "GET", mode, timeoutMs)
             .let { if (it <= 0) -1L else it }
@@ -871,7 +940,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val a = store.snapshot().adv
                     val gate = if (a.pingType == "get" || a.pingType == "head") urlPingGate else sockPingGate
                     _pinging.update { it + todo.map { s -> s.id } }
-                    todo.map { s -> launch { gate.withPermit { recordPing(s) } } }.forEach { it.join() }
+                    todo.map { s -> launch { gate.withPermit { recordPing(s, bulk = true) } } }.forEach { it.join() }
                     withTimeoutOrNull(60_000) { while (hosts.any { it.id in _pinging.value }) delay(200) }
                 }
                 val (ids, name) = connectedProtect()

@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -149,30 +150,65 @@ private fun StatGrid(items: List<Pair<String, String>>) {
     }
 }
 
-/** 2.0.22: «Всего · Пропинговано · Недоступно» for the current/last bulk ping. */
+/** 2.0.29: ABS PingProgressBar — «Проверено X из N · доступны A · недоступны B» + stop; accent gradient bar. */
 @Composable
-internal fun PingCounterPill(batch: Set<String>, pinging: Set<String>, pings: Map<String, Long>, onClose: () -> Unit) {
-    // 2.0.23: ABS-proxy style bulk-ping progress — «14/18 · недоступно: 4» over a thin bar; hides 2.5 s after the batch ends.
-    val (total, done, bad) = DS.pingCounts(batch, pinging, pings)
-    val running = done < total
-    LaunchedEffect(batch, running) { if (batch.isNotEmpty() && !running) { delay(2500); onClose() } }
+internal fun PingCounterPill(
+    batch: Set<String>,
+    pinging: Set<String>,
+    pings: Map<String, Long>,
+    onClose: () -> Unit,
+    onStop: () -> Unit = {},
+    stopped: Boolean = false,
+    summaryMs: Long = 2500,
+) {
+    val (total, done, ok, failed) = DS.pingCounts4(batch, pinging, pings)
+    val running = total > 0 && done < total
+    LaunchedEffect(batch, running) { if (batch.isNotEmpty() && !running) { delay(summaryMs); onClose() } }
     val cs = MaterialTheme.colorScheme
     val frac by animateFloatAsState(if (total == 0) 0f else done.toFloat() / total, label = "pingFrac")
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp))
-        .background(cs.surfaceVariant.copy(alpha = 0.6f)).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Тест пинга", color = cs.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.width(8.dp))
-            Text("$done/$total", color = androidx.compose.ui.graphics.Color(0xFF34C759), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Text("недоступно: $bad", color = if (bad > 0) cs.error else cs.onSurfaceVariant, fontSize = 13.sp)
-        }
-        // 2.0.24: fill = theme accent → lighter accent gradient
-        val accent = cs.primary
-        val light = androidx.compose.ui.graphics.lerp(accent, androidx.compose.ui.graphics.Color.White, 0.45f)
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(50)).background(cs.onSurface.copy(alpha = 0.12f))) {
-            Box(Modifier.fillMaxWidth(frac.coerceIn(0f, 1f)).fillMaxHeight().clip(RoundedCornerShape(50))
-                .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(accent, light))))
+    androidx.compose.animation.AnimatedVisibility(
+        visible = batch.isNotEmpty(),
+        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically(),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                .background(cs.surfaceVariant.copy(alpha = 0.6f))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            // Line 1: status + stop; line 2: available / unavailable — never one cramped row.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    when {
+                        running -> "Проверено $done из $total"
+                        stopped -> "Проверка остановлена"
+                        else -> "Проверено $total"
+                    },
+                    color = cs.onSurface, fontSize = 13.sp, maxLines = 1, softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (running) {
+                    IconButton(onClick = onStop, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Filled.Stop, contentDescription = "Остановить проверку", tint = cs.error, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("доступны $ok", color = cs.primary, fontSize = 13.sp, maxLines = 1, softWrap = false)
+                Text("недоступны $failed", color = cs.error, fontSize = 13.sp, maxLines = 1, softWrap = false)
+            }
+            // accent → lighter accent gradient, ~7 dp, rounded ends
+            val accent = cs.primary
+            val light = androidx.compose.ui.graphics.lerp(accent, Color.White, 0.45f)
+            Box(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(50)).background(cs.onSurface.copy(alpha = 0.12f))) {
+                Box(
+                    Modifier.fillMaxWidth(frac.coerceIn(0f, 1f)).fillMaxHeight().clip(RoundedCornerShape(50))
+                        .background(Brush.horizontalGradient(listOf(accent, light))),
+                )
+            }
         }
     }
 }
+

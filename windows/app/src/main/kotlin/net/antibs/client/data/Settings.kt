@@ -68,7 +68,7 @@ data class AdvancedSettings(
     val pingType: String = "get",
     /** default | double | keepalive */
     val pingMode: String = "default",
-    val pingTimeoutSec: Int = 5,
+    val pingTimeoutSec: Int = 4,
     val pingUrl: String = DEFAULT_PING_URL,
     /** time | color */
     val pingDisplay: String = "time",

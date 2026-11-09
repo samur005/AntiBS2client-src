@@ -29,4 +29,12 @@ object DownloadStats {
         val done = batch.filter { it !in pinging }
         return Triple(batch.size, done.size, done.count { pings[it] == -1L })
     }
+    /** 2.0.29: ABS PingCounts — total / done / ok / failed. */
+    fun pingCounts4(batch: Set<String>, pinging: Set<String>, pings: Map<String, Long>): Quad {
+        val doneIds = batch.filter { it !in pinging }
+        val failed = doneIds.count { pings[it] == -1L }
+        val ok = doneIds.count { val v = pings[it]; v != null && v >= 0L }
+        return Quad(batch.size, doneIds.size, ok, failed)
+    }
+    data class Quad(val total: Int, val done: Int, val ok: Int, val failed: Int)
 }

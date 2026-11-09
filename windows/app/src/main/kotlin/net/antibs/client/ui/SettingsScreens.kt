@@ -525,13 +525,14 @@ internal fun PingPage(vm: AppViewModel, st: AppState, onBack: () -> Unit) {
             }
             SectionLabel("Таймаут: ${timeout.toInt()} с")
             Slider(
-                value = timeout, onValueChange = { timeout = it }, valueRange = 5f..15f, steps = 9,
+                value = timeout, onValueChange = { timeout = it }, valueRange = 2f..15f, steps = 12,
                 onValueChangeFinished = { vm.setPingSettings { it.copy(pingTimeoutSec = timeout.toInt()) } },
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
             SectionLabel("Отображение результата")
             Segmented(listOf("time" to "Время"), "time") { }
             HintText("GET/HEAD считаются через Xray и для протоколов sing-box / mieru / mihomo (они запускаются только при подключении) заменяются на TCP-пинг. qWDTT не пингуется («н/д»).")
+            HintText("2.0.29: массовая проверка быстрее — до 16 параллельных URL-проб / 32 TCP, таймаут до 4 с на сервер, сначала раскрытые подписки.")
             Button(onClick = { vm.pingAll() }, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Пинговать все") }
             Spacer(Modifier.height(24.dp))
         }

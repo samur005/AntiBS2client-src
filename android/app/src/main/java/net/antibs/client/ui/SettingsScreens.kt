@@ -357,6 +357,123 @@ private fun AppIcon(ctx: Context, info: ApplicationInfo) {
     else Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)))
 }
 
+
+// ───────────────────────── 2.0.29: Российские приложения (ABS RuApps) ─────────────────────────
+
+@Composable
+private fun RuAppsRoutingSection(vm: AppViewModel, st: AppState) {
+    val ctx = LocalContext.current
+    val a = st.adv
+    val apps by produceState<List<AppInfoRow>?>(null, ctx) {
+        value = withContext(Dispatchers.IO) {
+            val pm = ctx.packageManager
+            pm.getInstalledApplications(0).filter { it.packageName != ctx.packageName }.map {
+                AppInfoRow(it.packageName, runCatching { pm.getApplicationLabel(it).toString() }.getOrDefault(it.packageName),
+                    (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0 && (it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0, it)
+            }.sortedBy { it.label.lowercase() }
+        }
+    }
+    val installed = remember(apps) { apps.orEmpty().map { it.pkg }.toSet() }
+    val inList = remember(installed, a.ruAppsAdded, a.ruAppsRemoved) {
+        net.antibs.client.data.RuApps.installedFromList(installed, a.ruAppsAdded.toSet(), a.ruAppsRemoved.toSet(), ctx.packageName)
+    }
+    var confirm by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    SectionLabel("Приложения")
+    SwitchRow(
+        "Российские приложения в обход VPN",
+        a.ruAppsOn,
+        subtitle = "Банки, Госуслуги, VK, Яндекс, маркетплейсы и операторы — мимо VPN",
+    ) { want ->
+        if (want) confirm = true else { vm.setAdvTunnel { it.copy(ruAppsOn = false) }; vm.reconnectIfConnected() }
+    }
+    HintText(
+        when {
+            apps == null -> "Загрузка списка приложений…"
+            inList.isEmpty() -> "Из списка на устройстве ничего не найдено. Можно добавить вручную."
+            else -> "Найдено на устройстве: ${inList.size}" + if (a.ruAppsOn) "" else " · включите переключатель, чтобы применить"
+        }
+    )
+    if (a.ruAppsOn && a.perAppMode == "include") {
+        HintText("Режим «ВКЛ» (только выбранные) уже оставляет остальные приложения вне VPN — список российских не смешивается с allowed.")
+    }
+    if (a.ruAppsOn) HintText("Переподключите VPN, чтобы применить список.")
+    TextButton(onClick = { editing = true }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Изменить список") }
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Применить список?") },
+            text = { Text("В обход VPN будут добавлены ${inList.size} установленных приложений из готового списка (банки, Госуслуги, маркетплейсы и др.). Ваши правила «Прокси для приложений» сохраняются.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.setAdvTunnel { it.copy(ruAppsOn = true) }; vm.reconnectIfConnected(); confirm = false
+                }) { Text("Применить") }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Отмена") } },
+        )
+    }
+    if (editing) {
+        RuAppsEditDialog(vm, st, apps, inList.toSet()) { editing = false }
+    }
+}
+
+@Composable
+private fun RuAppsEditDialog(vm: AppViewModel, st: AppState, apps: List<AppInfoRow>?, inList: Set<String>, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    var query by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Российские приложения") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                OutlinedTextField(query, { query = it }, singleLine = true, label = { Text("Поиск") },
+                    modifier = Modifier.fillMaxWidth())
+                if (apps == null) {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else {
+                    val q = query.trim()
+                    val match: (AppInfoRow) -> Boolean = { q.isEmpty() || it.label.contains(q, true) || it.pkg.contains(q, true) }
+                    val listed = apps.filter { it.pkg in inList && match(it) }
+                    val others = apps.filter { it.pkg !in inList && match(it) }
+                    LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 360.dp)) {
+                        item { Text("В списке · ${listed.size}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp)) }
+                        if (listed.isEmpty()) item { Text("Пусто", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        items(listed, key = { "in:" + it.pkg }) { app ->
+                            Row(Modifier.fillMaxWidth().clickable {
+                                val (ad, rm) = net.antibs.client.data.RuApps.remove(app.pkg, st.adv.ruAppsAdded.toSet(), st.adv.ruAppsRemoved.toSet())
+                                vm.setAdvTunnel { it.copy(ruAppsAdded = ad.toList(), ruAppsRemoved = rm.toList()) }
+                            }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AppIcon(ctx, app.info); Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(app.label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(app.pkg, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                Icon(Icons.Filled.Close, null, tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        item { Text("Добавить", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp)) }
+                        items(others.take(80), key = { "out:" + it.pkg }) { app ->
+                            Row(Modifier.fillMaxWidth().clickable {
+                                val (ad, rm) = net.antibs.client.data.RuApps.add(app.pkg, st.adv.ruAppsAdded.toSet(), st.adv.ruAppsRemoved.toSet())
+                                vm.setAdvTunnel { it.copy(ruAppsAdded = ad.toList(), ruAppsRemoved = rm.toList()) }
+                            }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AppIcon(ctx, app.info); Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(app.label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(app.pkg, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Готово") } },
+    )
+}
+
+
 // ───────────────────────── Routing ─────────────────────────
 
 @Composable
@@ -384,6 +501,7 @@ internal fun RoutingListPage(vm: AppViewModel, st: AppState, onOpenProfile: (Str
     }) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item { SwitchRow("Обход локальной сети", st.bypassLan) { vm.setBypassLan(it) } }
+            item { RuAppsRoutingSection(vm, st) }
             trafficPresetItems(vm, st, rf.ready, onOpenGeo = { onOpenPage("GeoFiles") })
             item { SectionLabel("Профили маршрутизации") }
             item {
@@ -625,13 +743,14 @@ internal fun PingPage(vm: AppViewModel, st: AppState, onBack: () -> Unit) {
             }
             SectionLabel("Таймаут: ${timeout.toInt()} с")
             Slider(
-                value = timeout, onValueChange = { timeout = it }, valueRange = 5f..15f, steps = 9,
+                value = timeout, onValueChange = { timeout = it }, valueRange = 2f..15f, steps = 12,
                 onValueChangeFinished = { vm.setPingSettings { it.copy(pingTimeoutSec = timeout.toInt()) } },
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
             SectionLabel("Отображение результата")
             Segmented(listOf("time" to "Время"), "time") { }
             HintText("GET/HEAD считаются через Xray и для протоколов sing-box / mieru / mihomo (они запускаются только при подключении) заменяются на TCP-пинг. qWDTT не пингуется («н/д»).")
+            HintText("2.0.29: массовая проверка быстрее — до 16 параллельных URL-проб / 32 TCP, таймаут до 4 с на сервер, сначала раскрытые подписки.")
             Button(onClick = { vm.pingAll() }, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Пинговать все") }
             Spacer(Modifier.height(24.dp))
         }

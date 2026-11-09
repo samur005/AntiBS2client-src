@@ -377,6 +377,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val pings by vm.pings.collectAsState()
     val pinging by vm.pinging.collectAsState()
     val pingBatch by vm.pingBatch.collectAsState()
+    val pingStopped by vm.pingStopped.collectAsState()
     val unreachableScan by vm.unreachableScan.collectAsState()
     val tunnelPing by vm.tunnelPing.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
@@ -734,7 +735,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 run {
-                if (pingBatch.isNotEmpty()) item(key = "ping-counter") { Box(Modifier.animateItem()) { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }) } }
+                if (pingBatch.isNotEmpty()) item(key = "ping-counter") { Box(Modifier.animateItem()) { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }, onStop = { vm.stopPingBatch() }, stopped = pingStopped) } }
                 if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
                     item { Text("Нет подписок. Нажмите «+» вверху справа или купите подписку в «Магазине».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp)) }
                 }

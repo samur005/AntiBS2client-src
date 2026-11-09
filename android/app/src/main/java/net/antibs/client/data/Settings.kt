@@ -68,7 +68,7 @@ data class AdvancedSettings(
     val pingType: String = "get",
     /** default | double | keepalive */
     val pingMode: String = "default",
-    val pingTimeoutSec: Int = 5,
+    val pingTimeoutSec: Int = 4,
     val pingUrl: String = DEFAULT_PING_URL,
     /** time | color */
     val pingDisplay: String = "time",
@@ -85,6 +85,10 @@ data class AdvancedSettings(
     val perAppMode: String = "off",
     val perAppInclude: List<String> = emptyList(),
     val perAppBypass: List<String> = emptyList(),
+    /** 2.0.29: «Российские приложения в обход VPN» (ABS RuApps). Off until the user confirms. */
+    val ruAppsOn: Boolean = false,
+    val ruAppsAdded: List<String> = emptyList(),
+    val ruAppsRemoved: List<String> = emptyList(),
     // Routing
     val routingProfiles: List<RoutingProfile> = emptyList(),
     val activeRoutingId: String? = null,
@@ -358,16 +362,15 @@ object Cidr {
 object PerApp {
     data class Plan(val allowed: List<String>, val disallowed: List<String>, val note: String)
 
-    fun plan(mode: String, include: List<String>, bypass: List<String>, own: String): Plan = when (mode) {
-        "include" -> {
-            val list = include.filter { it.isNotBlank() && it != own }.distinct()
-            if (list.isEmpty()) Plan(emptyList(), listOf(own), "per-app: список «ВКЛ» пуст — проксируются все приложения")
-            else Plan(list, emptyList(), "per-app: через VPN только ${list.size} прилож.")
-        }
-        "bypass" -> {
-            val list = (bypass.filter { it.isNotBlank() } + own).distinct()
-            Plan(emptyList(), list, "per-app: в обход VPN ${list.size - 1} прилож.")
-        }
-        else -> Plan(emptyList(), listOf(own), "")
+    fun plan(
+        mode: String,
+        include: List<String>,
+        bypass: List<String>,
+        own: String,
+        ruOn: Boolean = false,
+        ruInstalled: Collection<String> = emptyList(),
+    ): Plan {
+        val r = RuApps.plan(mode, include, bypass, own, ruOn, ruInstalled)
+        return Plan(r.allowed, r.disallowed, RuApps.planNote(mode, r, ruOn, ruInstalled.size))
     }
 }

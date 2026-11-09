@@ -556,7 +556,9 @@ class AntiBSVpnService : VpnService() {
         // «Блок привязки к туннелю» off → apps may bind sockets to the underlying network (Builder.allowBypass)
         if (!a.tunnelBindBlock) b.allowBypass()
         // Per-app proxy (addAllowed / addDisallowed can't be mixed; AntiBS itself always bypasses)
-        val plan = net.antibs.client.data.PerApp.plan(a.perAppMode, a.perAppInclude, a.perAppBypass, packageName)
+        val ruInstalled = if (!a.ruAppsOn) emptyList() else net.antibs.client.data.RuApps.effective(a.ruAppsAdded.toSet(), a.ruAppsRemoved.toSet())
+            .filter { pkg -> pkg != packageName && runCatching { packageManager.getApplicationInfo(pkg, 0); true }.getOrDefault(false) }
+        val plan = net.antibs.client.data.PerApp.plan(a.perAppMode, a.perAppInclude, a.perAppBypass, packageName, a.ruAppsOn, ruInstalled)
         var allowedOk = 0
         plan.allowed.forEach { pkg -> try { b.addAllowedApplication(pkg); allowedOk++ } catch (_: Exception) { VpnState.log("per-app: $pkg не найдено") } }
         if (plan.allowed.isNotEmpty() && allowedOk == 0) throw IllegalStateException("Ни одно приложение из списка «ВКЛ» не установлено")
