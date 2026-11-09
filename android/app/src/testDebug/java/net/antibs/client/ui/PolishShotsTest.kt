@@ -149,4 +149,36 @@ class PolishShotsTest {
         Thread.sleep(800); rule.waitForIdle()
         save("interface_subpage_dark")
     }
+
+    @Config(qualifiers = "w400dp-h900dp-xxhdpi")
+    @Test fun s30HomeBottomBar() {
+        dir = "/workspace/polish_shots/2030"
+        val now = System.currentTimeMillis()
+        val sub = net.antibs.client.data.Subscription(
+            id = "s1", url = "https://example.com/sub", title = "Demo",
+            download = (1.4 * 1024 * 1024 * 1024).toLong(), total = 150L * 1024 * 1024 * 1024,
+            expireEpoch = now / 1000 + 115L * 86400,
+        )
+        show(ThemeMode.DARK) {
+            // Pack card + bar tightly so the crop keeps both (no weight filler).
+            Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    ConnectionCard(
+                        flag = "🇩🇪", name = "Германия · Франкфурт", proto = "VLESS Reality", protoTone = UiLogic.ProtoChipTone.OK,
+                        active = true, dot = UiLogic.StatusDot.LIVE,
+                        downSpeed = "1.2 МБ/с", upSpeed = "84.0 КБ/с", downTotal = "152.4 МБ", upTotal = "9.8 МБ",
+                        directDownSpeed = "0.0 КБ/с", directUpSpeed = "0.0 КБ/с", directDownTotal = "3.1 МБ", directUpTotal = "0.4 МБ",
+                        vpnSamples = listOf(0.2f, 0.5f, 0.4f, 0.8f), directSamples = listOf(0.1f, 0.1f, 0.2f, 0.1f), sampleSeq = 4,
+                        statsVisible = true, pingMs = 84, pingStyle = net.antibs.client.data.PingChipStyle(),
+                        directMs = 231, status = "Подключено", statusColor = AntiBSColors.Ok,
+                        subLine = net.antibs.client.data.SubLineData.of(sub, now),
+                        subStyle = net.antibs.client.data.SubRemainStyle(),
+                    )
+                }
+                MainBottomBar(MainTab.Home) { }
+            }
+        }
+        save("home_bottom_bar_dark") // full decorView; no crop
+    }
+
 }

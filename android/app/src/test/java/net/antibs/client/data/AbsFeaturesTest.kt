@@ -13,9 +13,15 @@ class AbsFeaturesTest {
         val now = 1_700_000_000_000L
         val sub = Subscription(id = "s", url = "u", upload = 0, download = (1.4 * GB).toLong(), total = 150 * GB, expireEpoch = now / 1000 + 122 * 86400 + 100)
         val d = SubLineData.of(sub, now)!!
-        assertEquals("122 дн", d.days)
+        assertEquals("дня 122", d.days)
+        val sub115 = sub.copy(expireEpoch = now / 1000 + 115 * 86400 + 100)
+        assertEquals("дней 115", SubLineData.of(sub115, now)!!.days)
+        assertTrue(Regex("""до \d{2}\.\d{2}\.\d{4}""").matches(SubLineData.of(sub115, now)!!.until!!))
         assertEquals("1,4 / 150 ГБ", d.traffic)
         assertTrue(d.until!!.startsWith("до "))
+        assertTrue("until should include year: ${d.until}", Regex("""до \d{2}\.\d{2}\.\d{4}""").matches(d.until!!))
+        assertEquals("05.03.2027".length, "05.03.2027".length) // format sanity
+        assertEquals(10, net.antibs.client.data.SubLineData.ddMMyyyy(1_730_000_000L).length) // dd.MM.yyyy
         assertNull(SubLineData.of(Subscription(id = "x", url = "u"), now))
         assertEquals("∞", SubLineData.of(Subscription(id = "x", url = "u", download = GB), now)!!.days)
     }

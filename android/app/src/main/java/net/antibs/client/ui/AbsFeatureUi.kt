@@ -67,10 +67,18 @@ internal fun SubRemainRow(data: SubLineData, style: SubRemainStyle, modifier: Mo
     val fw = if (style.bold) FontWeight.Bold else FontWeight.Medium
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = when (style.align) { SubRemainStyle.ALIGN_START -> Arrangement.Start; SubRemainStyle.ALIGN_END -> Arrangement.End; else -> Arrangement.Center }) {
-        Text(data.days + (data.until?.let { " · $it" } ?: ""), color = dText, fontSize = fs, fontWeight = fw, maxLines = 1)
-        if (data.dayFrac != null) { Spacer(Modifier.width(6.dp)); ThinBar(data.dayFrac, dBar) }
-        Spacer(Modifier.width(16.dp))
-        Text(data.traffic, color = tText, fontSize = fs, fontWeight = fw, maxLines = 1)
+        // 2.0.30: full «дней 115 • до 05.03.2027» keeps intrinsic width; traffic side may shrink
+        Text(
+            data.days + (data.until?.let { " • $it" } ?: ""),
+            color = dText, fontSize = fs, fontWeight = fw, maxLines = 1, softWrap = false,
+        )
+        if (data.dayFrac != null) { Spacer(Modifier.width(4.dp)); ThinBar(data.dayFrac, dBar) }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            data.traffic, color = tText, fontSize = fs, fontWeight = fw, maxLines = 1, softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
         if (data.trafficFrac != null) { Spacer(Modifier.width(6.dp)); ThinBar(data.trafficFrac, tBar) }
     }
 }
@@ -307,7 +315,7 @@ internal fun SubRemainPage(vm: AppViewModel, st: net.antibs.client.engine.AppSta
     SettingsScaffold("Остаток подписки", onBack) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Box(Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
-                SubRemainRow(SubLineData("122 дн", "до 05.03", 1f, "1,4 / 150 ГБ", 0.01f), s.copy(show = true))
+                SubRemainRow(SubLineData("дней 115", "до 05.03.2027", 1f, "1,4 / 150 ГБ", 0.01f), s.copy(show = true))
             }
             SettingsCard("Остаток подписки") {
                 SwitchRow("Показывать", s.show, subtitle = "Дни и трафик внизу карточки подключения") { v -> set { it.copy(show = v) } }

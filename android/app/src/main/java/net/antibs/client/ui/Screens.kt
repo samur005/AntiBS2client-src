@@ -87,12 +87,15 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -858,40 +861,68 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
 internal enum class MainTab(val title: String) { Shop("Магазин"), Home("Главная"), Servers("Серверы") }
 
 @Composable
-private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-    androidx.compose.material3.NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
+internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
+    // 2.0.30: compact custom bar (~62dp content) — Material3 NavigationBar is fixed at 80dp.
+    val pill = if (LocalAppStyle.current == ServerStyle.CLASSIC) AntiBSColors.BlueDeep else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
-        modifier = Modifier.clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
     ) {
-        MainTab.entries.forEach { t ->
-            val sel = t == tab
-            val scale by androidx.compose.animation.core.animateFloatAsState(if (sel) 1.15f else 1f,
-                androidx.compose.animation.core.spring(dampingRatio = 0.5f, stiffness = 400f), label = "tab-scale")
-            NavigationBarItem(
-                selected = sel,
-                onClick = { if (!sel) onSelect(t) },
-                icon = {
-                    Icon(
-                        when (t) {
-                            MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
-                            MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
-                            MainTab.Servers -> if (sel) Icons.Filled.Dns else Icons.Outlined.Dns
-                        },
-                        contentDescription = t.title,
-                        modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+        Row(
+            Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MainTab.entries.forEach { t ->
+                val sel = t == tab
+                val scale by androidx.compose.animation.core.animateFloatAsState(
+                    if (sel) 1.06f else 1f,
+                    androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 450f),
+                    label = "tab-scale",
+                )
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(onClickLabel = t.title) { if (!sel) onSelect(t) }
+                        .padding(top = 6.dp, bottom = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 28.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (sel) pill else Color.Transparent),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            when (t) {
+                                MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
+                                MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
+                                MainTab.Servers -> if (sel) Icons.Filled.Dns else Icons.Outlined.Dns
+                            },
+                            contentDescription = t.title,
+                            tint = if (sel) Color.White else muted,
+                            modifier = Modifier.size(20.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        t.title,
+                        color = if (sel) AntiBSColors.Blue else muted,
+                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
+                        fontSize = 11.sp,
+                        lineHeight = 12.sp,
+                        maxLines = 1,
                     )
-                },
-                label = { Text(t.title, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
-                colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color.White,
-                    selectedTextColor = AntiBSColors.Blue,
-                    indicatorColor = if (LocalAppStyle.current == ServerStyle.CLASSIC) AntiBSColors.BlueDeep else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
-            )
+                }
+            }
         }
     }
 }

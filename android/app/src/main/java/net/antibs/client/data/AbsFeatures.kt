@@ -28,7 +28,7 @@ data class SubRemainStyle(
         const val ALIGN_START = 0; const val ALIGN_CENTER = 1; const val ALIGN_END = 2 }
 }
 
-/** «122 дн · до 05.03 ▬   1,4 / 150 ГБ ▬» */
+/** «дней 115 • до 05.03.2027 ▬   1,4 / 150 ГБ ▬» */
 data class SubLineData(val days: String, val until: String?, val dayFrac: Float?, val traffic: String, val trafficFrac: Float?) {
     companion object {
         const val MONTH_DAYS = 30
@@ -41,8 +41,12 @@ data class SubLineData(val days: String, val until: String?, val dayFrac: Float?
             val total = sub.total.coerceAtLeast(0)
             if (sub.expireEpoch <= 0 && total <= 0 && used <= 0) return null
             val d = daysLeft(sub.expireEpoch, nowMs)
-            val days = when { d == null -> "∞"; d < 0 -> "истекла"; else -> "$d дн" }
-            val until = if (sub.expireEpoch > 0) "до " + ddMM(sub.expireEpoch) else null
+            val days = when {
+                d == null -> "∞"
+                d < 0 -> "истекла"
+                else -> "${pluralDays(d)} $d"
+            }
+            val until = if (sub.expireEpoch > 0) "до " + ddMMyyyy(sub.expireEpoch) else null
             val dayFrac = d?.let { (it.toFloat() / MONTH_DAYS).coerceIn(0f, 1f) }
             val traffic = if (total > 0) pair(used, total) else amount(used) + " · безлимит"
             val tf = if (total > 0) (used.toFloat() / total).coerceIn(0f, 1f) else null
@@ -55,9 +59,23 @@ data class SubLineData(val days: String, val until: String?, val dayFrac: Float?
             return if (delta < 0) -1 else (delta / 86_400_000L).toInt()
         }
 
-        fun ddMM(expireSec: Long): String {
+        /** 2.0.30: full date with year (dd.MM.yyyy), e.g. 05.03.2027. */
+        fun ddMMyyyy(expireSec: Long): String {
             val c = Calendar.getInstance().apply { timeInMillis = expireSec * 1000 }
-            return "%02d.%02d".format(c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.MONTH) + 1)
+            return "%02d.%02d.%04d".format(
+                c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.MONTH) + 1, c.get(Calendar.YEAR),
+            )
+        }
+        /** Kept for callers that want month-day only. */
+        fun ddMM(expireSec: Long): String = ddMMyyyy(expireSec).substring(0, 5)
+
+        private fun pluralDays(n: Int): String {
+            val n10 = n % 10; val n100 = n % 100
+            return when {
+                n10 == 1 && n100 != 11 -> "день"
+                n10 in 2..4 && n100 !in 12..14 -> "дня"
+                else -> "дней"
+            }
         }
 
         private fun unitOf(b: Long): Int { var u = 0; var v = b.toDouble(); while (v >= 1024 && u < UNITS.size - 1) { v /= 1024; u++ }; return u }
