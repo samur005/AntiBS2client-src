@@ -79,7 +79,7 @@ data class AdvancedSettings(
     val logging: Boolean = true,
     /** none | error | warning | info | debug */
     val logLevel: String = "warning",
-    val language: String = "ru",
+    val language: String = "system", // 2.0.30: follow OS; unsupported → en
     // Per-app proxy
     /** off | include | bypass */
     val perAppMode: String = "off",

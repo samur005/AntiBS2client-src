@@ -43,10 +43,10 @@ data class SubLineData(val days: String, val until: String?, val dayFrac: Float?
             val d = daysLeft(sub.expireEpoch, nowMs)
             val days = when {
                 d == null -> "∞"
-                d < 0 -> "истекла"
-                else -> "${pluralDays(d)} $d"
+                d < 0 -> I18n.t("expired")
+                else -> "${I18n.daysWord(d)} $d"
             }
-            val until = if (sub.expireEpoch > 0) "до " + ddMMyyyy(sub.expireEpoch) else null
+            val until = if (sub.expireEpoch > 0) I18n.t("until", ddMMyyyy(sub.expireEpoch)) else null
             val dayFrac = d?.let { (it.toFloat() / MONTH_DAYS).coerceIn(0f, 1f) }
             val traffic = if (total > 0) pair(used, total) else amount(used) + " · безлимит"
             val tf = if (total > 0) (used.toFloat() / total).coerceIn(0f, 1f) else null
@@ -257,7 +257,12 @@ data class PingChipStyle(val show: Boolean = true, val size: Int = SIZE_DEF, val
         const val PAD_MIN = 0; const val PAD_MAX = 12; const val PAD_DEF = 4
         fun tone(ms: Long?): Int = when { ms == null || ms < 0 -> 2; ms < 200 -> 0; ms < 500 -> 1; else -> 2 }
         /** «пинг: 131 мс», «пинг: таймаут», «пинг: …» while measuring, «пинг: —» before the first result. */
-        fun label(ms: Long?, busy: Boolean): String = "пинг: " + when { busy -> "…"; ms == null -> "—"; ms < 0 -> "таймаут"; else -> "$ms мс" }
+        fun label(ms: Long?, busy: Boolean): String = I18n.t("ping_prefix") + when {
+                busy -> I18n.t("ping_busy")
+                ms == null -> I18n.t("ping_none")
+                ms < 0 -> I18n.t("ping_timeout")
+                else -> I18n.t("ping_ms", ms)
+            }
     }
 }
 

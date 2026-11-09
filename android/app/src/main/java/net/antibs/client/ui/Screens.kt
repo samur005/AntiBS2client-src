@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.text.withStyle
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.asPaddingValues
+import net.antibs.client.data.AppLang
+import net.antibs.client.data.I18n
 import net.antibs.client.data.ProtocolSupport
 
 import android.app.Activity
@@ -236,7 +238,11 @@ fun AppRoot(vm: AppViewModel) {
     // Read the collected preference (StateFlow), never a one-shot store.theme() snapshot.
     val stylePrefs = Styles.get(LocalContext.current)
     val appStyle by stylePrefs.style.collectAsState()
+    // touch I18n.tag so language changes recompose the tree
+    val langTag = I18n.tag
+    val layoutDir = if (AppLang.isRtl(langTag)) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
     AntiBSTheme(ui.theme, st.adv.accent, appStyle) {
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides layoutDir) {
     // 1.0.55: every Compose haptic respects «Вибрация» (Настройки интерфейса); the system touch-feedback setting applies too.
     val hapticView = androidx.compose.ui.platform.LocalView.current
     val gatedHaptic = remember(hapticView, st.adv.haptics) { AppHaptics.feedback(hapticView, st.adv.haptics) }
@@ -307,6 +313,7 @@ fun AppRoot(vm: AppViewModel) {
         }
         // 1.0.55: one light tick per actual settings / menu page change (not on first show)
         AppHaptics.TickOnChange(pageName, st.adv.haptics)
+    }
     }
     }
 }
@@ -907,14 +914,22 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                                 MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
                                 MainTab.Servers -> if (sel) Icons.Filled.Dns else Icons.Outlined.Dns
                             },
-                            contentDescription = t.title,
+                            contentDescription = when (t) {
+                                MainTab.Shop -> I18n.t("tab_shop")
+                                MainTab.Home -> I18n.t("tab_home")
+                                MainTab.Servers -> I18n.t("tab_servers")
+                            },
                             tint = if (sel) Color.White else muted,
                             modifier = Modifier.size(20.dp).graphicsLayer { scaleX = scale; scaleY = scale },
                         )
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        t.title,
+                        when (t) {
+                            MainTab.Shop -> I18n.t("tab_shop")
+                            MainTab.Home -> I18n.t("tab_home")
+                            MainTab.Servers -> I18n.t("tab_servers")
+                        },
                         color = if (sel) AntiBSColors.Blue else muted,
                         fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
                         fontSize = 11.sp,
@@ -1067,11 +1082,11 @@ internal fun ConnectionCard(
                     if (pingStyle == null || pingStyle.show) {
                         val view = androidx.compose.ui.platform.LocalView.current
                         Spacer(Modifier.height(3.dp))
-                        BannerPing("vpn пинг", VpnPingLabel, if (active) pingMs else null, pingBusy && active, active, pingStyle) {
+                        BannerPing(I18n.t("vpn_ping"), VpnPingLabel, if (active) pingMs else null, pingBusy && active, active, pingStyle) {
                             AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); onPing?.invoke()
                         }
                         Spacer(Modifier.height(2.dp))
-                        BannerPing("vk пинг", VkPingLabel, directMs, directBusy, true, pingStyle) {
+                        BannerPing(I18n.t("vk_ping"), VkPingLabel, directMs, directBusy, true, pingStyle) {
                             AppHaptics.perform(view, AppHaptics.Kind.TICK, haptics); onPingDirect?.invoke()
                         }
                     }
@@ -1153,7 +1168,7 @@ private fun BannerPing(label: String, labelColor: Color, ms: Long?, busy: Boolea
             .clickable(onClickLabel = "Проверить: $label", onClick = onTap).padding(horizontal = 5.dp, vertical = 1.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Box(contentAlignment = Alignment.CenterStart) {
-            Text("vpn пинг: ", style = ts, maxLines = 1, modifier = Modifier.alpha(0f))
+            Text(I18n.t("vpn_ping") + ": ", style = ts, maxLines = 1, modifier = Modifier.alpha(0f))
             Text("$label: ", style = ts, color = labelColor, maxLines = 1)
         }
         // 2.0.15: the value slot is exactly «9999 мс» wide — the pill hugs «vpn пинг: 9999 мс», both pills match;
@@ -2605,7 +2620,11 @@ internal fun MainSideRail(tab: MainTab, onSelect: (MainTab) -> Unit) {
                             MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
                             MainTab.Servers -> if (sel) Icons.Filled.Dns else Icons.Outlined.Dns
                         },
-                        contentDescription = t.title,
+                        contentDescription = when (t) {
+                                MainTab.Shop -> I18n.t("tab_shop")
+                                MainTab.Home -> I18n.t("tab_home")
+                                MainTab.Servers -> I18n.t("tab_servers")
+                            },
                     )
                 },
                 label = { Text(t.title, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },

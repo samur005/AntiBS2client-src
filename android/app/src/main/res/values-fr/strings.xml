@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AntiBS2client</string>
+    <string name="language">Langue</string>
+    <string name="lang_system">Selon le système</string>
+    <string name="tab_home">Accueil</string>
+    <string name="tab_shop">Boutique</string>
+    <string name="tab_servers">Serveurs</string>
+    <string name="settings">Réglages</string>
+    <string name="adblock">Blocage pub</string>
+</resources>

@@ -4,6 +4,7 @@ import kotlinx.coroutines.isActive
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import net.antibs.client.data.I18n
 import net.antibs.client.data.AdvancedSettings
 import net.antibs.client.data.EngineKind
 import net.antibs.client.data.RoutingImport
@@ -731,7 +732,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             r.fold({ u ->
                 when {
                     u != null -> _update.value = UpdateUi.Available(u)
-                    manual -> { _update.value = UpdateUi.Idle; _toast.value = "Установлена последняя версия (${net.antibs.client.BuildConfig.VERSION_NAME})" }
+                    manual -> { _update.value = UpdateUi.Idle; _toast.value = I18n.t("latest_installed", net.antibs.client.BuildConfig.VERSION_NAME) }
                 }
             }, { e ->
                 VpnState.log("обновления: ${e.message}")

@@ -47,6 +47,7 @@
         android:label="@string/app_name"
         android:banner="@drawable/tv_banner"
         android:supportsRtl="true"
+        android:localeConfig="@xml/locales_config"
         android:theme="@style/Theme.AntiBS"
         android:extractNativeLibs="true"
         android:usesCleartextTraffic="true"

@@ -1,5 +1,8 @@
 package net.antibs.client.desktop
 
+import net.antibs.client.data.AppLocale
+import net.antibs.client.engine.AppStore
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHost
@@ -69,6 +72,10 @@ private fun cleanupLeftovers() {
 }
 
 fun main(args: Array<String>) {
+    runCatching {
+        val lang = AppStore().state.value.adv.language
+        AppLocale.bootstrap(lang)
+    }
     if (!SingleInstance.claim(args)) return
     cleanupLeftovers()
     val app = android.app.Application.instance

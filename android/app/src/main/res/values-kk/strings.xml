@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AntiBS2client</string>
+    <string name="language">Тіл</string>
+    <string name="lang_system">Жүйе бойынша</string>
+    <string name="tab_home">Басты</string>
+    <string name="tab_shop">Дүкен</string>
+    <string name="tab_servers">Серверлер</string>
+    <string name="settings">Баптаулар</string>
+    <string name="adblock">Жарнаманы бұғаттау</string>
+</resources>

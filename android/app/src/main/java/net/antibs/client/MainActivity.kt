@@ -17,12 +17,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import net.antibs.client.data.AppLocale
+import net.antibs.client.engine.AppStore
 import net.antibs.client.ui.AppRoot
 import net.antibs.client.ui.AppViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 2.0.30: per-app locale before first frame (system → unsupported falls back to en in I18n)
+        runCatching {
+            val lang = AppStore(applicationContext).state.value.adv.language
+            AppLocale.bootstrap(applicationContext, lang)
+        }
         enableEdgeToEdge()
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {

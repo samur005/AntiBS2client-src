@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AntiBS2client</string>
+    <string name="language">Мова</string>
+    <string name="lang_system">Як у системі</string>
+    <string name="tab_home">Головна</string>
+    <string name="tab_shop">Магазин</string>
+    <string name="tab_servers">Сервери</string>
+    <string name="settings">Налаштування</string>
+    <string name="adblock">Блокування реклами</string>
+</resources>

@@ -42,6 +42,9 @@ import net.antibs.client.data.ProtocolSupport
 import net.antibs.client.data.SubAutoUpdate
 import net.antibs.client.data.TrafficPresets
 import net.antibs.client.engine.UiSettings
+import net.antibs.client.data.AppLang
+import net.antibs.client.data.AppLocale
+import net.antibs.client.data.I18n
 
 /**
  * 1.0.41: one settings screen, grouped by topic. Everything that used to sit behind «Расширенные настройки» →
@@ -87,7 +90,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                 // ───────────── main screen: only the most important items, details behind «>»
                 "Settings" -> androidx.compose.runtime.CompositionLocalProvider(LocalCollapseByDefault provides true) {
                     SettingsCard("Настройки интерфейса") {
-                        NavRow("Язык", "Русский", dropdown = true, subtitle = "Язык интерфейса приложения") { vm.message("Пока доступен только русский язык") }
+                        NavRow(I18n.t("language"), if (AppLang.normalize(a.language) == AppLang.SYSTEM) I18n.t("lang_system") else AppLang.nativeLabel(a.language), dropdown = true, subtitle = I18n.t("language_sub")) { dialog = "lang" }
                         NavRow("Тема оформления", themeLabel(ui.theme), dropdown = true, subtitle = "Светлая, тёмная, чёрная или как в системе") { dialog = "theme" }
                         NavRow("Настройки интерфейса", subtitle = "Акцент, список серверов, главный экран, уведомление") { open("Interface") }
                     }

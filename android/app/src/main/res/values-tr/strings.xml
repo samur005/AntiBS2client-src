@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AntiBS2client</string>
+    <string name="language">Dil</string>
+    <string name="lang_system">Sistem dili</string>
+    <string name="tab_home">Ana sayfa</string>
+    <string name="tab_shop">Mağaza</string>
+    <string name="tab_servers">Sunucular</string>
+    <string name="settings">Ayarlar</string>
+    <string name="adblock">Reklam engelleme</string>
+</resources>

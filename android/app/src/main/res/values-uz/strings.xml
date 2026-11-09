@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AntiBS2client</string>
+    <string name="language">Til</string>
+    <string name="lang_system">Tizim bo‘yicha</string>
+    <string name="tab_home">Asosiy</string>
+    <string name="tab_shop">Do‘kon</string>
+    <string name="tab_servers">Serverlar</string>
+    <string name="settings">Sozlamalar</string>
+    <string name="adblock">Reklama bloklash</string>
+</resources>

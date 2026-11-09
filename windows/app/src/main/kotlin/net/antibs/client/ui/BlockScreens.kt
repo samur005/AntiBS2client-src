@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.antibs.client.data.AdBlock
+import net.antibs.client.data.I18n
 import net.antibs.client.data.AdBlockCounter
 import net.antibs.client.data.TrafficPresets
 import net.antibs.client.engine.AppState
@@ -47,14 +48,14 @@ internal fun AdBlockCountTiles(c: AdBlockCounter.Counts, onReset: (() -> Unit)?)
     val day = AdBlockCounter.dayKey()
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            for ((label, v) in listOf("Сегодня" to c.todayFor(day), "Всего" to c.total)) {
+            for ((label, v) in listOf(I18n.t("today") to c.todayFor(day), I18n.t("total") to c.total)) {
                 Column(Modifier.weight(1f).clip(ssShape(style, 12.dp)).background(sc.accent.copy(alpha = 0.10f)).padding(horizontal = 10.dp, vertical = 8.dp)) {
                     Text(label, fontSize = 12.sp, color = sc.muted)
                     Text(AdBlockCounter.show(c.measured, v), fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = sc.accent, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
                 }
             }
         }
-        if (onReset != null) OutlinedButton(onClick = onReset, modifier = Modifier.padding(top = 8.dp)) { Text("Сбросить") }
+        if (onReset != null) OutlinedButton(onClick = onReset, modifier = Modifier.padding(top = 8.dp)) { Text(I18n.t("reset")) }
     }
 }
 
@@ -67,21 +68,21 @@ internal fun AdBlockItems(vm: AppViewModel, st: AppState) {
     fun cat(id: String, on: Boolean) { vm.setAdvTunnel { it.copy(adCats = if (on) (it.adCats + id).distinct() else it.adCats - id) }; vm.reconnectIfConnected() }
     val tunnelOn = AdBlock.enabled(a)
     val dnsOn = AdBlock.dnsUrl(a) != null
-    SectionLabel("Заблокировано")
+    SectionLabel(I18n.t("blocked"))
     AdBlockCountTiles(counts, if (counts.measured) ({ vm.resetAdCounts() }) else null)
     HintText((if (!tunnelOn) "Включите блокировку в туннеле — тогда запросы будут считаться."
         else "Реальные запросы к рекламе и трекерам, отброшенные в туннеле (журнал Xray). Для OpenVPN / OpenConnect и других ядер без Xray подсчёт недоступен — н/д.") +
         if (dnsOn) " Блокировка через DNS не считается (н/д)." else "")
-    SectionLabel("В туннеле")
-    SwitchRow("Блокировать рекламу и трекеры", a.blockAds, subtitle = "Отбрасывает известные рекламные и отслеживающие домены внутри туннеля") { v -> vm.setAdvTunnel { it.copy(blockAds = v) }; vm.reconnectIfConnected() }
-    SectionLabel("Категории")
+    SectionLabel(I18n.t("in_tunnel"))
+    SwitchRow(I18n.t("block_ads"), a.blockAds, subtitle = I18n.t("block_ads_sub")) { v -> vm.setAdvTunnel { it.copy(blockAds = v) }; vm.reconnectIfConnected() }
+    SectionLabel(I18n.t("categories"))
     AdBlock.CATS.filter { !it.telemetry }.forEach { c -> SwitchRow(c.title, c.id in a.adCats) { cat(c.id, it) } }
     HintText("Работает в туннеле Xray. Списки вредоносных, азартных сайтов и майнеров в базе приложения отсутствуют, поэтому их здесь нет.")
-    SectionLabel("Телеметрия")
+    SectionLabel(I18n.t("telemetry"))
     AdBlock.CATS.filter { it.telemetry }.forEach { c -> SwitchRow("Телеметрия ${c.title}", c.id in a.adCats) { cat(c.id, it) } }
     HintText("Блокирует сбор данных через туннель Xray. Для Samsung в базе нет отдельного списка телеметрии. Блокировка Windows может мешать некоторым службам Microsoft.")
-    SectionLabel("ДНС-блокировщик рекламы")
-    SwitchRow("ДНС-блокировщик рекламы", a.adDnsOn, subtitle = "Резолвер, который отсекает рекламу и трекеры") { v ->
+    SectionLabel(I18n.t("ad_dns"))
+    SwitchRow(I18n.t("ad_dns"), a.adDnsOn, subtitle = I18n.t("ad_dns_sub")) { v ->
         vm.setAdvTunnel { it.copy(adDnsOn = v, adDnsUrl = if (v && it.adDnsUrl.isBlank()) AdBlock.DNS_PRESETS.first().variants[1].url else it.adDnsUrl) }
         vm.reconnectIfConnected()
     }
@@ -90,7 +91,7 @@ internal fun AdBlockItems(vm: AppViewModel, st: AppState) {
         var dnsMenu by remember { mutableStateOf(false) }
         val dnsLabel = sel?.let { "${it.first.name} · ${it.second.kind}" } ?: if (a.adDnsUrl.isNotBlank()) "Свой" else "Выберите"
         androidx.compose.foundation.layout.Box {
-            NavRow("Резолвер", dnsLabel, dropdown = true, subtitle = "AdGuard, Mullvad, ControlD или свой адрес") { dnsMenu = true }
+            NavRow(I18n.t("resolver"), dnsLabel, dropdown = true, subtitle = "AdGuard, Mullvad, ControlD или свой адрес") { dnsMenu = true }
             androidx.compose.material3.DropdownMenu(expanded = dnsMenu, onDismissRequest = { dnsMenu = false }) {
                 AdBlock.DNS_PRESETS.forEach { pr ->
                     pr.variants.forEach { v ->

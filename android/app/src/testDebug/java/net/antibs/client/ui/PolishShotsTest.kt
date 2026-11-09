@@ -181,4 +181,53 @@ class PolishShotsTest {
         save("home_bottom_bar_dark") // full decorView; no crop
     }
 
+
+    @Config(qualifiers = "w400dp-h900dp-xxhdpi")
+    @Test fun s30LanguageDropdown() {
+        dir = "/workspace/polish_shots/2030"
+        val vm = AppViewModel(rule.activity.application)
+        live(ThemeMode.DARK) {
+            SettingsHome(vm, vm.ui.value, {}, {}, "Settings")
+        }
+        Thread.sleep(800); rule.waitForIdle()
+        rule.onNodeWithText("Блокировка рекламы", substring = false).assertExists() // may be collapsed
+        // Expand interface card if needed and open language
+        runCatching { rule.onNodeWithText("Настройки интерфейса").performClick() }
+        rule.waitForIdle(); Thread.sleep(300)
+        runCatching { rule.onNodeWithText("Язык").performClick() }
+        rule.waitForIdle(); Thread.sleep(400)
+        save("language_dropdown_dark")
+    }
+
+    @Config(qualifiers = "w400dp-h900dp-xxhdpi")
+    @Test fun s30HomeEnglish() {
+        dir = "/workspace/polish_shots/2030"
+        net.antibs.client.data.I18n.use("en")
+        val now = System.currentTimeMillis()
+        val sub = net.antibs.client.data.Subscription(
+            id = "s1", url = "https://example.com/sub", title = "Demo",
+            download = (1.4 * 1024 * 1024 * 1024).toLong(), total = 150L * 1024 * 1024 * 1024,
+            expireEpoch = now / 1000 + 115L * 86400,
+        )
+        show(ThemeMode.DARK) {
+            Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    ConnectionCard(
+                        flag = "🇩🇪", name = "Germany · Frankfurt", proto = "VLESS Reality", protoTone = UiLogic.ProtoChipTone.OK,
+                        active = true, dot = UiLogic.StatusDot.LIVE,
+                        downSpeed = "1.2 MB/s", upSpeed = "84.0 KB/s", downTotal = "152.4 MB", upTotal = "9.8 MB",
+                        directDownSpeed = "0.0 KB/s", directUpSpeed = "0.0 KB/s", directDownTotal = "3.1 MB", directUpTotal = "0.4 MB",
+                        vpnSamples = listOf(0.2f, 0.5f, 0.4f, 0.8f), directSamples = listOf(0.1f, 0.1f, 0.2f, 0.1f), sampleSeq = 4,
+                        statsVisible = true, pingMs = 84, pingStyle = net.antibs.client.data.PingChipStyle(),
+                        directMs = 231, status = net.antibs.client.data.I18n.t("connected"), statusColor = AntiBSColors.Ok,
+                        subLine = net.antibs.client.data.SubLineData.of(sub, now),
+                        subStyle = net.antibs.client.data.SubRemainStyle(),
+                    )
+                }
+                MainBottomBar(MainTab.Home) { }
+            }
+        }
+        save("home_english_dark")
+        net.antibs.client.data.I18n.use("ru")
+    }
 }

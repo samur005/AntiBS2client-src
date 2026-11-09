@@ -1,5 +1,7 @@
 package net.antibs.client.ui
 
+import net.antibs.client.data.I18n
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,7 +58,7 @@ internal fun UpdateDownloadChip(s: AppViewModel.UpdateUi.Downloading, p: Float, 
                         Icon(Icons.Filled.CloudDownload, null, Modifier.size(14.dp), tint = AntiBSColors.Blue)
                     }
                     Column {
-                        Text("Обновление ${s.u.release.version} · ${(p * 100).toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(I18n.t("update_downloading", s.u.release.version) + " · ${(p * 100).toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Text("${DS.speed(s.bps)} · осталось ${DS.mmss(eta)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }

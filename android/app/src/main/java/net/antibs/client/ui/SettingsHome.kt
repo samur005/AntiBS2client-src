@@ -49,6 +49,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.antibs.client.BuildConfig
+import net.antibs.client.data.AppLang
+import net.antibs.client.data.AppLocale
+import net.antibs.client.data.I18n
 import net.antibs.client.data.ProtocolSupport
 import net.antibs.client.data.SubAutoUpdate
 import net.antibs.client.data.TrafficPresets
@@ -117,7 +120,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                             "auto" -> "Авто"
                             else -> net.antibs.client.data.HolidayCalendar.byId(a.seasonalDecor, a.customHolidays)?.let { "${it.emoji} ${it.name}" } ?: "Авто"
                         }, subtitle = "Праздник, снег, гирлянда, надпись") { open("Seasonal") }
-                        NavRow("Язык", "Русский", dropdown = true, subtitle = "Язык интерфейса приложения") { vm.message("Пока доступен только русский язык") }
+                        NavRow(I18n.t("language"), if (AppLang.normalize(a.language) == AppLang.SYSTEM) I18n.t("lang_system") else AppLang.nativeLabel(a.language), dropdown = true, subtitle = I18n.t("language_sub")) { dialog = "lang" }
                         NavRow("Тема оформления", themeLabel(ui.theme), dropdown = true, subtitle = "Светлая, тёмная, чёрная или как в системе") { dialog = "theme" }
                         RowDivider()
                         NavRow("Стиль оформления", Styles.get(androidx.compose.ui.platform.LocalContext.current).style.collectAsState().value.title, dropdown = true, subtitle = "Неон, Карточки, Аврора, Киберпанк…") { dialog = "style" }
@@ -379,6 +382,19 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
         "mtu" -> MtuDialog(a.tunMtu, { m -> vm.setAdvTunnel { it.copy(tunMtu = m) } }, { dialog = null })
         "style" -> { val sp = Styles.get(androidx.compose.ui.platform.LocalContext.current); ChoiceDialog("Стиль оформления", ServerStyle.entries.map { it.key to it.title }, sp.style.value.key, { sp.setStyle(ServerStyle.of(it)) }, { dialog = null }) }
         "speedUnits" -> ChoiceDialog("Единицы скорости", listOf("bytes" to "Байты (КБ/с, МБ/с)", "bits" to "Биты (кбит/с, Мбит/с)"), if (a.speedUnits == "bits") "bits" else "bytes", { u -> vm.setAdv { it.copy(speedUnits = u) } }, { dialog = null })
+        "lang" -> ChoiceDialog(
+            I18n.t("language"),
+            AppLang.ALL.map { l ->
+                l.tag to if (l.tag == AppLang.SYSTEM) I18n.t("lang_system") else l.nativeName
+            },
+            AppLang.normalize(a.language),
+            { v ->
+                vm.setAdv { it.copy(language = v) }
+                AppLocale.apply(v)
+                dialog = null
+            },
+            { dialog = null },
+        )
         "theme" -> ChoiceDialog("Тема оформления", themeChoices, ui.theme.name.lowercase(), { vm.setTheme(themeFrom(it)) }, { dialog = null })
         "accent" -> ChoiceDialog("Акцентный цвет",
             (if (Build.VERSION.SDK_INT >= 31) listOf("system" to Accent.label("system")) else emptyList()) + Accent.presets.map { it.first to it.second },

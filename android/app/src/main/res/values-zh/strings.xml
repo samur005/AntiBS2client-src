@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AntiBS2client</string>
+    <string name="language">语言</string>
+    <string name="lang_system">跟随系统</string>
+    <string name="tab_home">主页</string>
+    <string name="tab_shop">商店</string>
+    <string name="tab_servers">服务器</string>
+    <string name="settings">设置</string>
+    <string name="adblock">广告拦截</string>
+</resources>
