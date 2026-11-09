@@ -1,0 +1,6 @@
+Bundled UI fonts (2.0.31):
+- Inter — SIL Open Font License 1.1 (rsms/inter)
+- Roboto — Apache License 2.0 (Google)
+- Montserrat, Nunito, Golos Text, JetBrains Mono, Comfortaa, Unbounded, Caveat, Lobster, Pacifico — SIL Open Font License 1.1 (Google Fonts / upstream)
+
+See fonts-OFL.txt and Roboto-Apache-2.0.txt.

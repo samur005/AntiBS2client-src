@@ -161,7 +161,14 @@ private fun lightScheme() = lightColorScheme(
 )
 
 @Composable
-fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, style: ServerStyle = ServerStyle.CLASSIC, content: @Composable () -> Unit) {
+fun AntiBSTheme(
+    mode: ThemeMode,
+    accent: String = Accent.DEFAULT,
+    style: ServerStyle = ServerStyle.CLASSIC,
+    fontFamily: String = AppFonts.SYSTEM,
+    fontScalePct: Int = UiScale.FONT_PCT_DEFAULT,
+    content: @Composable () -> Unit,
+) {
     val dark = isDark(mode)
     val ctx = LocalContext.current
     val accentColor = if (accent == "system" && android.os.Build.VERSION.SDK_INT >= 31) {
@@ -172,6 +179,7 @@ fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, style: ServerS
     val scheme = StyleTheme.colors(style, dark, mode == ThemeMode.AMOLED, if (dark) darkScheme(mode == ThemeMode.AMOLED) else lightScheme())
     // styles: the whole app (AntiBSColors.Blue users included) follows the style accent
     if (style != ServerStyle.CLASSIC) { Accent.current = scheme.primary; Accent.isDefault = false }
+    val typography = rememberAppTypography(fontFamily)
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -184,12 +192,12 @@ fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, style: ServerS
     }
     // Material3 does not set LocalContentColor, so it stays Color.Black and body text
     // disappears on the dark canvas. Force onBackground for both themes.
-    MaterialTheme(colorScheme = scheme, shapes = StyleTheme.shapes(style)) {
+    MaterialTheme(colorScheme = scheme, typography = typography, shapes = StyleTheme.shapes(style)) {
         CompositionLocalProvider(LocalContentColor provides scheme.onBackground, LocalAppStyle provides style) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             val tv = remember(ctx) { TvMode.isTv(ctx) } || TvMode.isTvConfig(androidx.compose.ui.platform.LocalConfiguration.current)
             CompositionLocalProvider(LocalIsTv provides tv) {
-                AdaptiveUi(scheme.background) {
+                AdaptiveUi(scheme.background, fontScalePct) {
                     if (tv) TvFocusOverlay(ssColors(style).accent, content) else content()
                 }
             }
@@ -206,7 +214,12 @@ object UiScale {
     const val BASE_DP = 392f
     const val MIN = 0.85f
     const val MAX = 1.12f
-    const val MAX_FONT_SCALE = 1.3f
+    const val MAX_FONT_SCALE = 1.7f
+    /** 2.0.31: app «Размер шрифта» percent (multiplies system fontScale). */
+    const val FONT_PCT_MIN = 80
+    const val FONT_PCT_MAX = 130
+    const val FONT_PCT_STEP = 5
+    const val FONT_PCT_DEFAULT = 100
     /** Content never gets wider than this (tablets / landscape): centred column. */
     const val MAX_CONTENT_DP = 600
 
@@ -215,19 +228,31 @@ object UiScale {
         val w = minOf(widthDp, heightDp.takeIf { it > 0 } ?: widthDp, MAX_CONTENT_DP).toFloat()
         return (w / BASE_DP).coerceIn(MIN, MAX)
     }
-    /** User font size is respected up to [MAX_FONT_SCALE] so fixed-size pills/banner numbers don't overflow. */
-    fun fontScale(user: Float): Float = user.coerceIn(0.85f, MAX_FONT_SCALE)
+    /** Snap [pct] to 80…130 step 5. */
+    fun snapFontPct(pct: Int): Int {
+        val c = pct.coerceIn(FONT_PCT_MIN, FONT_PCT_MAX)
+        val steps = ((c - FONT_PCT_MIN + FONT_PCT_STEP / 2) / FONT_PCT_STEP)
+        return (FONT_PCT_MIN + steps * FONT_PCT_STEP).coerceIn(FONT_PCT_MIN, FONT_PCT_MAX)
+    }
+    /**
+     * Final Compose [Density.fontScale]: system setting × user percent (default 100%).
+     * Soft-capped so extreme system+app combos stay usable.
+     */
+    fun fontScale(system: Float, userPct: Int = FONT_PCT_DEFAULT): Float {
+        val u = snapFontPct(userPct) / 100f
+        return (system * u).coerceIn(0.70f, MAX_FONT_SCALE)
+    }
 }
 
 val LocalUiScale = androidx.compose.runtime.staticCompositionLocalOf { 1f }
 
 @Composable
-private fun AdaptiveUi(bg: Color, content: @Composable () -> Unit) {
+private fun AdaptiveUi(bg: Color, fontScalePct: Int = UiScale.FONT_PCT_DEFAULT, content: @Composable () -> Unit) {
     val cfg = androidx.compose.ui.platform.LocalConfiguration.current
     val d = androidx.compose.ui.platform.LocalDensity.current
     val tv = LocalIsTv.current
     val k = if (tv) TvMode.scale(cfg.screenWidthDp, cfg.screenHeightDp) else UiScale.scale(cfg.screenWidthDp, cfg.screenHeightDp)
-    val scaled = androidx.compose.ui.unit.Density(d.density * k, UiScale.fontScale(d.fontScale))
+    val scaled = androidx.compose.ui.unit.Density(d.density * k, UiScale.fontScale(d.fontScale, fontScalePct))
     CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides scaled, LocalUiScale provides k) {
         androidx.compose.foundation.layout.Box(
             androidx.compose.ui.Modifier.fillMaxSize().background(bg),

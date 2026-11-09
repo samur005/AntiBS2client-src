@@ -532,7 +532,7 @@ private fun PingPill(ping: WorldPing, onPing: () -> Unit, modifier: Modifier) {
         }
         androidx.compose.animation.AnimatedVisibility(show) {
             Text(if (ms == null || ms < 0) "нет ответа" else "$ms мс", color = tone, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                maxLines = 1, modifier = Modifier.padding(end = 10.dp))
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 10.dp))
         }
     }
 }

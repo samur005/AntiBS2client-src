@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asSkiaBitmap
@@ -83,4 +84,44 @@ class SettingsUiShotTest {
         onNodeWithText("Конфиденциальность").performClick(); waitForIdle()
         File(dir, "privacy_section.png").writeBytes(onRoot().png())
     }
+
+
+    @Test fun fontScale80() = runComposeUiTest {
+        val out = File("/workspace/win_shots/2031").also { it.mkdirs() }
+        setContent {
+            AntiBSTheme(ThemeMode.DARK, fontFamily = "montserrat", fontScalePct = 80) {
+                Surface(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    Column(Modifier.width(720.dp).verticalScroll(rememberScrollState()).padding(24.dp)) {
+                        SettingsCard("Оформление") {
+                            NavRow("Шрифт", "Montserrat", dropdown = true, subtitle = "Системный или один из встроенных (кириллица)") {}
+                            FontScaleRow(80) {}
+                        }
+                        Text(AppFonts.PREVIEW, modifier = Modifier.padding(top = 12.dp))
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        out.resolve("font_scale_80.png").writeBytes(onRoot().png())
+    }
+
+    @Test fun fontScale130() = runComposeUiTest {
+        val out = File("/workspace/win_shots/2031").also { it.mkdirs() }
+        setContent {
+            AntiBSTheme(ThemeMode.DARK, fontFamily = "montserrat", fontScalePct = 130) {
+                Surface(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    Column(Modifier.width(720.dp).verticalScroll(rememberScrollState()).padding(24.dp)) {
+                        SettingsCard("Оформление") {
+                            NavRow("Шрифт", "Montserrat", dropdown = true, subtitle = "Системный или один из встроенных (кириллица)") {}
+                            FontScaleRow(130) {}
+                        }
+                        Text(AppFonts.PREVIEW, modifier = Modifier.padding(top = 12.dp))
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        out.resolve("font_scale_130.png").writeBytes(onRoot().png())
+    }
+
 }

@@ -241,7 +241,7 @@ fun AppRoot(vm: AppViewModel) {
     // touch I18n.tag so language changes recompose the tree
     val langTag = I18n.tag
     val layoutDir = if (AppLang.isRtl(langTag)) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
-    AntiBSTheme(ui.theme, st.adv.accent, appStyle) {
+    AntiBSTheme(ui.theme, st.adv.accent, appStyle, st.adv.fontFamily, st.adv.fontScalePct) {
     androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides layoutDir) {
     // 1.0.55: every Compose haptic respects «Вибрация» (Настройки интерфейса); the system touch-feedback setting applies too.
     val hapticView = androidx.compose.ui.platform.LocalView.current
@@ -881,7 +881,7 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
     ) {
         Row(
-            Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 8.dp),
+            Modifier.fillMaxWidth().heightIn(min = 62.dp).padding(horizontal = 8.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             MainTab.entries.forEach { t ->
@@ -894,7 +894,6 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                 Column(
                     Modifier
                         .weight(1f)
-                        .fillMaxHeight()
                         .clip(RoundedCornerShape(16.dp))
                         .clickable(onClickLabel = t.title) { if (!sel) onSelect(t) }
                         .padding(top = 6.dp, bottom = 4.dp),
@@ -933,8 +932,10 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                         color = if (sel) AntiBSColors.Blue else muted,
                         fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
                         fontSize = 11.sp,
-                        lineHeight = 12.sp,
+                        lineHeight = 13.sp,
                         maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -2150,9 +2151,9 @@ internal fun RowDivider() {
 private fun RowTexts(title: String, subtitle: String?, modifier: Modifier) {
     val c = ssColors(LocalAppStyle.current)
     Column(modifier) {
-        Text(title, color = c.onCard, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)
+        Text(title, color = c.onCard, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         if (!subtitle.isNullOrBlank()) Text(subtitle, color = c.muted, fontSize = 12.sp, lineHeight = 15.sp,
-            maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 0.dp))
+            maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 0.dp))
     }
 }
 
@@ -2181,6 +2182,8 @@ internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.Im
         has("сезон", "украшен", "снег", "гирлянд", "праздник") -> Icons.Filled.AcUnit
         has("язык") -> Icons.Filled.Translate
         has("акцент", "цвет") -> Icons.Filled.ColorLens
+        has("шрифт") && !has("размер") -> Icons.Filled.TextFields
+        has("размер шрифта") || (has("размер") && has("шрифт")) -> Icons.Filled.FormatSize
         has("тем", "оформлен", "стиль", "интерфейс") -> Icons.Filled.Palette
         has("вибрац") -> Icons.Filled.Vibration
         has("тест скорост", "единиц", "скорост") -> Icons.Filled.Speed
@@ -2267,7 +2270,7 @@ internal fun NavRow(title: String, value: String? = null, dropdown: Boolean = fa
     val c = ssColors(LocalAppStyle.current)
     SettingsRowFrame(title, if (dropdown) subtitle else value ?: subtitle, onClick) {
         if (dropdown) {
-            if (value != null) Text(value, color = c.accent, fontSize = 14.sp, maxLines = 1)
+            if (value != null) Text(value, color = c.accent, fontSize = 14.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 148.dp))
             Icon(Icons.Filled.UnfoldMore, null, tint = c.accent, modifier = Modifier.padding(start = 2.dp).size(18.dp))
         } else if (chevron) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = c.muted)
     }

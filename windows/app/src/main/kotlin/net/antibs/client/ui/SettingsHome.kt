@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +24,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import net.antibs.client.desktop.FlagText as Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -239,6 +244,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
         "accent" -> ChoiceDialog("Акцентный цвет",
             Accent.presets.map { it.first to it.second },
             a.accent, { v -> vm.setAdv { it.copy(accent = v) } }, { dialog = null })
+        "font" -> FontChoiceDialog(AppFonts.normalize(a.fontFamily), { v -> vm.setAdv { it.copy(fontFamily = v) } }, { dialog = null })
         "notif" -> ChoiceDialog("Трафик в уведомлении", listOf("off", "speed", "total", "both").map { it to notifLabel(it) }, a.notifTraffic,
             { v -> vm.setAdvTunnel { it.copy(notifTraffic = v) } }, { dialog = null })
         "notifEvery" -> ChoiceDialog("Обновлять каждые", listOf(1, 2, 5, 10).map { "$it" to "$it с" }, "${a.notifRefreshSec}",
@@ -284,3 +290,71 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
 
 internal fun notifLabel(m: String) = when (m) { "off" -> "Выкл"; "speed" -> "Скорость"; "total" -> "Всего за сессию"; else -> "Скорость и всего" }
 
+
+@Composable
+internal fun FontScaleRow(pct: Int, onChange: (Int) -> Unit) {
+    val snapped = UiScale.snapFontPct(pct)
+    var v by remember(snapped) { mutableStateOf(snapped.toFloat()) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Размер шрифта", Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text("${v.toInt()}%", color = AntiBSColors.Blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            if (v.toInt() != UiScale.FONT_PCT_DEFAULT) {
+                TextButton(onClick = { v = UiScale.FONT_PCT_DEFAULT.toFloat(); onChange(UiScale.FONT_PCT_DEFAULT) }) {
+                    Text("Сбросить", fontSize = 13.sp)
+                }
+            }
+        }
+        Slider(
+            value = v,
+            onValueChange = {
+                val s = UiScale.snapFontPct(it.toInt()).toFloat()
+                if (s != v) { v = s; onChange(s.toInt()) }
+            },
+            valueRange = UiScale.FONT_PCT_MIN.toFloat()..UiScale.FONT_PCT_MAX.toFloat(),
+            steps = ((UiScale.FONT_PCT_MAX - UiScale.FONT_PCT_MIN) / UiScale.FONT_PCT_STEP) - 1,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("80%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("100%", fontSize = 11.sp, color = if (v.toInt() == 100) AntiBSColors.Blue else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (v.toInt() == 100) FontWeight.SemiBold else FontWeight.Normal)
+            Text("130%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(
+            AppFonts.PREVIEW,
+            fontSize = 14.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp).fillMaxWidth(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    RowDivider()
+}
+
+@Composable
+internal fun FontChoiceDialog(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Шрифт") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                AppFonts.options.forEach { opt ->
+                    val ff = AppFonts.familyOf(opt.id)
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onPick(opt.id); onDismiss() }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = current == opt.id, onClick = { onPick(opt.id); onDismiss() })
+                        Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                            Text(opt.label, fontFamily = ff, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                            if (opt.headingsOnly) {
+                                Text("Только заголовки", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } },
+    )
+}

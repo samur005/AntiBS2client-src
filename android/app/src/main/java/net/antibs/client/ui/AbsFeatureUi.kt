@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.antibs.client.data.*
@@ -76,7 +77,7 @@ internal fun SubRemainRow(data: SubLineData, style: SubRemainStyle, modifier: Mo
         Spacer(Modifier.width(10.dp))
         Text(
             data.traffic, color = tText, fontSize = fs, fontWeight = fw, maxLines = 1, softWrap = false,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
         if (data.trafficFrac != null) { Spacer(Modifier.width(6.dp)); ThinBar(data.trafficFrac, tBar) }
@@ -95,7 +96,7 @@ internal fun HomePingChip(ms: Long?, busy: Boolean, style: PingChipStyle, active
     }
     val fg = if (style.text != 0L) Color(style.text.toInt()) else tone
     val bg = if (style.bg != 0L) Color(style.bg.toInt()) else cs.surfaceVariant.copy(alpha = 0.7f)
-    Text(PingChipStyle.label(ms, busy), color = fg, fontSize = (style.size * 0.82f).sp, lineHeight = (style.size + 2).sp * 0.82f, maxLines = 1,
+    Text(PingChipStyle.label(ms, busy), color = fg, fontSize = (style.size * 0.82f).sp, lineHeight = (style.size + 2).sp * 0.82f, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
         fontWeight = if (style.bold) FontWeight.Bold else FontWeight.SemiBold, fontFamily = if (style.mono) FontFamily.Monospace else null,
         modifier = modifier.alpha((style.alpha / 100f) * (if (active) 1f else 0.55f)).clip(RoundedCornerShape(5.dp)).background(bg)
             .then(if (onPing != null) Modifier.clickable(onClickLabel = "Проверить пинг текущего сервера") { onPing() } else Modifier)

@@ -1,0 +1,11 @@
+2.0.31 fonts + font scale (unpublished branch feature/fonts-scale-2031)
+- Шрифт: Системный + Inter, Roboto, Montserrat, Nunito, Golos Text, JetBrains Mono
+- Decorative (headings-only): Comfortaa (full), Unbounded, Lobster, Caveat, Pacifico
+- Размер шрифта: 80–130% step 5, default 100%, Сбросить, 100% tick, live preview
+- Applied via LocalDensity.fontScale = system × pct/100 (Windows same)
+- Shots: font_scale_80.png, font_scale_130.png, home_banner_bar_{80,130}.png, interface_fonts_100.png
+- APK font assets target ≤~3–4MB (subset latin+cyrillic)
+
+
+Font assets (res/font): ~3340 KiB (~3.3 MB) subset latin+cyrillic.
+Expected APK growth ≈ that (zip-compressed somewhat less).

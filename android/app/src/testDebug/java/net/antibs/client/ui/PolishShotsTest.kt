@@ -93,9 +93,9 @@ class PolishShotsTest {
 
     // ───────── 2.0.15 ─────────
     private fun d15() { dir = "/workspace/polish_shots/2015" }
-    private fun live(theme: ThemeMode, content: @Composable () -> Unit) {
+    private fun live(theme: ThemeMode, fontFamily: String = AppFonts.SYSTEM, fontScalePct: Int = 100, content: @Composable () -> Unit) {
         Assume.assumeTrue(System.getenv("ABS_SHOTS") == "1")
-        rule.setContent { AntiBSTheme(theme) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() } } }
+        rule.setContent { AntiBSTheme(theme, fontFamily = fontFamily, fontScalePct = fontScalePct) { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() } } }
         rule.waitForIdle()
     }
     @Test fun s15BannerIdle() { dir = "/workspace/polish_shots/2016"; show(ThemeMode.DARK) { banner(84, 231, false) }; save("banner_idle_dark", 700) }
@@ -230,4 +230,75 @@ class PolishShotsTest {
         save("home_english_dark")
         net.antibs.client.data.I18n.use("ru")
     }
+
+
+    // ───────── 2.0.31 fonts + scale ─────────
+    @Config(qualifiers = "w400dp-h2200dp-xxhdpi")
+    @Test fun s31InterfaceFonts() {
+        dir = "/workspace/polish_shots/2031"
+        val vm = AppViewModel(rule.activity.application)
+        vm.setAdv { it.copy(fontFamily = "inter", fontScalePct = 100) }
+        live(ThemeMode.DARK, "inter", 100) { SettingsHome(vm, vm.ui.value, {}, {}, "Interface") }
+        Thread.sleep(800); rule.waitForIdle()
+        save("interface_fonts_100")
+    }
+
+    @Config(qualifiers = "w400dp-h2200dp-xxhdpi")
+    @Test fun s31FontScale80() {
+        dir = "/workspace/polish_shots/2031"
+        val vm = AppViewModel(rule.activity.application)
+        vm.setAdv { it.copy(fontFamily = "montserrat", fontScalePct = 80) }
+        live(ThemeMode.DARK, "montserrat", 80) { SettingsHome(vm, vm.ui.value, {}, {}, "Interface") }
+        Thread.sleep(800); rule.waitForIdle()
+        save("font_scale_80")
+    }
+
+    @Config(qualifiers = "w400dp-h2200dp-xxhdpi")
+    @Test fun s31FontScale130() {
+        dir = "/workspace/polish_shots/2031"
+        val vm = AppViewModel(rule.activity.application)
+        vm.setAdv { it.copy(fontFamily = "montserrat", fontScalePct = 130) }
+        live(ThemeMode.DARK, "montserrat", 130) { SettingsHome(vm, vm.ui.value, {}, {}, "Interface") }
+        Thread.sleep(800); rule.waitForIdle()
+        save("font_scale_130")
+    }
+
+    @Config(qualifiers = "w400dp-h900dp-xxhdpi")
+    @Test fun s31HomeBanner80() {
+        dir = "/workspace/polish_shots/2031"
+        Assume.assumeTrue(System.getenv("ABS_SHOTS") == "1")
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            AntiBSTheme(ThemeMode.DARK, fontFamily = "inter", fontScalePct = 80) {
+                androidx.compose.material3.Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) { banner(84, 231, false) }
+                        MainBottomBar(MainTab.Home) { }
+                    }
+                }
+            }
+        }
+        rule.mainClock.advanceTimeBy(900)
+        save("home_banner_bar_80")
+    }
+
+    @Config(qualifiers = "w400dp-h900dp-xxhdpi")
+    @Test fun s31HomeBanner130() {
+        dir = "/workspace/polish_shots/2031"
+        Assume.assumeTrue(System.getenv("ABS_SHOTS") == "1")
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            AntiBSTheme(ThemeMode.DARK, fontFamily = "inter", fontScalePct = 130) {
+                androidx.compose.material3.Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) { banner(84, 231, false) }
+                        MainBottomBar(MainTab.Home) { }
+                    }
+                }
+            }
+        }
+        rule.mainClock.advanceTimeBy(900)
+        save("home_banner_bar_130")
+    }
+
 }

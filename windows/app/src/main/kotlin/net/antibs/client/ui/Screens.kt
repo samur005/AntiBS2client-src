@@ -192,7 +192,7 @@ fun AppRoot(vm: AppViewModel) {
     val ui by vm.ui.collectAsState()
     val st by vm.state.collectAsState()
     // Read the collected preference (StateFlow), never a one-shot store.theme() snapshot.
-    AntiBSTheme(ui.theme, st.adv.accent) {
+    AntiBSTheme(ui.theme, st.adv.accent, st.adv.fontFamily, st.adv.fontScalePct) {
         var pageName by rememberSaveable { mutableStateOf(Page.Main.name) }
         var routingId by rememberSaveable { mutableStateOf<String?>(null) }
         // Detail pages remember which page opened them.
@@ -1805,7 +1805,7 @@ internal fun NavRow(title: String, value: String? = null, dropdown: Boolean = fa
         SettingsIconTile(settingsIcon(title))
         if (dropdown) {
             RowTexts(title, subtitle, Modifier.weight(1f).padding(end = 8.dp))
-            if (value != null) Text(value, color = AntiBSColors.Blue, fontSize = 15.sp, maxLines = 1)
+            if (value != null) Text(value, color = AntiBSColors.Blue, fontSize = 15.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp))
             Icon(Icons.Filled.UnfoldMore, null, tint = AntiBSColors.Blue, modifier = Modifier.padding(start = 2.dp).size(18.dp))
         } else {
             RowTexts(title, value ?: subtitle, Modifier.weight(1f).padding(end = 8.dp))

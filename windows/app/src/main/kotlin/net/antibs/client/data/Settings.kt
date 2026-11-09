@@ -101,6 +101,10 @@ data class AdvancedSettings(
     val ruDns: String = "77.88.8.8",
     // 1.0.40: «Настройки интерфейса» → «Общее»
     val accent: String = "blue",
+    /** 2.0.31: UI typeface id ([AppFonts] / «Системный»). */
+    val fontFamily: String = "system",
+    /** 2.0.31: app font scale percent 80–130 step 5; multiplies system fontScale. */
+    val fontScalePct: Int = 100,
     val autoConnectOnLaunch: Boolean = false,
     val haptics: Boolean = true,
     /** off | speed | total | both */

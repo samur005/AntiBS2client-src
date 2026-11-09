@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -149,17 +150,48 @@ private fun lightScheme() = lightColorScheme(
     error = AntiBSColors.Err,
 )
 
+/** 2.0.31: same percent font scale as Android (multiplies system / desktop fontScale). */
+object UiScale {
+    const val FONT_PCT_MIN = 80
+    const val FONT_PCT_MAX = 130
+    const val FONT_PCT_STEP = 5
+    const val FONT_PCT_DEFAULT = 100
+    const val MAX_FONT_SCALE = 1.7f
+    fun snapFontPct(pct: Int): Int {
+        val c = pct.coerceIn(FONT_PCT_MIN, FONT_PCT_MAX)
+        val steps = ((c - FONT_PCT_MIN + FONT_PCT_STEP / 2) / FONT_PCT_STEP)
+        return (FONT_PCT_MIN + steps * FONT_PCT_STEP).coerceIn(FONT_PCT_MIN, FONT_PCT_MAX)
+    }
+    fun fontScale(system: Float, userPct: Int = FONT_PCT_DEFAULT): Float {
+        val u = snapFontPct(userPct) / 100f
+        return (system * u).coerceIn(0.70f, MAX_FONT_SCALE)
+    }
+}
+
 @Composable
-fun AntiBSTheme(mode: ThemeMode, accent: String = Accent.DEFAULT, content: @Composable () -> Unit) {
+fun AntiBSTheme(
+    mode: ThemeMode,
+    accent: String = Accent.DEFAULT,
+    fontFamily: String = AppFonts.SYSTEM,
+    fontScalePct: Int = UiScale.FONT_PCT_DEFAULT,
+    content: @Composable () -> Unit,
+) {
     val dark = isDark(mode)
     val accentColor = Color(Accent.argbOf(if (accent == "system") Accent.DEFAULT else accent))
     Accent.current = accentColor
     Accent.isDefault = accent == Accent.DEFAULT || accent == "system"
     val scheme = if (dark) darkScheme(mode == ThemeMode.AMOLED) else lightScheme()
+    val typography = rememberAppTypography(fontFamily)
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    val scaled = androidx.compose.ui.unit.Density(d.density, UiScale.fontScale(d.fontScale, fontScalePct))
     // Material3 does not set LocalContentColor, so it stays Color.Black and body text
     // disappears on the dark canvas. Force onBackground for both themes.
-    MaterialTheme(colorScheme = scheme) {
-        CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
+    MaterialTheme(colorScheme = scheme, typography = typography) {
+        CompositionLocalProvider(
+            LocalContentColor provides scheme.onBackground,
+            androidx.compose.ui.platform.LocalDensity provides scaled,
+            content = content,
+        )
     }
 }
 
