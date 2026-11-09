@@ -45,10 +45,10 @@ internal fun AdBlockCountTiles(c: AdBlockCounter.Counts, onReset: (() -> Unit)?)
     val style = LocalAppStyle.current
     val sc = ssColors(style)
     val day = AdBlockCounter.dayKey()
-    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             for ((label, v) in listOf("Сегодня" to c.todayFor(day), "Всего" to c.total)) {
-                Column(Modifier.weight(1f).clip(ssShape(style, 14.dp)).background(sc.accent.copy(alpha = 0.10f)).padding(12.dp)) {
+                Column(Modifier.weight(1f).clip(ssShape(style, 12.dp)).background(sc.accent.copy(alpha = 0.10f)).padding(horizontal = 10.dp, vertical = 8.dp)) {
                     Text(label, fontSize = 12.sp, color = sc.muted)
                     Text(AdBlockCounter.show(c.measured, v), fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = sc.accent, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
                 }
@@ -64,7 +64,7 @@ internal fun AdBlockItems(vm: AppViewModel, st: AppState) {
     val a = st.adv
     val counts by vm.adCounts.collectAsState()
     val sc = ssColors(LocalAppStyle.current)
-    fun cat(id: String, on: Boolean) = vm.setAdvTunnel { it.copy(adCats = if (on) (it.adCats + id).distinct() else it.adCats - id) }
+    fun cat(id: String, on: Boolean) { vm.setAdvTunnel { it.copy(adCats = if (on) (it.adCats + id).distinct() else it.adCats - id) }; vm.reconnectIfConnected() }
     val tunnelOn = AdBlock.enabled(a)
     val dnsOn = AdBlock.dnsUrl(a) != null
     SectionLabel("Заблокировано")
@@ -73,7 +73,7 @@ internal fun AdBlockItems(vm: AppViewModel, st: AppState) {
         else "Реальные запросы к рекламе и трекерам, отброшенные в туннеле (журнал Xray). Для OpenVPN / OpenConnect и других ядер без Xray подсчёт недоступен — н/д.") +
         if (dnsOn) " Блокировка через DNS не считается (н/д)." else "")
     SectionLabel("В туннеле")
-    SwitchRow("Блокировать рекламу и трекеры", a.blockAds, subtitle = "Отбрасывает известные рекламные и отслеживающие домены внутри туннеля") { v -> vm.setAdvTunnel { it.copy(blockAds = v) } }
+    SwitchRow("Блокировать рекламу и трекеры", a.blockAds, subtitle = "Отбрасывает известные рекламные и отслеживающие домены внутри туннеля") { v -> vm.setAdvTunnel { it.copy(blockAds = v) }; vm.reconnectIfConnected() }
     SectionLabel("Категории")
     AdBlock.CATS.filter { !it.telemetry }.forEach { c -> SwitchRow(c.title, c.id in a.adCats) { cat(c.id, it) } }
     HintText("Работает в туннеле Xray. Списки вредоносных, азартных сайтов и майнеров в базе приложения отсутствуют, поэтому их здесь нет.")
@@ -83,21 +83,30 @@ internal fun AdBlockItems(vm: AppViewModel, st: AppState) {
     SectionLabel("ДНС-блокировщик рекламы")
     SwitchRow("ДНС-блокировщик рекламы", a.adDnsOn, subtitle = "Резолвер, который отсекает рекламу и трекеры") { v ->
         vm.setAdvTunnel { it.copy(adDnsOn = v, adDnsUrl = if (v && it.adDnsUrl.isBlank()) AdBlock.DNS_PRESETS.first().variants[1].url else it.adDnsUrl) }
+        vm.reconnectIfConnected()
     }
     if (a.adDnsOn) {
         val sel = AdBlock.findDns(a.adDnsUrl)
-        AdBlock.DNS_PRESETS.forEach { pr ->
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                Text(pr.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (sel?.first == pr) sc.accent else sc.onCard)
-                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        var dnsMenu by remember { mutableStateOf(false) }
+        val dnsLabel = sel?.let { "${it.first.name} · ${it.second.kind}" } ?: if (a.adDnsUrl.isNotBlank()) "Свой" else "Выберите"
+        androidx.compose.foundation.layout.Box {
+            NavRow("Резолвер", dnsLabel, dropdown = true, subtitle = "AdGuard, Mullvad, ControlD или свой адрес") { dnsMenu = true }
+            androidx.compose.material3.DropdownMenu(expanded = dnsMenu, onDismissRequest = { dnsMenu = false }) {
+                AdBlock.DNS_PRESETS.forEach { pr ->
                     pr.variants.forEach { v ->
-                        FilterChip(selected = sel?.second == v, onClick = { vm.setAdvTunnel { it.copy(adDnsUrl = v.url) } }, label = { Text(v.kind) },
-                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = sc.accent.copy(alpha = 0.22f), selectedLabelColor = sc.accent))
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("${pr.name} · ${v.kind}") },
+                            onClick = {
+                                dnsMenu = false
+                                vm.setAdvTunnel { it.copy(adDnsUrl = v.url) }
+                                vm.reconnectIfConnected()
+                            },
+                        )
                     }
                 }
             }
         }
-        SettingField("Свой адрес (udp, https://, quic://)", if (sel == null) a.adDnsUrl else "", { v -> if (v.isNotBlank()) vm.setAdvTunnel { it.copy(adDnsUrl = v.trim()) } },
+        SettingField("Свой адрес (udp, https://, quic://)", if (sel == null) a.adDnsUrl else "", { v -> if (v.isNotBlank()) vm.setAdvTunnel { it.copy(adDnsUrl = v.trim()) }; vm.reconnectIfConnected() },
             valid = { it.isBlank() || AdBlock.dnsUrlOk(it) })
     }
     HintText("Пока блокировщик включён, он заменяет удалённый DNS из раздела «Сеть и DNS» (и профиля маршрутизации) для Xray. Выключите его — снова будет действовать выбранный там DNS.")
@@ -145,14 +154,18 @@ internal fun GeoFilesPage(vm: AppViewModel, onBack: () -> Unit) {
 internal fun LazyListScope.trafficPresetItems(vm: AppViewModel, st: AppState, rfReady: Boolean, onOpenGeo: () -> Unit) {
     val a = st.adv
     item { SectionLabel("Правила трафика") }
-    listOf(TrafficPresets.OFF, TrafficPresets.RU, TrafficPresets.AI, TrafficPresets.SOCIAL).forEach { p ->
-        item {
-            Row(Modifier.fillMaxWidth().clickable { vm.setTrafficPreset(p) }.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(a.trafficPreset == p || (p == TrafficPresets.OFF && !TrafficPresets.active(a)), { vm.setTrafficPreset(p) })
-                Column(Modifier.weight(1f)) {
-                    Text(if (p == TrafficPresets.OFF) "Без пресета" else TrafficPresets.title(p), fontSize = 16.sp)
-                    val sub = if (p == TrafficPresets.OFF) "Работают профиль маршрутизации и правила подписки" else TrafficPresets.summary(p)
-                    Text(sub, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    item {
+        val cur = if (!TrafficPresets.active(a)) TrafficPresets.OFF else a.trafficPreset
+        val label = if (cur == TrafficPresets.OFF || !TrafficPresets.active(a)) "Без пресета" else TrafficPresets.title(cur)
+        var menu by remember { mutableStateOf(false) }
+        androidx.compose.foundation.layout.Box {
+            NavRow("Пресет", label, dropdown = true, subtitle = if (!TrafficPresets.active(a)) "Работают профиль маршрутизации и правила подписки" else TrafficPresets.summary(a.trafficPreset)) { menu = true }
+            androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                listOf(TrafficPresets.OFF, TrafficPresets.RU, TrafficPresets.AI, TrafficPresets.SOCIAL).forEach { p ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(if (p == TrafficPresets.OFF) "Без пресета" else TrafficPresets.title(p)) },
+                        onClick = { menu = false; vm.setTrafficPreset(p) },
+                    )
                 }
             }
         }

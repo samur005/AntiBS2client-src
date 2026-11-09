@@ -117,9 +117,23 @@ class AdBlockTest {
         val (c2, p) = AdBlockCounter.withAccessLog(c, "/x/a.log")
         assertEquals("/x/a.log", p)
         assertEquals("/x/a.log", c2["log"]!!.jsonObject["access"]!!.jsonPrimitive.content)
-        val keep = JsonObject(c + ("log" to obj("""{"access":"/y/xray-access.log"}""")))
-        assertEquals("/y/xray-access.log", AdBlockCounter.withAccessLog(keep, "/x/a.log").second)
+        // 2.0.30: always dedicated counter log (never keep Логи's xray-access.log)
+        val keep = JsonObject(c + ("log" to obj("""{"loglevel":"none","access":"/y/xray-access.log"}""")))
+        val (c3, p3) = AdBlockCounter.withAccessLog(keep, "/x/a.log")
+        assertEquals("/x/a.log", p3)
+        assertEquals("/x/a.log", c3["log"]!!.jsonObject["access"]!!.jsonPrimitive.content)
+        assertEquals("warning", c3["log"]!!.jsonObject["loglevel"]!!.jsonPrimitive.content) // none → warning
         assertNull(AdBlockCounter.withAccessLog(built(off), "/x/a.log").second)
+    }
+
+    @Test fun counterMatchesXray26Lines() {
+        val log = """
+            2026/11/09 21:21:09.889308 from tcp:127.0.0.1:53694 accepted tcp:pagead2.googlesyndication.com:443 [socks -> block-ads]
+            2026/11/09 21:21:10.000000 from tcp:127.0.0.1:53695 accepted tcp:ads.example:443 [tun-in -> block-ads]
+            2026/11/09 21:21:11.000000 from tcp:127.0.0.1:53696 accepted tcp:x:443 [socks -> proxy]
+            2026/11/09 21:21:12.000000 from tcp:127.0.0.1:53697 accepted tcp:y:443 [socks >> block-ads]
+        """.trimIndent()
+        assertEquals(3, AdBlockCounter.count(log))
     }
 
     @Test fun countsDayRollAndStore() {

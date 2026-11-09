@@ -458,7 +458,8 @@ class AntiBSVpnService : VpnService() {
             if (adLogOwn) try { own.writeText("") } catch (_: Throwable) {}
             adOff = if (adLogOwn) 0L else f.length()
             adLog = f
-            out.toString()
+            // encodeToString keeps types (bool/number); JsonObject.toString() is fine too, but be explicit
+            kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), out)
         } catch (_: Throwable) { config }
     }
 

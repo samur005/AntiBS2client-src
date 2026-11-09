@@ -118,8 +118,16 @@ object AdBlock {
     fun catDomains(a: AdvancedSettings, bundled: Map<String, Set<String>>? = null): List<String> =
         CATS.filter { it.id in a.adCats }.map { it.geosite }.filter { known(it, bundled) }
 
-    fun adDomains(bundled: Map<String, Set<String>>? = null): List<String> =
-        listOf(ADS_GEOSITE).filter { known(it, bundled) } + AD_HOSTS.map { "domain:$it" }
+    fun adDomains(bundled: Map<String, Set<String>>? = null): List<String> {
+        // 2.0.30: keep geosite:category-ads-all whenever the bundled index is unknown; only drop it when
+        // the index is present and clearly lacks the tag (otherwise Xray would refuse to start).
+        val geo = when {
+            bundled == null -> listOf(ADS_GEOSITE)
+            known(ADS_GEOSITE, bundled) -> listOf(ADS_GEOSITE)
+            else -> emptyList()
+        }
+        return geo + AD_HOSTS.map { "domain:$it" }
+    }
 
     private fun inbArr(inb: List<String>) = JsonArray(inb.map { JsonPrimitive(it) })
 
@@ -223,7 +231,11 @@ object AdBlockCounter {
     const val LOG_NAME = "adblock_access.log"
     const val COUNTS_NAME = "adblock_counts.json"
     const val MAX_LOG = 256 * 1024L
-    private val HIT = Regex("""(->|>>)\s*block-ads\]""")
+    /**
+     * Xray 26 access lines look like «… accepted tcp:host:443 [socks -> block-ads]» or «[tun >> block-ads]».
+     * Also accept «outbound/block-ads» / bare «->block-ads» so a format tweak does not zero the counter.
+     */
+    private val HIT = Regex("""((->|>>)\s*block-ads\]?|outbound/block-ads|\[.*block-ads\])""", RegexOption.IGNORE_CASE)
 
     fun count(text: String): Int = text.lineSequence().count { HIT.containsMatchIn(it) }
 
@@ -236,13 +248,18 @@ object AdBlockCounter {
     }
     fun configCounts(json: String): Boolean = runCatching { configCounts(Json.parseToJsonElement(json).jsonObject) }.getOrDefault(false)
 
-    /** Access log → [path] unless the config already writes one (Логи at info/debug); returns (config, log file). */
+    /**
+     * 2.0.30: always write a dedicated [path] for the counter (never share Логи's xray-access.log —
+     * LogTailer truncates that file). If loglevel is «none», bump it to «warning» so Xray actually
+     * writes the access file (confirmed: loglevel none → no access log on Xray 26).
+     */
     fun withAccessLog(cfg: JsonObject, path: String): Pair<JsonObject, String?> {
         if (!configCounts(cfg)) return cfg to null
-        val log = (cfg["log"] as? JsonObject).orEmpty()
-        val cur = (log["access"] as? JsonPrimitive)?.contentOrNull
-        if (!cur.isNullOrBlank() && cur != "none") return cfg to cur
-        return JsonObject(cfg + ("log" to JsonObject(log + ("access" to JsonPrimitive(path))))) to path
+        val log = (cfg["log"] as? JsonObject).orEmpty().toMutableMap()
+        val lvl = (log["loglevel"] as? JsonPrimitive)?.contentOrNull
+        if (lvl.isNullOrBlank() || lvl == "none") log["loglevel"] = JsonPrimitive("warning")
+        log["access"] = JsonPrimitive(path)
+        return JsonObject(cfg + ("log" to JsonObject(log))) to path
     }
 
     data class Counts(val day: String = "", val today: Long = 0, val total: Long = 0, val measured: Boolean = false) {

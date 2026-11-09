@@ -69,6 +69,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
@@ -1643,10 +1644,21 @@ internal val LocalInTabs = androidx.compose.runtime.staticCompositionLocalOf { f
 /** 1.0.50: inside a [SettingsCard] rows get card padding and inset dividers; outside they keep the flat look. */
 internal val LocalInCard = androidx.compose.runtime.staticCompositionLocalOf { false }
 
+/** 2.0.30: main «Настройки» → cards start collapsed (except the first); sub-pages start expanded. */
+internal val LocalCollapseByDefault = androidx.compose.runtime.compositionLocalOf { false }
+private val SettingsOpen = androidx.compose.runtime.mutableStateMapOf<String, Boolean>()
+private const val FIRST_OPEN = "Настройки интерфейса"
+
+/** Expand a collapsible settings card so a search hit (or deep link) is visible. */
+internal fun expandSettingsCard(title: String?, mainHub: Boolean) {
+    if (title.isNullOrBlank()) return
+    SettingsOpen[(if (mainHub) "main:" else "sub:") + title] = true
+}
+
 @Composable
 internal fun SectionLabel(text: String) {
-    Text(text, color = AntiBSColors.Section, fontWeight = FontWeight.Medium, fontSize = 14.sp,
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 8.dp))
+    Text(text, color = AntiBSColors.Section, fontWeight = FontWeight.Medium, fontSize = 13.sp,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 2.dp))
 }
 
 
@@ -1719,24 +1731,47 @@ internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.Im
 }
 
 
-/** 1.0.50: rounded card grouping settings rows (thin dividers between rows, none after the last). */
+/** 2.0.30: collapsible card (icon + title + chevron), same look as Android settings. */
 @Composable
 internal fun SettingsCard(title: String? = null, content: @Composable () -> Unit) {
-    if (title != null) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        SettingsIconTile(sectionIcon(title), 28.dp)
-        Text(title, color = Accent.current, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-    }
+    val collapse = LocalCollapseByDefault.current
+    val key = (if (collapse) "main:" else "sub:") + (title ?: "")
+    val open = title == null || (SettingsOpen[key] ?: (!collapse || title == FIRST_OPEN))
     Surface(
         shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (title != null) 6.dp else 4.dp),
     ) {
-        androidx.compose.runtime.CompositionLocalProvider(LocalInCard provides true) {
-            // the last row's divider is cut off by measuring the column 1 dp shorter (the card clips)
-            Column(Modifier.layout { m, c ->
-                val pl = m.measure(c)
-                val cut = 1.dp.roundToPx()
-                layout(pl.width, (pl.height - cut).coerceAtLeast(0)) { pl.place(0, 0) }
-            }) { content() }
+        Column {
+            if (title != null) {
+                val rot by animateFloatAsState(if (open) 180f else 0f, animationSpec = androidx.compose.animation.core.tween(260), label = "chev")
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .clickable(onClickLabel = if (open) "Свернуть" else "Развернуть") { SettingsOpen[key] = !open }
+                        .padding(start = 12.dp, end = 10.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SettingsIconTile(sectionIcon(title), 28.dp)
+                    Text(title, color = Accent.current, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.ExpandMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.graphicsLayer { rotationZ = rot })
+                }
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = open,
+                enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(260)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)),
+                exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(240)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180)),
+            ) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalInCard provides true) {
+                    Column(Modifier.layout { m, c ->
+                        val pl = m.measure(c)
+                        val cut = 1.dp.roundToPx()
+                        layout(pl.width, (pl.height - cut).coerceAtLeast(0)) { pl.place(0, 0) }
+                    }) {
+                        if (title != null) RowDivider()
+                        content()
+                    }
+                }
+            }
         }
     }
 }
@@ -1751,9 +1786,9 @@ internal fun RowDivider() {
 @Composable
 private fun RowTexts(title: String, subtitle: String?, modifier: Modifier) {
     Column(modifier) {
-        Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, lineHeight = 21.sp)
-        if (!subtitle.isNullOrBlank()) Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 17.sp,
-            modifier = Modifier.padding(top = 2.dp))
+        Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)
+        if (!subtitle.isNullOrBlank()) Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 15.sp,
+            maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 0.dp))
     }
 }
 
@@ -1764,7 +1799,7 @@ private fun RowTexts(title: String, subtitle: String?, modifier: Modifier) {
 @Composable
 internal fun NavRow(title: String, value: String? = null, dropdown: Boolean = false, subtitle: String? = null, chevron: Boolean = true, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onClick).padding(start = 12.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SettingsIconTile(settingsIcon(title))
@@ -1782,10 +1817,10 @@ internal fun NavRow(title: String, value: String? = null, dropdown: Boolean = fa
 
 @Composable
 internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onChange(!checked) }.padding(start = 12.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        SettingsIconTile(settingsIcon(title))
-        RowTexts(title, subtitle, Modifier.weight(1f).padding(vertical = 4.dp).padding(end = 8.dp))
+        SettingsIconTile(settingsIcon(title), 28.dp)
+        RowTexts(title, subtitle, Modifier.weight(1f).padding(end = 6.dp))
         Switch(checked, onChange, colors = SwitchDefaults.colors(checkedTrackColor = AntiBSColors.Blue, checkedThumbColor = Color.White))
     }
     RowDivider()
@@ -1794,8 +1829,8 @@ internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null
 /** 1.0.32: a switch that is always on and cannot be turned off (HWID). */
 @Composable
 internal fun LockedOnRow(title: String, caption: String) {
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        RowTexts(title, caption, Modifier.weight(1f).padding(vertical = 4.dp))
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 12.dp, end = 10.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        RowTexts(title, caption, Modifier.weight(1f))
         Switch(checked = true, onCheckedChange = null, enabled = false,
             colors = SwitchDefaults.colors(checkedTrackColor = AntiBSColors.Blue, checkedThumbColor = Color.White, disabledCheckedTrackColor = AntiBSColors.Blue, disabledCheckedThumbColor = Color.White))
     }

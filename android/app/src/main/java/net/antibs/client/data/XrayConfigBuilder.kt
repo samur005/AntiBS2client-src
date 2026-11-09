@@ -696,7 +696,9 @@ object XrayConfigBuilder {
             add(buildJsonObject { put("tag", "dns-out"); put("protocol", "dns") })
         }
         putJsonObject("routing") {
-            put("domainStrategy", opt.routing?.domainStrategy ?: "AsIs")
+            // 2.0.30: with ad-block, IPIfNonMatch so a sniffed/resolved name still hits domain rules
+            put("domainStrategy", opt.routing?.domainStrategy
+                ?: if (AdBlock.enabled(opt.adv)) "IPIfNonMatch" else "AsIs")
             putJsonArray("rules") {
                 // 2.0.15 (ABS): categories / ads → «block-ads», QUIC → block — first, for the user-facing inbounds only
                 val userInb = listOfNotNull("socks", "http".takeIf { opt.adv.httpInbound }, "tun".takeIf { opt.xrayTun })

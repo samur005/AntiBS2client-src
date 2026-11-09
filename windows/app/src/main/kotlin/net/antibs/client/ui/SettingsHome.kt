@@ -85,7 +85,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             when (section) {
                 // ───────────── main screen: only the most important items, details behind «>»
-                "Settings" -> {
+                "Settings" -> androidx.compose.runtime.CompositionLocalProvider(LocalCollapseByDefault provides true) {
                     SettingsCard("Настройки интерфейса") {
                         NavRow("Язык", "Русский", dropdown = true, subtitle = "Язык интерфейса приложения") { vm.message("Пока доступен только русский язык") }
                         NavRow("Тема оформления", themeLabel(ui.theme), dropdown = true, subtitle = "Светлая, тёмная, чёрная или как в системе") { dialog = "theme" }

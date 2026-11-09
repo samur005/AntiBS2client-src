@@ -2021,8 +2021,8 @@ internal val LocalInCard = androidx.compose.runtime.staticCompositionLocalOf { f
 
 @Composable
 internal fun SectionLabel(text: String) {
-    Text(text, color = AntiBSColors.Section, fontWeight = FontWeight.Medium, fontSize = 14.sp,
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 8.dp))
+    Text(text, color = AntiBSColors.Section, fontWeight = FontWeight.Medium, fontSize = 13.sp,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 2.dp))
 }
 
 /** 2.0.8: main «Настройки» page → cards start collapsed (except the first); sub-pages start expanded. */
@@ -2049,18 +2049,18 @@ internal fun SettingsCard(title: String? = null, content: @Composable () -> Unit
     val view = androidx.compose.ui.platform.LocalView.current
     Surface(
         shape = shape, color = c.card,
-        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (title != null) 10.dp else 6.dp)
+        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (title != null) 6.dp else 4.dp)
             .border(1.dp, c.cardBorder, shape),
     ) {
         Column {
             if (title != null) {
                 val rot by animateFloatAsState(if (open) 180f else 0f, animationSpec = tween(260), label = "chev")
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp)
                         .clickable(onClickLabel = if (open) "Свернуть" else "Развернуть") {
                             AppHaptics.perform(view, AppHaptics.Kind.TICK, true); SettingsOpen[key] = !open
                         }
-                        .padding(start = 15.dp, end = 12.dp),
+                        .padding(start = 12.dp, end = 10.dp, top = 2.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     // 2.0.15: leading section icon, same tile as the rows (style accent, style shape)
@@ -2104,9 +2104,9 @@ internal fun RowDivider() {
 private fun RowTexts(title: String, subtitle: String?, modifier: Modifier) {
     val c = ssColors(LocalAppStyle.current)
     Column(modifier) {
-        Text(title, color = c.onCard, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium)
-        if (!subtitle.isNullOrBlank()) Text(subtitle, color = c.muted, fontSize = 12.5.sp, lineHeight = 16.sp,
-            maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
+        Text(title, color = c.onCard, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)
+        if (!subtitle.isNullOrBlank()) Text(subtitle, color = c.muted, fontSize = 12.sp, lineHeight = 15.sp,
+            maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 0.dp))
     }
 }
 
@@ -2198,15 +2198,15 @@ internal fun SettingsRowFrame(title: String, subtitle: String?, onClick: (() -> 
             .fillMaxWidth()
             .bringIntoViewRequester(bring)
             .background(bg)
-            .heightIn(min = 60.dp)
+            .heightIn(min = 48.dp)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 12.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(32.dp).clip(ssShape(style, 9.dp)).background(c.accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
             Icon(settingsIcon(title), null, tint = c.accent, modifier = Modifier.size(18.dp))
         }
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(10.dp))
         RowTexts(title, subtitle, Modifier.weight(1f).padding(end = 8.dp))
         trailing()
     }

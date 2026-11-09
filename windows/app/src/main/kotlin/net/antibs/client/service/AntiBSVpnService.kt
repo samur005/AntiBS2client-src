@@ -138,7 +138,7 @@ object AntiBSVpnService {
                     } catch (_: Throwable) {}
                 }
             }
-            out.toString()
+            kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), out)
         } catch (_: Throwable) { config }
     }
 

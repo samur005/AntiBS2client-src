@@ -121,4 +121,32 @@ class PolishShotsTest {
         rule.onNodeWithText("Блокировка рекламы").performClick(); rule.waitForIdle()
         save("settings_expanded_dark")
     }
+
+    // ───────── 2.0.30 ─────────
+    @Config(qualifiers = "w400dp-h2800dp-xxhdpi")
+    @Test fun s30AdBlockAndSettings() {
+        dir = "/workspace/polish_shots/2030"
+        val f = File(rule.activity.filesDir, net.antibs.client.data.AdBlockCounter.COUNTS_NAME)
+        net.antibs.client.data.AdBlockCounter.save(f, net.antibs.client.data.AdBlockCounter.Counts(net.antibs.client.data.AdBlockCounter.dayKey(), 42, 1280, true))
+        val vm = AppViewModel(rule.activity.application)
+        vm.setAdvTunnel { it.copy(blockAds = true, adCats = listOf("trackers", "tm_windows"), adDnsOn = false) }
+        live(ThemeMode.DARK) { SettingsHome(vm, vm.ui.value, {}, {}, "Settings") }
+        Thread.sleep(1500); rule.waitForIdle()
+        save("settings_collapsed_dark")
+        rule.onNodeWithText("Блокировка рекламы").performClick(); rule.waitForIdle(); Thread.sleep(400)
+        save("adblock_section_dark")
+        rule.onNodeWithText("Настройки туннеля").performClick(); rule.waitForIdle(); Thread.sleep(300)
+        save("tunnel_section_dark")
+        rule.onNodeWithText("Настройки интерфейса").performClick(); rule.waitForIdle(); Thread.sleep(300)
+        save("interface_section_dark")
+        // denser layout: adblock + tunnel + interface already captured above
+    }
+    @Config(qualifiers = "w400dp-h2200dp-xxhdpi")
+    @Test fun s30InterfaceSubpage() {
+        dir = "/workspace/polish_shots/2030"
+        val vm = AppViewModel(rule.activity.application)
+        live(ThemeMode.DARK) { SettingsHome(vm, vm.ui.value, {}, {}, "Interface") }
+        Thread.sleep(800); rule.waitForIdle()
+        save("interface_subpage_dark")
+    }
 }
