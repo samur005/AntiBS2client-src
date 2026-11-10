@@ -34,6 +34,7 @@ import net.antibs.client.data.ServerEntry
 import net.antibs.client.data.SnowMode
 import net.antibs.client.data.Subscription
 import net.antibs.client.data.XrayProfile
+import net.antibs.client.engine.ConnState
 import net.antibs.client.engine.ThemeMode
 import org.junit.After
 import org.junit.Assume
@@ -115,7 +116,16 @@ class Home2035ShotsTest {
     )
 
     @Composable
-    private fun home(tab: String, country: String, theme: ThemeMode, menu: Boolean = false, snow: Boolean = true) {
+    private fun home(
+        tab: String,
+        country: String,
+        theme: ThemeMode,
+        menu: Boolean = false,
+        headerMenu: Boolean = false,
+        snow: Boolean = true,
+        vpn: ConnState = ConnState.CONNECTED,
+        problem: Boolean = false,
+    ) {
         val t0 = android.os.SystemClock.uptimeMillis() - 20_000
         val down = listOf(20f, 60f, 45f, 120f, 90f, 160f, 140f, 110f, 180f, 150f, 130f, 170f)
         val up = listOf(5f, 12f, 9f, 20f, 15f, 30f, 22f, 18f, 35f, 25f, 20f, 28f)
@@ -127,40 +137,62 @@ class Home2035ShotsTest {
         val countries = HomeFilters.countries(tabServers, pings)
         val selectedCountry = HomeFilters.resolveCountry(country, countries)
         val shown = HomeFilters.apply(allServers, selectedTab, selectedCountry)
+        val connected = vpn == ConnState.CONNECTED
+        val (status, statusColor, dot, active) = when {
+            problem || vpn == ConnState.ERROR -> Quad("Нет сети", AntiBSColors.Err, UiLogic.StatusDot.ERROR, connected)
+            vpn == ConnState.CONNECTED -> Quad("Подключено", AntiBSColors.Ok, UiLogic.StatusDot.LIVE, true)
+            vpn == ConnState.CONNECTING -> Quad("Подключение…", Color.Unspecified, UiLogic.StatusDot.CONNECTING, false)
+            else -> Quad("Не подключено", Color.Unspecified, UiLogic.StatusDot.OFF, false)
+        }
         Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     ConnectionCard(
-                        flag = "🇩🇪", name = "Германия · Франкфурт", proto = "VLESS Reality", protoTone = UiLogic.ProtoChipTone.OK,
-                        active = true, dot = UiLogic.StatusDot.LIVE,
-                        downSpeed = "1.2 МБ/с", upSpeed = "84.0 КБ/с", downTotal = "152.4 МБ", upTotal = "9.8 МБ",
-                        vpnSamples = down, upSamples = up, sampleSeq = down.size, sampleTimes = List(down.size) { t0 + it * 1000L },
-                        downRate = 1_258_291, upRate = 86_016,
+                        flag = "🇩🇪", name = "Германия · Франкфурт", proto = "VLESS Reality",
+                        protoTone = if (connected) UiLogic.ProtoChipTone.OK else UiLogic.ProtoChipTone.OFF,
+                        active = active, dot = dot,
+                        downSpeed = if (connected) "1.2 МБ/с" else "0 Б/с",
+                        upSpeed = if (connected) "84.0 КБ/с" else "0 Б/с",
+                        downTotal = if (connected) "152.4 МБ" else "0 Б",
+                        upTotal = if (connected) "9.8 МБ" else "0 Б",
+                        vpnSamples = if (connected) down else List(down.size) { 0f },
+                        upSamples = if (connected) up else List(up.size) { 0f },
+                        sampleSeq = down.size, sampleTimes = List(down.size) { t0 + it * 1000L },
+                        downRate = if (connected) 1_258_291 else 0,
+                        upRate = if (connected) 86_016 else 0,
                         statsVisible = true, pingMs = 38, pingStyle = net.antibs.client.data.PingChipStyle(),
-                        directMs = 231, status = "Подключено", statusColor = AntiBSColors.Ok,
+                        directMs = 231, status = status, statusColor = statusColor,
                         subLine = net.antibs.client.data.SubLineData(
                             days = "32 дн.", until = "12 дек", dayFrac = 0.45f,
                             traffic = "12,6 / 150 ГБ", trafficFrac = 0.084f,
                         ),
                     )
                     UrlTestCard(mapOf("google" to 92L, "youtube" to 140L, "telegram" to 210L, "instagram" to -1L), false) {}
-                    Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                        PowerToggle(state = net.antibs.client.engine.ConnState.CONNECTED, since = System.currentTimeMillis() - 754_000, onClick = {})
-                    }
-                    ServersHeader(
-                        style = ServerStyle.CLASSIC, layout = SubLayout.GROUPS, bestCard = false,
-                        onStyle = {}, onLayout = {}, onBestCard = {},
-                        sortMode = StylePrefs.SORT_ADDED, onSortMode = {}, subNewestFirst = true, onSubOrder = {},
-                        filter = ServerFilter.ALL, onFilter = {},
-                        testing = false, onTestAll = {},
-                        onAdd = {},
-                        subMenu = null,
-                        onSubRefresh = {}, onSubPing = {}, onSubCopy = {},
-                        onSubDeleteUnreachable = {}, onSubRestoreHidden = {}, onSubDelete = {},
-                        compact = true,
-                        holiday = holiday,
-                        holidayFx = fx,
+                    PowerToggle(
+                        state = vpn,
+                        since = if (connected) System.currentTimeMillis() - 754_000 else 0L,
+                        problem = problem,
+                        onClick = {},
                     )
+                    Box(Modifier.fillMaxWidth()) {
+                        ServersHeader(
+                            style = ServerStyle.CLASSIC, layout = SubLayout.GROUPS, bestCard = false,
+                            onStyle = {}, onLayout = {}, onBestCard = {},
+                            sortMode = StylePrefs.SORT_ADDED, onSortMode = {}, subNewestFirst = true, onSubOrder = {},
+                            filter = ServerFilter.ALL, onFilter = {},
+                            testing = false, onTestAll = {},
+                            onAdd = {},
+                            subMenu = if (headerMenu) sub else null,
+                            onSubRefresh = {}, onSubPing = {}, onSubCopy = {},
+                            onSubDeleteUnreachable = {}, onSubRestoreHidden = {}, onSubDelete = {},
+                            compact = true,
+                            holiday = holiday,
+                            holidayFx = fx,
+                        )
+                        if (headerMenu) {
+                            ShotOverflowMenu(Modifier.align(Alignment.TopEnd).padding(top = 36.dp, end = 0.dp), header = true)
+                        }
+                    }
                     HomeFiltersBar(
                         tabs = tabs, selectedTab = selectedTab, onTab = {},
                         countries = countries, selectedCountry = selectedCountry,
@@ -171,8 +203,8 @@ class Home2035ShotsTest {
                         else -> "${shown.size} ${UiLogic.serversWord(shown.size)}"
                     }
                     val title = if (selectedCountry.isNotEmpty()) {
-                        val c = countries.first { it.code == selectedCountry }
-                        "$selectedTab · ${c.name}"
+                        val ctry = countries.first { it.code == selectedCountry }
+                        "$selectedTab · ${ctry.name}"
                     } else if (selectedTab == HomeFilters.TAB_IPV4) "AntiBS Premium" else selectedTab
                     ShotSubHead(title, meta)
                     if (menu) {
@@ -182,7 +214,7 @@ class Home2035ShotsTest {
                                 nowSec = 1_762_732_800, expanded = true,
                                 onToggle = {}, onRefresh = {}, onPing = {}, onDelete = {}, onCopy = {},
                             )
-                            ShotOverflowMenu(Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 6.dp))
+                            ShotOverflowMenu(Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 6.dp), header = false)
                         }
                     }
                     shown.take(6).forEachIndexed { i, s ->
@@ -194,6 +226,8 @@ class Home2035ShotsTest {
             if (fx.snowMode == SnowMode.ON) SeasonalOverlay(fx, snow = true, garland = true, topInset = 8.dp)
         }
     }
+
+    private data class Quad(val status: String, val statusColor: Color, val dot: UiLogic.StatusDot, val active: Boolean)
 
     @Composable private fun ShotSubHead(title: String, meta: String) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -238,7 +272,7 @@ class Home2035ShotsTest {
     }
 
 
-    @Composable private fun ShotOverflowMenu(modifier: Modifier = Modifier) {
+    @Composable private fun ShotOverflowMenu(modifier: Modifier = Modifier, header: Boolean = false) {
         val shape = RoundedCornerShape(12.dp)
         Surface(
             shape = shape,
@@ -248,9 +282,6 @@ class Home2035ShotsTest {
             modifier = modifier.width(280.dp).border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f), shape),
         ) {
             Column(Modifier.padding(vertical = 6.dp)) {
-                fun item(label: String, trailing: @Composable (() -> Unit)? = null) {
-                    // placeholder - kotlin local fun in composable is ok
-                }
                 @Composable fun RowItem(label: String, trailing: @Composable (() -> Unit)? = null) {
                     Row(
                         Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 14.dp),
@@ -261,18 +292,51 @@ class Home2035ShotsTest {
                     }
                 }
                 RowItem("Обновить")
-                RowItem("Копировать ссылку")
-                RowItem("Проверить пинг")
-                RowItem("Удалять недоступные после пинга") { Checkbox(checked = true, onCheckedChange = null) }
+                if (header) {
+                    RowItem("Проверить пинг")
+                    RowItem("Скопировать ссылку")
+                } else {
+                    RowItem("Копировать ссылку")
+                    RowItem("Проверить пинг")
+                }
+                RowItem("Автоудаление недоступных") { Checkbox(checked = true, onCheckedChange = null) }
                 RowItem("Удалить недоступные")
                 RowItem("Удалить")
             }
         }
     }
 
-    @Test fun ipv4Dark() = shot(ThemeMode.DARK, "home_ipv4_dark") { home("IPv4", "", ThemeMode.DARK) }
+    private fun saveBannerCrop(full: java.io.File) {
+        val bmp = android.graphics.BitmapFactory.decodeFile(full.absolutePath) ?: return
+        val w = 1056
+        val h = 344
+        val x = ((bmp.width - w) / 2).coerceAtLeast(0)
+        val y = 24.coerceAtMost(bmp.height - 2)
+        val cw = minOf(w, bmp.width - x)
+        val ch = minOf(h, bmp.height - y)
+        val cropped = Bitmap.createBitmap(bmp, x, y, cw, ch)
+        val scaled = Bitmap.createScaledBitmap(cropped, cw * 2, ch * 2, true)
+        java.io.File(dir, "banner_arrows_crop.png").outputStream().use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test fun ipv4Dark() {
+        shot(ThemeMode.DARK, "home_ipv4_dark") { home("IPv4", "", ThemeMode.DARK) }
+        if (System.getenv("ABS_SHOTS") == "1") saveBannerCrop(java.io.File(dir, "home_ipv4_dark.png"))
+    }
     @Test fun antiblockDark() = shot(ThemeMode.DARK, "home_antiblock_dark") { home("Антиблок", "", ThemeMode.DARK) }
     @Test fun trojanDeDark() = shot(ThemeMode.DARK, "home_trojan_de_dark") { home("Trojan", "DE", ThemeMode.DARK) }
     @Test fun ipv4Light() = shot(ThemeMode.LIGHT, "home_ipv4_light") { home("IPv4", "", ThemeMode.LIGHT, snow = false) }
+    @Test fun disconnectedDark() = shot(ThemeMode.DARK, "home_disconnected_dark") {
+        home("IPv4", "", ThemeMode.DARK, vpn = ConnState.DISCONNECTED)
+    }
+    @Test fun connectingDark() = shot(ThemeMode.DARK, "home_connecting_dark") {
+        home("IPv4", "", ThemeMode.DARK, vpn = ConnState.CONNECTING)
+    }
+    @Test fun problemDark() = shot(ThemeMode.DARK, "home_problem_dark") {
+        home("IPv4", "", ThemeMode.DARK, problem = true)
+    }
     @Test fun subMenuDark() = shot(ThemeMode.DARK, "home_sub_menu_dark") { home("IPv4", "", ThemeMode.DARK, menu = true) }
+    @Test fun headerMenuDark() = shot(ThemeMode.DARK, "home_header_menu_dark") {
+        home("IPv4", "", ThemeMode.DARK, headerMenu = true)
+    }
 }

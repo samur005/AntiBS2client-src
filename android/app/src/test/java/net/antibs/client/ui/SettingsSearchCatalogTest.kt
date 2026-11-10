@@ -41,4 +41,12 @@ class SettingsSearchCatalogTest {
         assertEquals(settingsItemId("Тема оформления"), settingsItemId("Тема оформления"))
         assertEquals("тема-оформления", settingsItemId("Тема оформления"))
     }
+
+    @Test fun findsDeleteUnreachable() {
+        assertTrue(SettingsSearchCatalog.filter("автоудаление недоступных").any { it.title == "Автоудаление недоступных" })
+        assertTrue(SettingsSearchCatalog.filter("после пинга").any { it.title == "Автоудаление недоступных" })
+        assertTrue(SettingsSearchCatalog.filter("удалить недоступные").any { it.title == "Удалить недоступные" })
+        assertTrue(SettingsSearchCatalog.filter("удалять недоступные после пинга").none { it.title.contains("после пинга") })
+    }
 }
+

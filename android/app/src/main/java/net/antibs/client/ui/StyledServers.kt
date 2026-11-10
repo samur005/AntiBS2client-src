@@ -171,7 +171,7 @@ fun ServersHeader(
                 Item(Icons.Filled.NetworkCheck, "Проверить пинг") { moreOpen = false; onSubPing(sub) }
                 Item(Icons.Filled.ContentCopy, "Скопировать ссылку", enabled = sub.url.isNotBlank()) { moreOpen = false; onSubCopy(sub) }
                 DropdownMenuItem(
-                    text = { Text("Удалять недоступные после пинга", style = MaterialTheme.typography.bodyMedium) },
+                    text = { Text("Автоудаление недоступных", style = MaterialTheme.typography.bodyMedium) },
                     leadingIcon = { Icon(Icons.Filled.TimerOff, contentDescription = null, modifier = Modifier.size(18.dp)) },
                     trailingIcon = { Checkbox(checked = sub.autoDeleteUnreachable, onCheckedChange = null) },
                     onClick = { onSubAutoDelete(sub, !sub.autoDeleteUnreachable) },

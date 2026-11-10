@@ -10,6 +10,7 @@ import net.antibs.client.data.XrayConfigBuilder
 import net.antibs.client.data.XrayProfile
 import net.antibs.client.engine.AppState
 import net.antibs.client.engine.ConnState
+import net.antibs.client.engine.NetMonitor
 import net.antibs.client.engine.ThemeMode
 import net.antibs.client.engine.UiSettings
 import net.antibs.client.engine.themeModeOf
@@ -263,6 +264,61 @@ class ThemeAndUiTest {
         assertEquals("99:59:59", UiLogic.elapsedLabel(100L * 3600 - 1))
         assertEquals("4д 04:00", UiLogic.elapsedLabel(100L * 3600))
         assertEquals("00:00:00", UiLogic.elapsedLabel(-5))
+    }
+
+    @Test fun powerCardLogic() {
+        val since = 1_000_000L
+        assertTrue(UiLogic.powerSelectedOn(ConnState.CONNECTED))
+        assertTrue(UiLogic.powerSelectedOn(ConnState.CONNECTING))
+        assertFalse(UiLogic.powerSelectedOn(ConnState.DISCONNECTED))
+        assertFalse(UiLogic.powerSelectedOn(ConnState.ERROR))
+        assertFalse(UiLogic.powerSelectedOn(ConnState.DISCONNECTING))
+        assertTrue(UiLogic.powerBusy(ConnState.CONNECTING))
+        assertTrue(UiLogic.powerBusy(ConnState.DISCONNECTING))
+        assertFalse(UiLogic.powerBusy(ConnState.CONNECTED))
+        assertEquals("00:12:34", UiLogic.powerTimerText(ConnState.CONNECTED, since, since + 754_000))
+        assertEquals("00:00:00", UiLogic.powerTimerText(ConnState.CONNECTED, 0, since))
+        assertEquals("…", UiLogic.powerTimerText(ConnState.CONNECTING, since, since + 8_000))
+        assertEquals("00:00:00", UiLogic.powerTimerText(ConnState.DISCONNECTED, since, since + 8_000))
+        assertEquals("00:00:00", UiLogic.powerTimerText(ConnState.ERROR, since, since + 8_000))
+        assertEquals("Отключить VPN, подключено 00:12:34", UiLogic.powerContentDescription(ConnState.CONNECTED, false, "00:12:34"))
+        assertEquals("Отключить VPN, нет сети, сессия 00:12:34", UiLogic.powerContentDescription(ConnState.CONNECTED, true, "00:12:34"))
+        assertEquals("Подключение VPN", UiLogic.powerContentDescription(ConnState.CONNECTING, false, "…"))
+        assertEquals("Отключение VPN", UiLogic.powerContentDescription(ConnState.DISCONNECTING, false, "00:00:00"))
+        assertEquals("Ошибка VPN, подключить снова", UiLogic.powerContentDescription(ConnState.ERROR, false, "00:00:00"))
+        assertEquals("Подключить VPN", UiLogic.powerContentDescription(ConnState.DISCONNECTED, false, "00:00:00"))
+        assertTrue(UiLogic.powerSwipeToggles(on = false, dxPx = 40f, thresholdPx = 36f))
+        assertFalse(UiLogic.powerSwipeToggles(on = false, dxPx = 10f, thresholdPx = 36f))
+        assertFalse(UiLogic.powerSwipeToggles(on = false, dxPx = -40f, thresholdPx = 36f))
+        assertTrue(UiLogic.powerSwipeToggles(on = true, dxPx = -40f, thresholdPx = 36f))
+        assertFalse(UiLogic.powerSwipeToggles(on = true, dxPx = 40f, thresholdPx = 36f))
+    }
+
+    @Test fun powerCardTurnsRedFromHealthAndPing() {
+        val ok = NetMonitor.Health.OK
+        val noNet = NetMonitor.Health.NO_INTERNET
+        val down = NetMonitor.Health.SERVER_DOWN
+        // Connected, healthy, ping ok / unknown / checking → accent
+        assertFalse(UiLogic.powerShowError(ConnState.CONNECTED, ok, UiLogic.TunnelPing.OK))
+        assertFalse(UiLogic.powerShowError(ConnState.CONNECTED, ok, UiLogic.TunnelPing.UNKNOWN))
+        assertFalse(UiLogic.powerShowError(ConnState.CONNECTED, ok, UiLogic.TunnelPing.CHECKING))
+        // No ping while connected
+        assertTrue(UiLogic.powerShowError(ConnState.CONNECTED, ok, UiLogic.TunnelPing.FAIL))
+        // No internet / network lost (health from directFails + !netValidated)
+        assertTrue(UiLogic.powerShowError(ConnState.CONNECTED, noNet, UiLogic.TunnelPing.OK))
+        assertTrue(UiLogic.powerShowError(ConnState.CONNECTING, noNet, UiLogic.TunnelPing.UNKNOWN))
+        assertEquals(noNet, NetMonitor.health(active = true, connected = true, vpnFails = 0, directFails = 1, netValidated = false))
+        // Server down (health from vpnFails >= FAILS_TO_ALERT)
+        assertTrue(UiLogic.powerShowError(ConnState.CONNECTED, down, UiLogic.TunnelPing.CHECKING))
+        assertEquals(down, NetMonitor.health(active = true, connected = true, vpnFails = NetMonitor.FAILS_TO_ALERT, directFails = 0, netValidated = true))
+        // Connection error
+        assertTrue(UiLogic.powerShowError(ConnState.ERROR, ok, UiLogic.TunnelPing.OK))
+        // Off / disconnecting: not red even if stale health
+        assertFalse(UiLogic.powerShowError(ConnState.DISCONNECTED, noNet, UiLogic.TunnelPing.FAIL))
+        assertFalse(UiLogic.powerShowError(ConnState.DISCONNECTING, down, UiLogic.TunnelPing.FAIL))
+        // Recovery: ping and internet come back → accent
+        assertEquals(ok, NetMonitor.health(active = true, connected = true, vpnFails = 0, directFails = 0, netValidated = true))
+        assertFalse(UiLogic.powerShowError(ConnState.CONNECTED, ok, UiLogic.TunnelPing.OK))
     }
 
     @Test fun legacyHostGridFlagIsHarmless() {

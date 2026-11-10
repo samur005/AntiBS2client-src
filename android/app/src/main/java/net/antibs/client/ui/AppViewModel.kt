@@ -811,7 +811,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (on) refresh(subId, silent = true)
     }
 
-    /** 2.0.35: ⋮ «Удалять недоступные после пинга» — per subscription, default on. */
+    /** 2.0.35: ⋮ «Автоудаление недоступных» — per subscription auto-hide after ping, default on. */
     fun setSubscriptionAutoDelete(subId: String, on: Boolean) {
         push { st -> st.copy(subscriptions = st.subscriptions.map { if (it.id == subId) it.copy(autoDeleteUnreachable = on) else it }) }
     }
@@ -1187,7 +1187,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _toast.value = if (u.deleted.wasSelected) "Хост восстановлен (VPN был отключён — подключитесь снова)" else null
     }
 
-    // ---- 1.0.52: ⋮ «Удалить недоступные» ----
+    // ---- 1.0.52: ⋮ «Удалить недоступные» (per subscription) ----
     data class UnreachablePrompt(val subId: String, val ids: List<String>)
     private val _unreachable = MutableStateFlow<UnreachablePrompt?>(null)
     /** Confirmation «Удалить N недоступных серверов?» for the subscription card menu. */

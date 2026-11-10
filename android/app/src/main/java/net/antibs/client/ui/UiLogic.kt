@@ -7,6 +7,7 @@ import net.antibs.client.data.ServerEntry
 import net.antibs.client.data.Subscription
 import net.antibs.client.engine.AppState
 import net.antibs.client.engine.ConnState
+import net.antibs.client.engine.NetMonitor
 import net.antibs.client.engine.themeModeOf
 
 object UiLogic {
@@ -259,6 +260,51 @@ object UiLogic {
         ConnState.CONNECTED -> elapsedLabel(if (sinceMs > 0) (nowMs - sinceMs) / 1000 else 0)
         ConnState.CONNECTING -> "ВКЛ"
         else -> "ВЫКЛ"
+    }
+
+    /** 2.0.35: segmented power card — «Вкл» is selected while connected or connecting. */
+    fun powerSelectedOn(state: ConnState): Boolean =
+        state == ConnState.CONNECTED || state == ConnState.CONNECTING
+
+    fun powerBusy(state: ConnState): Boolean =
+        state == ConnState.CONNECTING || state == ConnState.DISCONNECTING
+
+    /** Timer to the right of the segments: live session, «…» while connecting, zeros when off. */
+    fun powerTimerText(state: ConnState, sinceMs: Long, nowMs: Long): String = when (state) {
+        ConnState.CONNECTED -> elapsedLabel(if (sinceMs > 0) (nowMs - sinceMs) / 1000 else 0)
+        ConnState.CONNECTING -> "…"
+        else -> "00:00:00"
+    }
+
+    fun powerContentDescription(state: ConnState, problem: Boolean, timer: String): String = when (state) {
+        ConnState.CONNECTED ->
+            if (problem) "Отключить VPN, нет сети, сессия $timer"
+            else "Отключить VPN, подключено $timer"
+        ConnState.CONNECTING -> "Подключение VPN"
+        ConnState.DISCONNECTING -> "Отключение VPN"
+        ConnState.ERROR -> "Ошибка VPN, подключить снова"
+        else -> "Подключить VPN"
+    }
+
+    /** Swipe right turns on, swipe left turns off, once the drag passes [thresholdPx]. */
+    fun powerSwipeToggles(on: Boolean, dxPx: Float, thresholdPx: Float): Boolean =
+        if (on) dxPx <= -thresholdPx else dxPx >= thresholdPx
+
+    /**
+     * 2.0.35: the power card turns red on [ConnState.ERROR], [NetMonitor.Health.NO_INTERNET]
+     * (network lost / no internet), [NetMonitor.Health.SERVER_DOWN], or a failed [TunnelPing]
+     * while connected. Returns to the accent as soon as health is OK and the tunnel ping is not FAIL.
+     * [NetMonitor.health] is computed from vpnFails / directFails / netValidated.
+     */
+    fun powerShowError(
+        state: ConnState,
+        health: NetMonitor.Health = NetMonitor.Health.OK,
+        tunnelPing: TunnelPing = TunnelPing.UNKNOWN,
+    ): Boolean {
+        if (state == ConnState.ERROR) return true
+        if (!powerSelectedOn(state)) return false
+        if (health != NetMonitor.Health.OK) return true
+        return state == ConnState.CONNECTED && tunnelPing == TunnelPing.FAIL
     }
 
     const val ORPHAN_GROUP = "__orphans__"

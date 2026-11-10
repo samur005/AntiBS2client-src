@@ -101,7 +101,7 @@ data class BackupPrefs(
     val subUpdateWifiOnly: Boolean = false,
     val adv: AdvancedSettings = AdvancedSettings(),
     /**
-     * 2.0.35: per-subscription «Удалять недоступные после пинга», keyed by SHA-256 of the
+     * 2.0.35: per-subscription «Автоудаление недоступных» (auto-hide after ping), keyed by SHA-256 of the
      * subscription URL (the URL itself is not stored — it may contain a token).
      */
     val autoDeleteUnreachableByUrl: Map<String, Boolean> = emptyMap(),

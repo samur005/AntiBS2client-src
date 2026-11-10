@@ -56,6 +56,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
@@ -79,6 +80,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -133,6 +135,7 @@ import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -320,7 +323,7 @@ fun AppRoot(vm: AppViewModel) {
     }
 }
 
-/** 1.0.52: confirmation for ⋮ «Удалить недоступные». */
+/** 1.0.52: confirmation for ⋮ «Удалить недоступные» (per subscription). */
 @Composable
 internal fun UnreachableDialog(vm: AppViewModel) {
     val p by vm.unreachable.collectAsState()
@@ -743,11 +746,13 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 // 2.0.33: banner → URL test (if enabled) → power button → status / error
                 urlTest()
                 if (!isTv && !st.adv.homeUrlTest) Spacer(Modifier.height(BANNER_TRIM))
-                run {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                        PowerToggle(state = vpn.state, since = vpn.since, problem = health != net.antibs.client.engine.NetMonitor.Health.OK, onClick = ::toggle)
-                    }
-                }
+                PowerToggle(
+                    state = vpn.state,
+                    since = vpn.since,
+                    problem = UiLogic.powerShowError(vpn.state, health, tunnelPing),
+                    onClick = ::toggle,
+                    haptics = st.adv.haptics,
+                )
                 val engineDetail by net.antibs.client.engine.VpnState.detail.collectAsState()
                 if (vpn.state != ConnState.ERROR && vpn.state != ConnState.DISCONNECTED) engineDetail?.let { d ->
                     Text(
@@ -1507,7 +1512,7 @@ internal fun SubCard(
                         DropdownMenuItem(text = { Text("Проверить пинг") }, leadingIcon = { MenuIcon(Icons.Filled.NetworkCheck) }, onClick = { menu = false; onPing() })
                         extraMenu?.invoke { menu = false }
                         DropdownMenuItem(
-                            text = { Text("Удалять недоступные после пинга") },
+                            text = { Text("Автоудаление недоступных") },
                             leadingIcon = { MenuIcon(Icons.Filled.DeleteSweep) },
                             trailingIcon = { Checkbox(checked = sub.autoDeleteUnreachable, onCheckedChange = null) },
                             onClick = { onAutoDeleteUnreachable(!sub.autoDeleteUnreachable) },
@@ -1702,73 +1707,44 @@ internal fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * Big start/stop control styled as a pill toggle switch.
- * 1.0.9: the session timer lives on the track (replaces «ВКЛ»), and the switch is «alive» while connected:
- * a slowly flowing accent gradient, a shimmer sweep, drifting sparks, ripple rings from the knob, a breathing
- * halo around the pill and a gentle knob pulse. Everything is drawn in draw-phase lambdas (no recomposition
- * per frame) and the infinite transitions exist only while they are visible. Off = static gray,
- * connecting/disconnecting = pulsing track + spinner, error = brief red tint.
+ * 2.0.35: slim segmented «Выкл | Вкл» power card (concept D).
+ * The selected segment uses the accent gradient; a problem or [ConnState.ERROR] paints it red.
+ * Connecting / disconnecting show a pulsing progress shimmer. Tap or a horizontal swipe toggles
+ * (disabled while busy). The session timer sits on the right. Same control on phone and TV.
  */
 @Composable
-internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false, onClick: () -> Unit) {
+internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false, onClick: () -> Unit, haptics: Boolean = true) {
+    val style = LocalAppStyle.current
+    val c = ssColors(style)
+    val shape = ssShape(style, 16.dp)
+    val on = UiLogic.powerSelectedOn(state)
+    val busy = UiLogic.powerBusy(state)
     val connected = state == ConnState.CONNECTED
-    val connecting = state == ConnState.CONNECTING
-    val disconnecting = state == ConnState.DISCONNECTING
-    val on = connected || connecting
-    val busy = connecting || disconnecting
-    val trackW = 168.dp
-    val trackH = 76.dp
-    // 2.0.11: TV — initial D-pad focus lands on the power button; focused = slight scale-up
+    val showError = problem || state == ConnState.ERROR
     val isTv = LocalIsTv.current
+    val view = androidx.compose.ui.platform.LocalView.current
     val tvFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     var tvFocused by remember { mutableStateOf(false) }
     if (isTv) LaunchedEffect(Unit) { delay(150); runCatching { tvFocus.requestFocus() } }
     val tvScale by animateFloatAsState(if (tvFocused) 1.06f else 1f, tween(160), label = "tv-power")
-    val pad = 6.dp
-    val thumb = trackH - pad * 2
-    val shape = RoundedCornerShape(50)
+
     val pos by animateFloatAsState(
         if (on) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
-        label = "thumb",
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
+        label = "seg",
     )
-    val accent by animateFloatAsState(if (on) 1f else 0f, animationSpec = tween(320), label = "accent")
-    val alive by animateFloatAsState(if (connected) 1f else 0f, animationSpec = tween(600), label = "alive")
-    val elevation by animateDpAsState(if (connected) 10.dp else 3.dp, animationSpec = tween(400), label = "elev")
-
-    // Busy pulse (connecting / disconnecting) — only runs while busy.
+    val errAmt by animateFloatAsState(if (showError) 1f else 0f, animationSpec = tween(420), label = "err")
     val wave: State<Float> = if (busy) {
-        rememberInfiniteTransition(label = "busy").animateFloat(0.5f, 1f, infiniteRepeatable(tween(850), RepeatMode.Reverse), label = "wave")
+        rememberInfiniteTransition(label = "pwr-busy").animateFloat(
+            0.55f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "pwr-wave",
+        )
     } else remember { mutableFloatStateOf(1f) }
-    // «Alive» clocks — only run while connected.
-    val flow: State<Float>
-    val breath: State<Float>
-    val ripple: State<Float>
-    val shimmer: State<Float>
-    if (connected) {
-        val t = rememberInfiniteTransition(label = "alive")
-        flow = t.animateFloat(0f, 1f, infiniteRepeatable(tween(4200, easing = LinearEasing)), label = "flow")
-        breath = t.animateFloat(0f, 1f, infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breath")
-        ripple = t.animateFloat(0f, 1f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "ripple")
-        shimmer = t.animateFloat(0f, 1f, infiniteRepeatable(tween(3600, easing = LinearEasing)), label = "shimmer")
-    } else {
-        flow = remember { mutableFloatStateOf(0f) }
-        breath = remember { mutableFloatStateOf(0f) }
-        ripple = remember { mutableFloatStateOf(0f) }
-        shimmer = remember { mutableFloatStateOf(0f) }
-    }
+    val shimmer: State<Float> = if (busy) {
+        rememberInfiniteTransition(label = "pwr-shimmer").animateFloat(
+            0f, 1f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "pwr-sh",
+        )
+    } else remember { mutableFloatStateOf(0f) }
 
-    // Brief red tint when the connection fails.
-    val errTint = remember { Animatable(0f) }
-    LaunchedEffect(state) {
-        if (state == ConnState.ERROR) {
-            errTint.animateTo(0.85f, tween(160))
-            delay(700)
-            errTint.animateTo(0f, tween(900))
-        } else errTint.snapTo(0f)
-    }
-
-    // Session clock: ticks on whole seconds only while connected.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(connected, since) {
         while (connected) {
@@ -1776,159 +1752,138 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
             delay(1000 - (now - since).mod(1000L).coerceIn(0, 999) + 5)
         }
     }
-    val caption = UiLogic.toggleCaption(state, since, now)
+    val timer = UiLogic.powerTimerText(state, since, now)
+    val desc = UiLogic.powerContentDescription(state, problem, timer)
+    val muted = c.muted
+    val onCard = c.onCard
+    val accentBrush = AntiBSColors.fabBrush
+    val redBrush = Brush.linearGradient(listOf(Color(0xFFB4232F), AntiBSColors.Err, Color(0xFFFF6B5E)))
+    val offPill = if (c.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.08f)
+    val borderColor = androidx.compose.ui.graphics.lerp(c.cardBorder, AntiBSColors.Err, errAmt * 0.85f)
 
-    val desc = if (on) "Отключить VPN" else "Подключить VPN"
-    // 2.0.8: red state (VPN on, but no internet / server down)
-    val red by animateFloatAsState(if (problem && on) 1f else 0f, animationSpec = tween(420), label = "red")
-    val haloColor = androidx.compose.ui.graphics.lerp(AntiBSColors.Blue, AntiBSColors.Err, red)
-    Column(Modifier.graphicsLayer { scaleX = tvScale; scaleY = tvScale }, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
+    fun fire() {
+        if (busy) return
+        AppHaptics.perform(view, AppHaptics.Kind.CLICK, haptics)
+        onClick()
+    }
+
+    Column(
+        Modifier.fillMaxWidth().graphicsLayer { scaleX = tvScale; scaleY = tvScale },
+    ) {
+        Row(
             Modifier
-                .size(width = trackW, height = trackH)
-                // Halo is drawn before the clip, so it may extend past the pill.
-                .drawBehind {
-                    val a = alive
-                    if (a <= 0f) return@drawBehind
-                    val b = breath.value
-                    val r = size.height / 2f
-                    val step = 2.6.dp.toPx() * (0.75f + 0.5f * b)
-                    for (k in 4 downTo 1) {
-                        val grow = step * k
-                        drawRoundRect(
-                            color = haloColor.copy(alpha = a * (0.05f + 0.06f * b) * (5 - k) / 4f),
-                            topLeft = Offset(-grow, -grow),
-                            size = Size(size.width + grow * 2, size.height + grow * 2),
-                            cornerRadius = CornerRadius(r + grow, r + grow),
+                .fillMaxWidth()
+                .clip(shape)
+                .background(c.card)
+                .border(1.dp, borderColor, shape)
+                .then(if (isTv) Modifier.focusRequester(tvFocus).onFocusChanged { tvFocused = it.isFocused } else Modifier)
+                .pointerInput(on, busy) { detectTapGestures(onTap = { fire() }) }
+                .pointerInput(on, busy) {
+                    var drag = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { drag = 0f },
+                        onDragEnd = {
+                            if (UiLogic.powerSwipeToggles(on, drag, 36.dp.toPx())) fire()
+                        },
+                        onHorizontalDrag = { change, dx -> change.consume(); drag += dx },
+                    )
+                }
+                .semantics {
+                    contentDescription = desc
+                    role = Role.Switch
+                }
+                .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                .height(44.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val trackShape = RoundedCornerShape(50)
+            Box(
+                Modifier.weight(1f).height(40.dp).clip(trackShape).background(c.chipOff),
+            ) {
+                BoxWithConstraints(Modifier.fillMaxSize().padding(3.dp)) {
+                    val padPx = 0f
+                    val pillW = maxWidth / 2
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .offset { IntOffset(((pillW.toPx() + padPx) * pos).roundToInt(), 0) }
+                            .width(pillW)
+                            .fillMaxHeight()
+                            .clip(trackShape)
+                            .graphicsLayer { alpha = if (busy) 0.72f + 0.28f * wave.value else 1f }
+                            .then(if (on) Modifier.background(accentBrush) else Modifier.background(offPill)),
+                    ) {
+                        if (errAmt > 0f) {
+                            Box(Modifier.matchParentSize().graphicsLayer { alpha = errAmt }.background(redBrush))
+                        }
+                        if (busy) {
+                            Canvas(Modifier.fillMaxSize()) {
+                                val sp = shimmer.value
+                                val cx = -0.3f * size.width + sp * 1.6f * size.width
+                                val bw = size.width * 0.28f
+                                drawRect(
+                                    Brush.linearGradient(
+                                        listOf(Color.Transparent, Color.White.copy(alpha = 0.35f), Color.Transparent),
+                                        start = androidx.compose.ui.geometry.Offset(cx - bw, 0f),
+                                        end = androidx.compose.ui.geometry.Offset(cx + bw, size.height),
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "Выкл",
+                            color = when {
+                                !on && showError -> Color.White
+                                !on -> onCard
+                                else -> muted
+                            },
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = fixedSp(14f),
+                            maxLines = 1,
+                            softWrap = false,
                         )
                     }
-                    // One soft outline ring expanding outward and fading.
-                    val rp = ripple.value
-                    val g = 12.dp.toPx() * rp
-                    drawRoundRect(
-                        color = haloColor.copy(alpha = a * 0.45f * (1f - rp) * (1f - rp)),
-                        topLeft = Offset(-g, -g),
-                        size = Size(size.width + g * 2, size.height + g * 2),
-                        cornerRadius = CornerRadius(r + g, r + g),
-                        style = Stroke(width = 1.5.dp.toPx()),
-                    )
-                }
-                .shadow(elevation, shape, ambientColor = haloColor, spotColor = haloColor)
-                .clip(shape)
-                .background(AntiBSColors.FabStopped)
-                .then(if (isTv) Modifier.focusRequester(tvFocus).onFocusChanged { tvFocused = it.isFocused } else Modifier)
-                .toggleable(value = on, enabled = !busy, role = Role.Switch, onValueChange = { onClick() })
-                .semantics { contentDescription = if (connected) "$desc, подключено $caption" else desc },
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            // Static accent (pulses while busy).
-            Box(Modifier.matchParentSize().graphicsLayer { alpha = accent * (if (busy) wave.value else 1f) }.background(AntiBSColors.fabBrush))
-            // Alive layer: flowing gradient, shimmer, sparks, ripple rings from the knob.
-            Canvas(Modifier.matchParentSize()) {
-                val a = alive
-                if (a <= 0f) return@Canvas
-                val w = size.width
-                val h = size.height
-                val f = flow.value
-                val span = w * 0.9f
-                val shift = f * span * 2f
-                drawRect(
-                    Brush.linearGradient(
-                        FlowColors,
-                        start = Offset(shift - span * 2f, 0f),
-                        end = Offset(shift - span, 0f),
-                        tileMode = TileMode.Mirror,
-                    ),
-                    alpha = a,
-                )
-                // Shimmer: a soft diagonal light band sweeping left→right, then a pause.
-                val sp = shimmer.value * 1.7f
-                if (sp < 1f) {
-                    val cx = -0.35f * w + sp * 1.7f * w
-                    val bw = w * 0.22f
-                    drawRect(
-                        Brush.linearGradient(
-                            listOf(Color.Transparent, Color.White.copy(alpha = 0.26f * a), Color.Transparent),
-                            start = Offset(cx - bw, 0f),
-                            end = Offset(cx + bw, h * 0.6f),
-                        ),
-                    )
-                }
-                // Ripple rings emanating from the knob centre.
-                val kx = w - pad.toPx() - thumb.toPx() / 2f
-                val ky = h / 2f
-                val base = thumb.toPx() / 2f
-                val rp = ripple.value
-                for (k in 0 until 2) {
-                    val p = (rp + k * 0.5f) % 1f
-                    drawCircle(
-                        Color.White.copy(alpha = a * 0.42f * (1f - p) * (1f - p)),
-                        radius = base + p * 34.dp.toPx(),
-                        center = Offset(kx, ky),
-                        style = Stroke(width = (1.8f - p).dp.toPx()),
-                    )
-                }
-                // Sparks drifting from the knob towards the caption, with a slight wave.
-                for (i in Sparks.indices) {
-                    val (sx, sy, spd) = Sparks[i]
-                    val p = (sx + f * spd) % 1f
-                    val x = (w - base * 2f) * (1f - p)
-                    val y = h * (0.18f + 0.64f * sy) + sin((p * 6.283f * 1.5f) + i) * 2.dp.toPx()
-                    val fade = sin(p * PI.toFloat())
-                    drawCircle(Color.White.copy(alpha = a * 0.55f * fade), radius = (0.9f + 1.1f * sy).dp.toPx(), center = Offset(x, y))
+                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "Вкл",
+                            color = if (on) Color.White else muted,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = fixedSp(14f),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
             }
-            // 2.0.8: style-aware red gradient over the track while there is a problem
-            if (red > 0f) Box(Modifier.matchParentSize().graphicsLayer { alpha = red }.background(
-                Brush.linearGradient(listOf(Color(0xFFB4232F), AntiBSColors.Err, Color(0xFFFF6B5E), AntiBSColors.Err))))
-            // Brief red tint on error.
-            Box(Modifier.matchParentSize().graphicsLayer { alpha = errTint.value }.background(AntiBSColors.Err))
-            // Track caption (timer when connected) centred in the free part of the track.
-            val captionMod = if (on) Modifier.padding(start = pad + 4.dp, end = thumb + pad * 2) else Modifier.padding(start = thumb + pad * 2, end = pad + 4.dp)
-            Box(Modifier.matchParentSize().then(captionMod), contentAlignment = Alignment.Center) {
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(min = 72.dp)) {
                 Text(
-                    caption,
-                    style = TabularNums.copy(lineHeight = 20.sp),
-                    color = Color.White.copy(alpha = 0.95f),
-                    fontWeight = FontWeight.Bold,
-                    // 2.0.10: fixed-size track → the caption ignores the user font scale (it already scales with LocalUiScale).
-                    fontSize = fixedSp(if (connected) 16f else 15f),
-                    letterSpacing = fixedSp(if (connected) 0.5f else 1f),
+                    timer,
+                    style = TabularNums.copy(
+                        fontSize = fixedSp(16f),
+                        lineHeight = fixedSp(18f),
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (connected) onCard else muted,
+                    ),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Text(
+                    "сессия",
+                    color = muted,
+                    fontSize = fixedSp(10f),
+                    lineHeight = fixedSp(12f),
                     maxLines = 1,
                     softWrap = false,
                 )
             }
-            Box(
-                Modifier
-                    .padding(pad)
-                    .offset { IntOffset(((trackW - pad * 2 - thumb).toPx() * pos).roundToInt(), 0) }
-                    .size(thumb)
-                    .graphicsLayer {
-                        val s = 1f + 0.04f * breath.value * alive
-                        scaleX = s; scaleY = s
-                    }
-                    .shadow(4.dp, CircleShape)
-                    .clip(CircleShape)
-                    .background(Color.White),
-                contentAlignment = Alignment.Center,
-            ) {
-                val tint = if (on) haloColor else AntiBSColors.FabStopped
-                if (busy) CircularProgressIndicator(color = tint, modifier = Modifier.size(30.dp), strokeWidth = 3.dp)
-                else Icon(Icons.Filled.PowerSettingsNew, null, tint = tint, modifier = Modifier.size(34.dp))
-            }
         }
-        // 2.0.8: the status text moved into the banner (under the server name)
     }
 }
-
-/** Blue → violet → purple loop used by the flowing «alive» track (mirrored, so it tiles seamlessly). */
-private val FlowColors = listOf(Color(0xFF3D7EFF), Color(0xFF4C8DFF), Color(0xFF6A5CFF), Color(0xFF9B4DFF), Color(0xFF6A5CFF))
-
-/** Deterministic spark seeds: start phase, vertical lane, speed (laps per flow cycle). */
-private val Sparks = listOf(
-    Triple(0.05f, 0.20f, 1f), Triple(0.31f, 0.75f, 2f), Triple(0.58f, 0.40f, 1f), Triple(0.83f, 0.90f, 2f),
-    Triple(0.17f, 0.55f, 2f), Triple(0.44f, 0.05f, 1f), Triple(0.71f, 0.65f, 1f), Triple(0.93f, 0.30f, 2f),
-)
 
 @Composable
 private fun CaptchaCard(uri: String) {
