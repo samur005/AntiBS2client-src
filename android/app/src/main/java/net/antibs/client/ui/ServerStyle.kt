@@ -1,6 +1,8 @@
 package net.antibs.client.ui
 
 import net.antibs.client.data.ServerEntry
+import net.antibs.client.data.BackupStyleOpt
+import net.antibs.client.data.BackupStyles
 import net.antibs.client.data.ProtocolSupport
 
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -197,6 +199,33 @@ class StylePrefs(private val kv: StyleKv) {
         val cur = _favorites.value
         val next = if (id in cur) cur - id else cur + id
         kv.putSet("ss_favorites", next); _favorites.value = next
+    }
+
+    /** 2.0.34: style/sort/filter only — no favourites or ribbon (those are server/subscription ids). */
+    fun exportBackup(): BackupStyles = BackupStyles(
+        style = style.value.key,
+        sort = sort.value,
+        subNewestFirst = subNewestFirst.value,
+        options = ServerStyle.entries.associate { st ->
+            val o = options(st)
+            st.key to BackupStyleOpt(layout = o.layout.key, bestCard = o.bestCard)
+        },
+        filter = ServerStyle.entries.associate { st -> st.key to (_filter.value[st] ?: ServerFilter.ALL).key },
+    )
+
+    fun importBackup(b: BackupStyles) {
+        if (b.style.isNotBlank()) setStyle(ServerStyle.of(b.style))
+        if (b.sort.isNotBlank()) setSort(b.sort)
+        setSubNewestFirst(b.subNewestFirst)
+        b.options.forEach { (k, o) ->
+            val st = ServerStyle.entries.firstOrNull { it.key == k } ?: return@forEach
+            setLayout(st, SubLayout.of(o.layout, ServerStyleLogic.defaultOptions(st).layout))
+            setBestCard(st, o.bestCard)
+        }
+        b.filter.forEach { (k, v) ->
+            val st = ServerStyle.entries.firstOrNull { it.key == k } ?: return@forEach
+            setFilter(st, ServerFilter.of(v))
+        }
     }
 }
 

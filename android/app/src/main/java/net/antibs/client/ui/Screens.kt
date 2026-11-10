@@ -707,8 +707,16 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         pingStyle = st.adv.pingChip,
                         onPing = { vm.pingCurrent() },
                         subLine = run {
-                            val sid = (vm.currentPingId() ?: server?.id)?.let { id -> st.servers.firstOrNull { it.id == id } }?.subscriptionId
-                            net.antibs.client.data.SubLineData.of(st.subscriptions.firstOrNull { it.id == sid }, System.currentTimeMillis())
+                            val liveId = vm.currentPingId()?.let { id -> st.servers.firstOrNull { it.id == id } }?.subscriptionId
+                            val sid = liveId ?: server?.subscriptionId
+                            val sub = st.subscriptions.firstOrNull { it.id == sid }
+                            val base = net.antibs.client.data.SubLineData.of(sub, System.currentTimeMillis())
+                            val accumulating = (vpn.state == ConnState.CONNECTED || vpn.state == ConnState.CONNECTING) &&
+                                liveId != null && liveId == sub?.id
+                            val sessionBytes = vpn.upBytes + vpn.downBytes
+                            val snap = net.antibs.client.data.SubTrafficLiveStore.get(androidx.compose.ui.platform.LocalContext.current)
+                                .tick(sub, sessionBytes, accumulating)
+                            net.antibs.client.data.SubTrafficLive.apply(base, snap)
                         },
                         subStyle = st.adv.subRemain,
                     )
@@ -792,6 +800,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     subExtraMenu = { sb, close -> GroupingMenuItems(vm, st.adv.serverGrouping, sb.id, close) },
                     onSubDelete = { vm.removeSubscription(it.id) },
                     compact = true,
+                    holiday = net.antibs.client.data.HolidayStyle.stripHoliday(st.adv.seasonalDecor, st.adv.seasonalFx.showLabel, st.adv.customHolidays),
+                    holidayFx = st.adv.seasonalFx,
                 )
             }
             // Pull-to-refresh = refresh all subscriptions + ping hosts.

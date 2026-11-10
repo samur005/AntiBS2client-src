@@ -23,6 +23,20 @@ class SettingsSearchCatalogTest {
         assertTrue(SettingsSearchCatalog.filter("zzzqqqxxxyyy").isEmpty())
     }
 
+    @Test fun findsServerSort() {
+        val r = SettingsSearchCatalog.filter("сортировка серверов")
+        assertTrue(r.any { it.title == "Сортировка серверов" })
+        val r2 = SettingsSearchCatalog.filter("порядок подписок")
+        assertTrue(r2.any { it.title == "Порядок подписок" })
+    }
+
+    @Test fun findsBackup() {
+        val r = SettingsSearchCatalog.filter("резервная копия")
+        assertTrue(r.any { it.card == "Резервная копия настроек" || it.title.contains("копи", ignoreCase = true) })
+        val r2 = SettingsSearchCatalog.filter("восстановить")
+        assertTrue(r2.any { it.title.contains("Восстановить") })
+    }
+
     @Test fun itemIdStable() {
         assertEquals(settingsItemId("Тема оформления"), settingsItemId("Тема оформления"))
         assertEquals("тема-оформления", settingsItemId("Тема оформления"))

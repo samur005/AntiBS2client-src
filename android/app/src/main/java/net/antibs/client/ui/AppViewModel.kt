@@ -20,6 +20,9 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import net.antibs.client.data.SettingsBackup
+import net.antibs.client.engine.SettingsBackupIo
+import net.antibs.client.service.VpnScheduler
 import net.antibs.client.data.Hwid
 import net.antibs.client.data.ImportOutcome
 import net.antibs.client.data.ImportText
@@ -54,7 +57,16 @@ import java.net.Socket
 
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
-    val store = AppStore(app).also { it.ensureSeeded() }
+    val store = AppStore(app).also {
+        SettingsBackupIo.applyFirstRunDefaults(app, it) { styles, schedule ->
+            Styles.get(app).importBackup(styles)
+            if (schedule != null) {
+                VpnScheduler.save(app, schedule)
+                VpnScheduler.arm(app, schedule)
+            }
+        }
+        it.ensureSeeded()
+    }
     private val userPrefs = UserPrefsStore(app)
     val state: StateFlow<AppState> = store.state
 
@@ -504,32 +516,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
-    private val exportJson = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = true }
-
     /**
-     * Settings + subscriptions + manual servers. The per-install device ID is never exported; a custom HWID
-     * (Settings → HWID), the «Отправлять HWID» switch and per-subscription HWID overrides are.
+     * 2.0.34: versioned settings-only backup (no subscriptions, servers, secrets, LAN keys or traffic caches).
      */
     fun exportSettings(): String {
-        val st = store.snapshot()
-        val out = st.copy(hwid = "", servers = st.servers.filter { it.subscriptionId == ProtocolSupport.MANUAL_SUB_ID })
-        return exportJson.encodeToString(AppState.serializer(), out)
+        val ctx = getApplication<Application>()
+        return SettingsBackup.toJson(
+            SettingsBackupIo.fromAppState(
+                store.snapshot(),
+                appVersion = net.antibs.client.BuildConfig.VERSION_NAME,
+                styles = Styles.get(ctx).exportBackup(),
+                schedule = VpnScheduler.load(ctx),
+            )
+        )
+    }
+
+    fun parseSettingsBackup(text: String) = SettingsBackupIo.parseFlexible(text)
+
+    fun applySettingsBackup(b: SettingsBackup) {
+        val ctx = getApplication<Application>()
+        val before = store.snapshot()
+        push { SettingsBackupIo.applyPrefs(it, b.prefs) }
+        Styles.get(ctx).importBackup(b.styles)
+        b.schedule?.let { VpnScheduler.save(ctx, it); VpnScheduler.arm(ctx, it) }
+        if (SettingsBackupIo.affectsTunnel(before, store.snapshot())) reconnectIfConnected()
+        _toast.value = "Настройки восстановлены"
     }
 
     fun importSettings(text: String) {
-        val imp = try { exportJson.decodeFromString(AppState.serializer(), text.trim()) } catch (e: Exception) {
-            _toast.value = "Не удалось прочитать файл: ${e.message?.take(80)}"; return
+        val b = parseSettingsBackup(text).getOrElse {
+            _toast.value = "Не удалось прочитать файл: ${it.message?.take(80)}"; return
         }
-        push { cur ->
-            val subs = cur.subscriptions + imp.subscriptions.filter { s -> s.kind != "manual" && cur.subscriptions.none { it.url == s.url } }
-                .map { it.copy(serverCount = 0, lastRefresh = 0) }
-            val manual = imp.servers.filter { s -> cur.servers.none { it.id == s.id } }
-            imp.copy(
-                subscriptions = subs, servers = cur.servers + manual, selectedServerId = cur.selectedServerId,
-                hwid = cur.hwid, seeded = true, rev = cur.rev,
-            )
-        }
-        _toast.value = "Настройки импортированы"
+        applySettingsBackup(b)
     }
     fun setQwdtt(vkHashes: String? = null, dns: String? = null, obfs: String? = null, turnTcp: Boolean? = null) = push {
         it.copy(

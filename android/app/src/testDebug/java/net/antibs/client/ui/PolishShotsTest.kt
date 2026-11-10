@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -137,7 +139,7 @@ class PolishShotsTest {
         save("adblock_section_dark")
         rule.onNodeWithText("Настройки туннеля").performClick(); rule.waitForIdle(); Thread.sleep(300)
         save("tunnel_section_dark")
-        rule.onNodeWithText("Настройки интерфейса").performClick(); rule.waitForIdle(); Thread.sleep(300)
+        rule.onAllNodesWithText("Настройки интерфейса").onFirst().performClick(); rule.waitForIdle(); Thread.sleep(300)
         save("interface_section_dark")
         // denser layout: adblock + tunnel + interface already captured above
     }
@@ -192,7 +194,7 @@ class PolishShotsTest {
         Thread.sleep(800); rule.waitForIdle()
         rule.onNodeWithText("Блокировка рекламы", substring = false).assertExists() // may be collapsed
         // Expand interface card if needed and open language
-        runCatching { rule.onNodeWithText("Настройки интерфейса").performClick() }
+        runCatching { rule.onAllNodesWithText("Настройки интерфейса").onFirst().performClick() }
         rule.waitForIdle(); Thread.sleep(300)
         runCatching { rule.onNodeWithText("Язык").performClick() }
         rule.waitForIdle(); Thread.sleep(400)

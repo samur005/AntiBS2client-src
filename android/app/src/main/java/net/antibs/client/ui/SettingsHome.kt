@@ -1,6 +1,10 @@
 package net.antibs.client.ui
 
 import android.os.Build
+import android.content.Intent
+import androidx.core.content.FileProvider
+import java.io.File
+import net.antibs.client.data.SettingsBackup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -77,16 +81,37 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
     var searchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var hashes by remember(st.vkHashes) { mutableStateOf(st.vkHashes) }
+    var pendingRestore by remember { mutableStateOf<SettingsBackup?>(null) }
+    var restoreError by remember { mutableStateOf<String?>(null) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) scope.launch {
             val ok = withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(uri)?.use { it.write(vm.exportSettings().toByteArray()) } }.isSuccess }
-            vm.message(if (ok) "Настройки сохранены" else "Не удалось сохранить файл")
+            vm.message(if (ok) "Копия настроек сохранена" else "Не удалось сохранить файл")
         }
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
             val text = withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } }.getOrNull() }
-            if (text != null) vm.importSettings(text) else vm.message("Не удалось прочитать файл")
+            if (text == null) { vm.message("Не удалось прочитать файл"); return@launch }
+            vm.parseSettingsBackup(text).fold(
+                onSuccess = { pendingRestore = it },
+                onFailure = { restoreError = it.message?.take(120) ?: "Некорректный файл" },
+            )
+        }
+    }
+    fun shareSettings() {
+        scope.launch {
+            val file = withContext(Dispatchers.IO) {
+                val dir = File(ctx.cacheDir, "share").apply { mkdirs() }
+                File(dir, SettingsBackup.fileName()).also { it.writeText(vm.exportSettings()) }
+            }
+            val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.updates", file)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            ctx.startActivity(Intent.createChooser(send, "Поделиться настройками"))
         }
     }
     val title = when (section) {
@@ -161,8 +186,11 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         NavRow("Сканер сети Wi‑Fi", subtitle = "Устройства в локальной сети") { open("NetScan") }
                         NavRow("Сеть: мониторинг и анализ", subtitle = "Сотовая связь, Wi‑Fi анализатор, LAN, ping / DNS") { open("NetTools") }
                         NavRow("Логи", if (a.logging) levelLabel(a.logLevel) else "Логирование Xray выключено") { open("Logs") }
-                        NavRow("Экспорт настроек", subtitle = "Настройки, маршрутизация, подписки и ручные серверы (без HWID)") { exportLauncher.launch("antibs-settings-${BuildConfig.VERSION_NAME}.json") }
-                        NavRow("Импорт настроек", subtitle = "Добавляет недостающие подписки/серверы и заменяет настройки") { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }
+                    }
+                    SettingsCard("Резервная копия настроек") {
+                        NavRow("Сохранить копию", subtitle = "Все настройки без подписок, серверов и секретов") { exportLauncher.launch(SettingsBackup.fileName()) }
+                        NavRow("Поделиться", subtitle = "Отправить файл копии через другое приложение") { shareSettings() }
+                        NavRow("Восстановить из файла", subtitle = "Заменит настройки; подписки и серверы не изменятся") { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }
                     }
                     SettingsCard("Приложение") {
                         NavRow("Версия", BuildConfig.VERSION_NAME, chevron = false) {}
@@ -171,6 +199,34 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         NavRow("О приложении", subtitle = "Версии ядер, лицензии") { dialog = "about" }
                     }
                     
+    pendingRestore?.let { b ->
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text("Восстановить настройки?") },
+            text = {
+                Column {
+                    Text("Будут заменены все настройки приложения (тема, туннель, маршрутизация, интерфейс и т.д.). Подписки, серверы и секреты не изменятся.")
+                    val meta = listOfNotNull(
+                        b.appVersion.takeIf { it.isNotBlank() }?.let { "Файл из версии $it" },
+                        b.exportedAt.takeIf { it.isNotBlank() }?.let { "Экспортирован: $it" },
+                    ).joinToString(" · ")
+                    if (meta.isNotBlank()) Text(meta, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.applySettingsBackup(b); pendingRestore = null }) { Text("Восстановить") }
+            },
+            dismissButton = { TextButton(onClick = { pendingRestore = null }) { Text("Отмена") } },
+        )
+    }
+    restoreError?.let { err ->
+        AlertDialog(
+            onDismissRequest = { restoreError = null },
+            title = { Text("Не удалось прочитать файл") },
+            text = { Text(err) },
+            confirmButton = { TextButton(onClick = { restoreError = null }) { Text("Закрыть") } },
+        )
+    }
     if (dialog == "seasonal") {
         AlertDialog(
             onDismissRequest = { dialog = null },
@@ -268,6 +324,17 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         NavRow("Остаток подписки", if (a.subRemain.show) "Показывать" else "Скрыт", subtitle = "Дни и трафик внизу карточки подключения") { open("SubRemain") }
                     }
                     SettingsCard("Список серверов") {
+                        run {
+                            val sp = Styles.get(androidx.compose.ui.platform.LocalContext.current)
+                            val sort by sp.sort.collectAsState()
+                            val subNew by sp.subNewestFirst.collectAsState()
+                            NavRow("Сортировка серверов", when (sort) {
+                                StylePrefs.SORT_ALPHA -> "По алфавиту"
+                                StylePrefs.SORT_FASTEST -> "Сначала быстрые"
+                                else -> "По дате добавления"
+                            }, dropdown = true, subtitle = "Порядок серверов в списке на Главной") { dialog = "serverSort" }
+                            NavRow("Порядок подписок", if (subNew) "Новые сверху" else "Новые снизу", dropdown = true) { dialog = "subOrder" }
+                        }
                         SwitchRow("Компактный список серверов", ui.compactServers) { vm.setCompact(it) }
                         SwitchRow("Подписки развёрнуты", ui.subsExpanded, subtitle = "Группы подписок открыты при запуске") { vm.setSubsExpanded(it) }
                         run {
@@ -383,6 +450,8 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
         "ip" -> ChoiceDialog("Предпочтительный тип IP", listOf("auto" to "Auto", "ipv4" to "IPv4", "ipv6" to "IPv6"), ui.ipType, { vm.setIpType(it) }, { dialog = null })
         "mtu" -> MtuDialog(a.tunMtu, { m -> vm.setAdvTunnel { it.copy(tunMtu = m) } }, { dialog = null })
         "style" -> { val sp = Styles.get(androidx.compose.ui.platform.LocalContext.current); ChoiceDialog("Стиль оформления", ServerStyle.entries.map { it.key to it.title }, sp.style.value.key, { sp.setStyle(ServerStyle.of(it)) }, { dialog = null }) }
+        "serverSort" -> { val sp = Styles.get(androidx.compose.ui.platform.LocalContext.current); ChoiceDialog("Сортировка серверов", listOf(StylePrefs.SORT_ALPHA to "По алфавиту", StylePrefs.SORT_FASTEST to "Сначала быстрые", StylePrefs.SORT_ADDED to "По дате добавления"), sp.sort.value, { sp.setSort(it) }, { dialog = null }) }
+        "subOrder" -> { val sp = Styles.get(androidx.compose.ui.platform.LocalContext.current); ChoiceDialog("Порядок подписок", listOf("1" to "Новые сверху", "0" to "Новые снизу"), if (sp.subNewestFirst.value) "1" else "0", { sp.setSubNewestFirst(it == "1") }, { dialog = null }) }
         "speedUnits" -> ChoiceDialog("Единицы скорости", listOf("bytes" to "Байты (КБ/с, МБ/с)", "bits" to "Биты (кбит/с, Мбит/с)"), if (a.speedUnits == "bits") "bits" else "bytes", { u -> vm.setAdv { it.copy(speedUnits = u) } }, { dialog = null })
         "lang" -> ChoiceDialog(
             I18n.t("language"),

@@ -25,6 +25,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import net.antibs.client.data.Holiday
+import net.antibs.client.data.SeasonalFx
 import net.antibs.client.data.ServerEntry
 import net.antibs.client.data.Subscription
 import net.antibs.client.engine.AppState
@@ -47,8 +49,11 @@ fun ServersHeader(
     onSubDeleteUnreachable: (Subscription) -> Unit, onSubRestoreHidden: (Subscription) -> Unit, onSubDelete: (Subscription) -> Unit,
     subExtraMenu: (@Composable (Subscription, () -> Unit) -> Unit)? = null,
     viewOpenInitially: Boolean = false,
-    /** 2.0.32: list header on «Главная» (the app top bar stays above): small title, no logo and no «+». */
+    /** 2.0.32: list header on «Главная» (the app top bar stays above): no logo and no «+». */
     compact: Boolean = false,
+    /** 2.0.34: Home compact header — holiday strip instead of «Подписки и серверы»; null = no gap. */
+    holiday: Holiday? = null,
+    holidayFx: SeasonalFx = SeasonalFx(),
 ) {
     val c = ssColors(style)
     var sortOpen by remember { mutableStateOf(false) }
@@ -74,9 +79,14 @@ fun ServersHeader(
     fun Section(t: String) = Text(t, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
 
-    Row(Modifier.fillMaxWidth().height(if (compact) 38.dp else 46.dp).padding(start = if (compact) 4.dp else 12.dp, end = if (compact) 0.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height(if (compact) (if (holiday != null) 40.dp else 36.dp) else 46.dp).padding(start = if (compact) 2.dp else 12.dp, end = if (compact) 0.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (compact) {
-            Text("Подписки и серверы", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = c.onCard, maxLines = 1)
+            // 2.0.34: title / view / sort moved to Settings → Интерфейс; holiday strip sits here, or nothing.
+            if (holiday != null) {
+                SeasonalHolidayStrip(holiday, holidayFx, Modifier.weight(1f).padding(end = 6.dp))
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
         } else if (style == ServerStyle.MATERIAL) {
             Text("Серверы", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = c.onCard, modifier = Modifier.padding(start = 4.dp))
         } else {
@@ -85,8 +95,8 @@ fun ServersHeader(
             Spacer(Modifier.width(9.dp))
             Text("AntiBS2client", style = TextStyle(brush = AntiBSColors.fabBrush, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.4.sp), maxLines = 1)
         }
-        Spacer(Modifier.weight(1f))
-        Box {
+        if (!compact) Spacer(Modifier.weight(1f))
+        if (!compact) Box {
             var viewOpen by remember { mutableStateOf(viewOpenInitially) }
             HeadIcon(PaletteIcon, "Вид") { viewOpen = true }
             DropdownMenu(viewOpen, { viewOpen = false }, shape = menuShape, modifier = Modifier.widthIn(min = 240.dp)) {
@@ -105,7 +115,7 @@ fun ServersHeader(
                 }
             }
         }
-        Box {
+        if (!compact) Box {
             HeadIcon(Icons.Filled.SwapVert, "Сортировка") { sortOpen = true }
             DropdownMenu(sortOpen, { sortOpen = false }, shape = menuShape) {
                 Section("Серверы")
@@ -126,6 +136,26 @@ fun ServersHeader(
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 Item(Icons.Filled.Speed, if (testing) "Проверка…" else "Проверить все", enabled = !testing) { sortOpen = false; onTestAll() }
             }
+        }
+        if (compact) {
+            Box {
+                var filtOpen by remember { mutableStateOf(false) }
+                val filtIcon = when (filter) {
+                    ServerFilter.FAVORITES -> Icons.Rounded.Star
+                    ServerFilter.FAST -> Icons.Rounded.Bolt
+                    else -> Icons.Filled.FilterList
+                }
+                HeadIcon(filtIcon, "Фильтр") { filtOpen = true }
+                DropdownMenu(filtOpen, { filtOpen = false }, shape = menuShape) {
+                    Item(Icons.Rounded.Star, "Только избранные", checked = filter == ServerFilter.FAVORITES) {
+                        filtOpen = false; onFilter(if (filter == ServerFilter.FAVORITES) ServerFilter.ALL else ServerFilter.FAVORITES)
+                    }
+                    Item(Icons.Rounded.Bolt, "Только быстрые", checked = filter == ServerFilter.FAST) {
+                        filtOpen = false; onFilter(if (filter == ServerFilter.FAST) ServerFilter.ALL else ServerFilter.FAST)
+                    }
+                }
+            }
+            HeadIcon(Icons.Filled.Speed, if (testing) "Проверка…" else "Проверить все") { if (!testing) onTestAll() }
         }
         if (!compact) HeadIcon(Icons.Filled.Add, "Добавить серверы") { onAdd() }
         if (subMenu != null) Box {
