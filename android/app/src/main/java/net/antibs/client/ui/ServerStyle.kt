@@ -209,6 +209,15 @@ class StylePrefs(private val kv: StyleKv) {
     val homeCountry: StateFlow<String> = _homeCountry.asStateFlow()
     fun setHomeCountry(code: String) { kv.putString("ss_home_country", code); _homeCountry.value = code }
 
+    private fun readOrder(key: String): List<String> =
+        kv.getString(key)?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+    private val _tabOrder = MutableStateFlow(readOrder("ss_filter_tab_order"))
+    val tabOrder: StateFlow<List<String>> = _tabOrder.asStateFlow()
+    fun setTabOrder(ids: List<String>) { kv.putString("ss_filter_tab_order", ids.joinToString(",")); _tabOrder.value = ids }
+    private val _countryOrder = MutableStateFlow(readOrder("ss_filter_country_order"))
+    val countryOrder: StateFlow<List<String>> = _countryOrder.asStateFlow()
+    fun setCountryOrder(ids: List<String>) { kv.putString("ss_filter_country_order", ids.joinToString(",")); _countryOrder.value = ids }
+
     /** 2.0.34: style/sort/filter only — no favourites or ribbon (those are server/subscription ids). */
     fun exportBackup(): BackupStyles = BackupStyles(
         style = style.value.key,
@@ -221,6 +230,8 @@ class StylePrefs(private val kv: StyleKv) {
         filter = ServerStyle.entries.associate { st -> st.key to (_filter.value[st] ?: ServerFilter.ALL).key },
         homeFilterTab = homeTab.value,
         homeFilterCountry = homeCountry.value,
+        tabOrder = tabOrder.value,
+        countryOrder = countryOrder.value,
     )
 
     fun importBackup(b: BackupStyles) {
@@ -238,6 +249,8 @@ class StylePrefs(private val kv: StyleKv) {
         }
         setHomeTab(b.homeFilterTab)
         setHomeCountry(b.homeFilterCountry)
+        if (b.tabOrder.isNotEmpty()) setTabOrder(b.tabOrder)
+        if (b.countryOrder.isNotEmpty()) setCountryOrder(b.countryOrder)
     }
 }
 
@@ -246,6 +259,8 @@ internal object ShotHooks {
     @JvmField var viewMenuOpen: Boolean = false
     /** 2.0.35: open the subscription ⋮ menu for screenshot tests. */
     @JvmField var subMenuOpen: Boolean = false
+    /** 2.0.37: open a Home filter-chip context menu (chipMenuKey, e.g. "tab:IPv4"). */
+    @JvmField var filterMenu: String? = null
 }
 
 /** AntiBS2client: hand-added servers live in the «Серверы» pseudo-subscription. */

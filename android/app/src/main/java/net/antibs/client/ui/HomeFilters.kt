@@ -118,6 +118,52 @@ object HomeFilters {
     fun apply(servers: List<ServerEntry>, tab: String, country: String): List<ServerEntry> =
         servers.filter { (tab.isBlank() || matchesTab(it, tab)) && matchesCountry(it, country) }
 
+    /**
+     * 2.0.37: servers one filter chip itself matches, not intersected with the other row.
+     * [tab] set → that protocol/IP/Antiblock tab; [country] set → that country;
+     * both blank («Все страны») → [servers] as given (all visible, unscoped).
+     */
+    fun chipTargets(servers: List<ServerEntry>, tab: String = "", country: String = ""): List<ServerEntry> = when {
+        tab.isNotBlank() -> servers.filter { matchesTab(it, tab) }
+        country.isNotBlank() && country != COUNTRY_ALL -> servers.filter { matchesCountry(it, country) }
+        else -> servers
+    }
+
+    fun chipLabel(tab: String, country: String, countries: List<Country>): String = when {
+        tab.isNotBlank() -> tab
+        country.isNotBlank() && country != COUNTRY_ALL ->
+            countries.firstOrNull { it.code == country }?.name ?: country
+        else -> "Все страны"
+    }
+
+    fun chipMenuKey(tab: String = "", country: String = ""): String = when {
+        tab.isNotBlank() -> "tab:$tab"
+        country.isNotBlank() && country != COUNTRY_ALL -> "country:$country"
+        else -> "country:"
+    }
+
+    /**
+     * Custom chip order: ids in [saved] that still exist keep their place;
+     * new chips not in [saved] are appended in [defaultIds] order.
+     */
+    fun applyOrder(defaultIds: List<String>, saved: List<String>): List<String> {
+        val present = defaultIds.toSet()
+        val head = saved.filter { it in present }.distinct()
+        val tail = defaultIds.filter { it !in head.toSet() }
+        return head + tail
+    }
+
+    fun moveId(ids: List<String>, fromId: String, toIndex: Int): List<String> {
+        val from = ids.indexOf(fromId)
+        if (from < 0 || ids.isEmpty()) return ids
+        val to = toIndex.coerceIn(0, ids.lastIndex)
+        if (from == to) return ids
+        val m = ids.toMutableList()
+        val item = m.removeAt(from)
+        m.add(to, item)
+        return m
+    }
+
     fun tabs(servers: List<ServerEntry>): List<Tab> {
         if (servers.isEmpty()) return emptyList()
         val out = mutableListOf<Tab>()
@@ -171,6 +217,12 @@ object HomeFilters {
         if (tapped.isBlank() || tapped == COUNTRY_ALL || current == tapped) "" else tapped
 
     fun filterActive(tab: String, country: String): Boolean = tab.isNotBlank() || country.isNotBlank()
+
+    /** Title above the flat filtered list, e.g. «IPv4», «Германия», «IPv4 · Германия». */
+    fun caption(tab: String, country: String, countries: List<Country>): String {
+        val ctry = countries.firstOrNull { it.code == country }?.name.orEmpty()
+        return listOf(tab, ctry).filter { it.isNotBlank() }.joinToString(" · ")
+    }
 
     /** Keep [selected] when that country is still present; otherwise «Все страны». */
     fun resolveCountry(selected: String, countries: List<Country>): String =

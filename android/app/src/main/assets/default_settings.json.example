@@ -1,7 +1,7 @@
 {
-    "_comment": "Copy this file to default_settings.json in the same folder to bake these prefs in as first-run defaults. Applied only when the app has no seeded prefs yet (fresh install). Subscriptions, servers and secrets are never read from this file.",
+    "_comment": "First-run defaults baked in as default_settings.json. Applied only when the app has no seeded prefs yet (fresh install). Subscriptions, servers, secrets, subscription-URL hashes, and subscription-tied routing / grouping ids are never stored here.",
     "schemaVersion": 1,
-    "appVersion": "2.0.34",
+    "appVersion": "2.0.37",
     "exportedAt": "",
     "prefs": {
         "theme": "auto",
@@ -11,12 +11,12 @@
         "ipType": "auto",
         "allowLan": false,
         "autostart": false,
-        "xrayTun": false,
+        "xrayTun": true,
         "subsExpanded": true,
         "compactServers": false,
         "sortByPing": false,
         "hostGrid": false,
-        "pingTimeoutMs": 3000,
+        "pingTimeoutMs": 5000,
         "qwdttDns": "yandex",
         "qwdttObfs": "audio",
         "qwdttTurnTcp": false,
@@ -24,14 +24,183 @@
         "subAutoUpdate": true,
         "subUpdateHours": 6,
         "subUpdateWifiOnly": false,
-        "adv": {}
+        "adv": {
+            "speedUnits": "bits",
+            "fragType": "xray",
+            "fragPackets": "tlshello",
+            "fragLength": "50-100",
+            "fragDelay": "10-20",
+            "fragMaxSplit": "100-200",
+            "noise": false,
+            "noiseType": "array",
+            "noisePacket": "1A,2B,3C",
+            "noiseDelay": "10-16",
+            "noiseRand": "1-8192",
+            "noiseRandRange": "0-255",
+            "muxConcurrency": 8,
+            "muxXudpConcurrency": 8,
+            "muxXudpQuic": "reject",
+            "socksPort": 10808,
+            "httpInbound": false,
+            "httpPort": 10809,
+            "tunMtu": 1500,
+            "tunnelBindBlock": false,
+            "localDns": false,
+            "localDnsPort": 10853,
+            "dnsFromJson": false,
+            "dnsJson": "",
+            "sniffing": true,
+            "mode": "vpn",
+            "resolveServers": false,
+            "excludedRoutes": [],
+            "pingType": "get",
+            "pingMode": "default",
+            "pingTimeoutSec": 5,
+            "pingUrl": "https://www.gstatic.com/generate_204",
+            "pingDisplay": "time",
+            "autoPingServers": false,
+            "hideEmptyManual": true,
+            "logging": false,
+            "logLevel": "warning",
+            "language": "ru",
+            "perAppMode": "bypass",
+            "perAppInclude": [],
+            "perAppBypass": [
+                "com.tanksblitz"
+            ],
+            "ruAppsOn": false,
+            "ruAppsAdded": [],
+            "ruAppsRemoved": [],
+            "routingProfiles": [],
+            "activeRoutingId": null,
+            "blockAds": true,
+            "adCats": [
+                "trackers",
+                "adult",
+                "tm_xiaomi",
+                "tm_windows",
+                "tm_google"
+            ],
+            "adDnsOn": false,
+            "adDnsUrl": "",
+            "trafficPreset": "off",
+            "ruDns": "77.88.8.8",
+            "accent": "purple",
+            "fontFamily": "roboto",
+            "fontScalePct": 100,
+            "autoConnectOnLaunch": false,
+            "haptics": true,
+            "notifTraffic": "both",
+            "notifRefreshSec": 2,
+            "hideServerIp": true,
+            "seasonalDecor": "auto",
+            "customHolidays": [],
+            "seasonalFx": {
+                "showLabel": true,
+                "labelColor": 0,
+                "labelAlpha": 100,
+                "labelSize": 100,
+                "effects": "holiday",
+                "snowMode": "auto",
+                "snowCount": 30,
+                "snowSpeed": 100,
+                "snowSize": 70,
+                "snowColor": 4294967295,
+                "garland": true,
+                "garlandBlink": true,
+                "garlandSpeed": 100
+            },
+            "subRemain": {
+                "show": true,
+                "size": 11,
+                "bold": false,
+                "align": 1,
+                "daysText": 0,
+                "daysBar": 0,
+                "trafficText": 0,
+                "trafficBar": 0
+            },
+            "serverGrouping": {
+                "on": false,
+                "sort": "name",
+                "rememberOpen": true,
+                "open": [],
+                "subs": {},
+                "openDefault": false,
+                "showPing": true
+            },
+            "pingChip": {
+                "show": true,
+                "size": 11,
+                "bold": false,
+                "mono": false,
+                "text": 0,
+                "bg": 0,
+                "bgPad": 4,
+                "alpha": 100
+            },
+            "autoPing": {
+                "on": true,
+                "intervalSec": 30,
+                "autoDelete": false,
+                "failsToDelete": 5
+            },
+            "revokeNotify": true,
+            "homeUrlTest": false
+        },
+        "autoDeleteUnreachableByUrl": {}
     },
     "styles": {
         "style": "classic",
         "sort": "added",
-        "subNewestFirst": true,
-        "options": {},
-        "filter": {}
+        "subNewestFirst": false,
+        "options": {
+            "classic": {
+                "layout": "groups",
+                "bestCard": true
+            },
+            "neon": {
+                "layout": "groups",
+                "bestCard": true
+            },
+            "cards": {
+                "layout": "ribbon",
+                "bestCard": true
+            },
+            "aurora": {
+                "layout": "ribbon",
+                "bestCard": false
+            },
+            "cyber": {
+                "layout": "ribbon",
+                "bestCard": false
+            },
+            "stack": {
+                "layout": "ribbon",
+                "bestCard": false
+            },
+            "material": {
+                "layout": "ribbon",
+                "bestCard": false
+            }
+        },
+        "filter": {
+            "classic": "all",
+            "neon": "all",
+            "cards": "all",
+            "aurora": "all",
+            "cyber": "all",
+            "stack": "all",
+            "material": "all"
+        },
+        "homeFilterTab": "",
+        "homeFilterCountry": "",
+        "tabOrder": [],
+        "countryOrder": []
     },
-    "schedule": null
+    "schedule": {
+        "on": false,
+        "notify": true,
+        "rules": []
+    }
 }

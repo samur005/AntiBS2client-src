@@ -847,6 +847,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         pingServers(targets)
     }
 
+    /** 2.0.37: ping only the current Home filter's flat list. Auto-delete follows each host's subscription toggle and the usual safety rules. */
+    fun pingFiltered(servers: List<ServerEntry>) {
+        val targets = UiLogic.pingTargets(servers, busy = _pinging.value)
+        if (targets.isEmpty()) {
+            if (servers.isEmpty()) _toast.value = "Нет серверов для пинга"
+            return
+        }
+        _toast.value = "Пинг фильтра…"
+        startBatch(targets)
+        pingServers(targets)
+    }
+
     /** 1.0.51: ping from the chain / balancer picker — the given hosts (all or one group); ones already measuring are skipped. */
     fun pingHosts(servers: List<ServerEntry>) {
         val targets = servers.filter { it.id !in _pinging.value }
@@ -1196,6 +1208,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Subscriptions whose hosts are being pinged before «Удалить недоступные». */
     val unreachableScan: StateFlow<Set<String>> = _unreachableScan
     fun dismissUnreachable() { _unreachable.value = null }
+
+    data class FilterDeletePrompt(val ids: List<String>, val label: String)
+    private val _filterDelete = MutableStateFlow<FilterDeletePrompt?>(null)
+    /** Confirmation «Удалить N серверов?» after a long-press on a Home filter chip. */
+    val filterDelete: StateFlow<FilterDeletePrompt?> = _filterDelete
+    fun dismissFilterDelete() { _filterDelete.value = null }
+
+    /** Ask to delete every host this chip matches, except the connected / auto-select ones. */
+    fun askDeleteChip(servers: List<ServerEntry>, label: String) {
+        val (protect, name) = connectedProtect()
+        val ids = UiLogic.deletableHostIds(servers, protect, name)
+        if (ids.isEmpty()) { _toast.value = "Нечего удалять"; return }
+        _filterDelete.value = FilterDeletePrompt(ids, label)
+    }
+
+    fun confirmDeleteChip(p: FilterDeletePrompt) {
+        _filterDelete.value = null
+        val (protect, name) = connectedProtect()
+        var n = 0
+        p.ids.forEach { id ->
+            val e = store.servers().firstOrNull { it.id == id } ?: return@forEach
+            if (id in protect || (name.isNotBlank() && e.name == name) || UiLogic.isAutoSelectEntry(e)) return@forEach
+            if (store.deleteHost(id) != null) { _pings.update { it - id }; n++ }
+        }
+        _toast.value = if (n > 0) "Удалено серверов: $n" else "Ничего не удалено"
+    }
 
     private fun connectedProtect(): Pair<Set<String>, String> {
         val vs = VpnState.status.value

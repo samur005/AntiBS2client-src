@@ -379,6 +379,15 @@ object UiLogic {
     fun pingTargets(servers: List<ServerEntry>, subscriptionId: String? = null, busy: Set<String> = emptySet()): List<ServerEntry> =
         visibleServers(servers).filter { (subscriptionId == null || it.subscriptionId == subscriptionId) && it.id !in busy }
 
+    /** Hosts that a bulk delete may remove: never auto-select, never the connected / routed host. */
+    fun deletableHostIds(
+        servers: List<ServerEntry>,
+        protectIds: Set<String> = emptySet(),
+        protectName: String = "",
+    ): List<String> = servers
+        .filter { !isAutoSelectEntry(it) && it.id !in protectIds && (protectName.isBlank() || it.name != protectName) }
+        .map { it.id }
+
     /**
      * 1.0.52: ⋮ «Удалить недоступные» — hosts of [subscriptionId] whose last ping failed (-1) or gave no result.
      * Never the auto-select entry, hosts marked н/д (-2), the [protectIds] (connected host) or the host named

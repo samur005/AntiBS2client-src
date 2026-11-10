@@ -134,4 +134,40 @@ class HomeFiltersTest {
         assertEquals(ServerGrouping.OTHER, cs.single().code)
         assertEquals("Другие", cs.single().name)
     }
+
+    @Test fun captionJoinsTabAndCountry() {
+        val countries = listOf(
+            HomeFilters.Country("DE", "🇩🇪", "Германия", 2, 38),
+            HomeFilters.Country("NL", "🇳🇱", "Нидерланды", 1, 52),
+        )
+        assertEquals("IPv4", HomeFilters.caption("IPv4", "", countries))
+        assertEquals("Германия", HomeFilters.caption("", "DE", countries))
+        assertEquals("IPv4 · Германия", HomeFilters.caption("IPv4", "DE", countries))
+        assertEquals("IPv4", HomeFilters.caption("IPv4", "US", countries)) // unknown country omitted
+        assertEquals("", HomeFilters.caption("", "", countries))
+    }
+
+    @Test fun applyOrderKeepsSavedAndAppendsNewInDefaultOrder() {
+        val def = listOf("IPv4", "IPv6", "Антиблок", "Trojan", "VLESS Reality")
+        assertEquals(def, HomeFilters.applyOrder(def, emptyList()))
+        assertEquals(
+            listOf("Trojan", "IPv4", "IPv6", "Антиблок", "VLESS Reality"),
+            HomeFilters.applyOrder(def, listOf("Trojan", "IPv4", "gone")),
+        )
+        val moved = HomeFilters.moveId(def, "Антиблок", 0)
+        assertEquals(listOf("Антиблок", "IPv4", "IPv6", "Trojan", "VLESS Reality"), moved)
+        assertEquals(def, HomeFilters.moveId(def, "missing", 0))
+    }
+
+    @Test fun chipTargetsAreTheChipsOwnSetNotAnIntersection() {
+        val de4 = xray("🇩🇪 Франкфурт", server = "8.8.8.8")
+        val de6 = xray("🇩🇪 v6", server = "2001:db8::1")
+        val nl4 = xray("🇳🇱 Амстердам", server = "1.1.1.1")
+        val all = listOf(de4, de6, nl4)
+        assertEquals(2, HomeFilters.chipTargets(all, tab = "IPv4").size)
+        assertEquals(setOf(de4.id, de6.id), HomeFilters.chipTargets(all, country = "DE").map { it.id }.toSet())
+        assertEquals(all, HomeFilters.chipTargets(all, tab = "", country = ""))
+        assertEquals("IPv4", HomeFilters.chipLabel("IPv4", "", emptyList()))
+        assertEquals("Все страны", HomeFilters.chipLabel("", "", emptyList()))
+    }
 }

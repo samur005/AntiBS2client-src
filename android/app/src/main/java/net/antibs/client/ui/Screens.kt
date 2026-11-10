@@ -316,12 +316,28 @@ fun AppRoot(vm: AppViewModel) {
             }
             UpdateDialog(vm)
             UnreachableDialog(vm)
+            FilterDeleteDialog(vm)
         }
         // 1.0.55: one light tick per actual settings / menu page change (not on first show)
         AppHaptics.TickOnChange(pageName, st.adv.haptics)
     }
     }
     }
+}
+
+/** 2.0.37: confirmation after long-press «Удалить» on a Home filter chip. */
+@Composable
+internal fun FilterDeleteDialog(vm: AppViewModel) {
+    val p by vm.filterDelete.collectAsState()
+    val q = p ?: return
+    val n = q.ids.size
+    AlertDialog(
+        onDismissRequest = { vm.dismissFilterDelete() },
+        title = { Text("Удалить $n ${UiLogic.serversWord(n)}?") },
+        text = { Text("Будут удалены серверы «${q.label}» из всех подписок. Подключённый сервер не удаляется. Удалённые серверы подписки можно вернуть через ⋮ «Показать удалённые хосты».") },
+        confirmButton = { TextButton(onClick = { vm.confirmDeleteChip(q) }) { Text("Удалить", color = AntiBSColors.Err) } },
+        dismissButton = { TextButton(onClick = { vm.dismissFilterDelete() }) { Text("Отмена") } },
+    )
 }
 
 /** 1.0.52: confirmation for ⋮ «Удалить недоступные» (per subscription). */
@@ -483,6 +499,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val sFav by sp.favorites.collectAsState()
     val sSort by sp.sort.collectAsState()
     val sSubNew by sp.subNewestFirst.collectAsState()
+    val sTabOrder by sp.tabOrder.collectAsState()
+    val sCountryOrder by sp.countryOrder.collectAsState()
     val opts = sOpts[sStyle] ?: ServerStyleLogic.defaultOptions(sStyle)
     val effLayout = ServerStyleLogic.effectiveLayout(sStyle, opts)
     val bg = ssBackground(sStyle)
@@ -849,6 +867,20 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         selectedCountry = activeCountry,
                         allCount = filterCountries.size,
                         onCountry = { homeCountry = HomeFilters.toggleCountry(activeCountry, it) },
+                        haptics = st.adv.haptics,
+                        onPingChip = { tab, country ->
+                            vm.pingFiltered(HomeFilters.chipTargets(allVisible, tab, country))
+                        },
+                        onDeleteChip = { tab, country ->
+                            vm.askDeleteChip(
+                                HomeFilters.chipTargets(allVisible, tab, country),
+                                HomeFilters.chipLabel(tab, country, filterCountries),
+                            )
+                        },
+                        tabOrder = sTabOrder,
+                        onTabOrder = { sp.setTabOrder(it) },
+                        countryOrder = sCountryOrder,
+                        onCountryOrder = { sp.setCountryOrder(it) },
                     )
                 }
             }
