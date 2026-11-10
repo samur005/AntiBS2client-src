@@ -152,10 +152,6 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         SwitchRow("Подписки развёрнуты", ui.subsExpanded, subtitle = "Группы подписок открыты при запуске") { vm.setSubsExpanded(it) }
                         SwitchRow("Скрывать пустую группу «Серверы»", a.hideEmptyManual) { vm.setHideEmptyManual(it) }
                     }
-                    SettingsCard("Главный экран") {
-                        NavRow("Прозрачность океана на глобусе", "$globePct%", dropdown = true, subtitle = "Также: долгое нажатие на значок глобуса") { dialog = "opGlobe" }
-                        NavRow("Прозрачность океана на карте", "$mapPct%", dropdown = true, subtitle = "Также: долгое нажатие на значок карты") { dialog = "opMap" }
-                    }
                 }
 
                 // ───────────── «Надёжность и запуск»

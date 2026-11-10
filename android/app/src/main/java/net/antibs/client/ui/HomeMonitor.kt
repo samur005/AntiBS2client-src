@@ -43,16 +43,17 @@ internal fun toneColor(t: NetMonitor.Tone, muted: Color): Color = when (t) {
 }
 
 @Composable
-private fun MonCard(title: String, badge: (@Composable () -> Unit)? = null, action: (@Composable () -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+private fun MonCard(title: String, badge: (@Composable () -> Unit)? = null, action: (@Composable () -> Unit)? = null, compact: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     val style = LocalAppStyle.current
     val c = ssColors(style)
     val shape = ssShape(style, 16.dp)
     Column(
-        Modifier.fillMaxWidth().clip(shape).background(c.card).border(1.dp, c.cardBorder, shape).padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        Modifier.fillMaxWidth().clip(shape).background(c.card).border(1.dp, c.cardBorder, shape)
+            .padding(horizontal = 10.dp, vertical = if (compact) 5.dp else 8.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp),
     ) {
-        Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = c.onCard, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Row(Modifier.fillMaxWidth().height(if (compact) 20.dp else 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = c.onCard, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 14.sp else 15.sp)
             if (badge != null) { Spacer(Modifier.width(8.dp)); badge() }
             Spacer(Modifier.weight(1f))
             action?.invoke()
@@ -101,13 +102,14 @@ internal fun UrlTestCard(results: Map<String, Long>, busy: Boolean, onRefresh: (
     val c = ssColors(style)
     val spin = rememberInfiniteTransition(label = "spin")
     val ang by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "spin-a")
-    MonCard("URL Тест", action = {
-        Box(Modifier.size(28.dp).clip(CircleShape).clickable(enabled = !busy, onClick = onRefresh), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.Refresh, "Обновить", tint = c.accent, modifier = Modifier.size(20.dp).rotate(if (busy) ang else 0f))
+    // 2.0.32: compact (lower) card — smaller paddings, tiles and icons
+    MonCard("URL Тест", compact = true, action = {
+        Box(Modifier.size(24.dp).clip(CircleShape).clickable(enabled = !busy, onClick = onRefresh), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Refresh, "Обновить", tint = c.accent, modifier = Modifier.size(18.dp).rotate(if (busy) ang else 0f))
         }
     }) {
         NetMonitor.URL_TARGETS.chunked(2).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { t -> UrlTile(t, results[t.id], busy && t.id !in results, c, Modifier.weight(1f)) }
             }
         }
@@ -118,7 +120,7 @@ internal fun UrlTestCard(results: Map<String, Long>, busy: Boolean, onRefresh: (
 private fun UrlTile(t: NetMonitor.Target, ms: Long?, pending: Boolean, c: SsColors, modifier: Modifier) {
     val style = LocalAppStyle.current
     val shape = ssShape(style, 12.dp)
-    Row(modifier.clip(shape).background(c.chipOff).padding(horizontal = 7.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.clip(shape).background(c.chipOff).padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
         SiteIcon(t.id)
         Spacer(Modifier.width(6.dp))
         Text(t.title, color = c.onCard, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -131,7 +133,7 @@ private fun UrlTile(t: NetMonitor.Target, ms: Long?, pending: Boolean, c: SsColo
 
 @Composable
 private fun SiteIcon(id: String) {
-    val m = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp))
+    val m = Modifier.size(20.dp).clip(RoundedCornerShape(6.dp))
     when (id) {
         "google" -> Box(m.background(Color.White), contentAlignment = Alignment.Center) {
             Text("G", fontWeight = FontWeight.Bold, fontSize = 14.sp, style = androidx.compose.ui.text.TextStyle(brush = Brush.linearGradient(

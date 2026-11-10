@@ -127,7 +127,7 @@ class TvShotsTest {
 
     private val rows = listOf(Triple("🇩🇪 Германия · Франкфурт-на-Майне", "VLESS Reality", 38L), Triple("🇳🇱 Amsterdam", "Hysteria2", 72L),
         Triple("🇫🇮 Helsinki", "Trojan TLS", 140L), Triple("🇺🇸 New York", "VMess WS", 230L), Triple("🇯🇵 Tokyo", "TUIC", -1L))
-    @Composable private fun servers() = Row(Modifier.fillMaxSize()) { MainSideRail(MainTab.Servers) {}; Box(Modifier.weight(1f)) { TvColumn(true) { serversList() } } }
+    @Composable private fun servers() = Row(Modifier.fillMaxSize()) { MainSideRail(MainTab.Home) {}; Box(Modifier.weight(1f)) { TvColumn(true) { serversList() } } }
     @Composable private fun serversList() {
         val style = ServerStyle.CLASSIC
         val c = ssColors(style)
