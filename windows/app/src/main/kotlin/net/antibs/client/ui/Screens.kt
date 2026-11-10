@@ -375,6 +375,11 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
 
     // 2.0.32: «Главная» = banner + power + the subscriptions/servers list (map/globe and the «Серверы» tab removed)
     val homeList = androidx.compose.foundation.lazy.rememberLazyListState()
+    // 2.0.33: picking a server scrolls back to the power button / banner (not on first show)
+    var lastSel by remember { mutableStateOf(st.selectedServerId) }
+    LaunchedEffect(st.selectedServerId) {
+        if (st.selectedServerId != lastSel) { lastSel = st.selectedServerId; runCatching { homeList.animateScrollToItem(0) } }
+    }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         if (tab != MainTab.Speed) TopBar(
             theme = ui.theme,
@@ -416,6 +421,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             ) {
                 item(key = "home-top") {
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                // 2.0.33: banner on top, then the power button (Windows has no URL test card)
                 run {
                     // 1.0.31: the host line always stays; only the speeds/graphs section shows as soon as the VPN
                     // connects (or is connecting) and hides 5 s after it goes off (reconnect within 5 s cancels).
@@ -543,7 +549,7 @@ internal val VpnUpColor = AntiBSColors.DirectGraph
 
 @Composable
 private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
-    // 2.0.33: icon + label per tab (the «Тест скорости» / «Сеть» icons moved here from the home screen).
+    // 2.0.33: icons only (label = contentDescription); the «Тест скорости» / «Сеть» icons moved here from the home screen.
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val pill = AntiBSColors.BlueDeep
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -554,7 +560,7 @@ private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
             .fillMaxWidth().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 62.dp).padding(horizontal = 6.dp, vertical = 2.dp),
+            Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 6.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             MainTab.entries.forEach { t ->
@@ -566,18 +572,17 @@ private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                 )
                 Column(
                     Modifier
-                        // longer labels («Тест скорости») get a wider slot so they stay on one line
-                        .weight(0.6f + t.title.length.coerceIn(3, 16) * 0.06f)
+                        .weight(1f)
                         .clip(RoundedCornerShape(16.dp))
                         .clickable(onClickLabel = t.title) { if (!sel) { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onSelect(t) } }
-                        .padding(top = 6.dp, bottom = 4.dp),
+                        .padding(vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Box(
                         Modifier
-                            .size(width = 56.dp, height = 28.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .size(width = 60.dp, height = 32.dp)
+                            .clip(RoundedCornerShape(16.dp))
                             .background(if (sel) pill else Color.Transparent),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -589,21 +594,9 @@ private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                             },
                             contentDescription = t.title,
                             tint = if (sel) Color.White else muted,
-                            modifier = Modifier.size(20.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+                            modifier = Modifier.size(22.dp).graphicsLayer { scaleX = scale; scaleY = scale },
                         )
                     }
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        t.title,
-                        color = if (sel) AntiBSColors.Blue else muted,
-                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
-                        fontSize = 11.sp,
-                        lineHeight = 13.sp,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
         }

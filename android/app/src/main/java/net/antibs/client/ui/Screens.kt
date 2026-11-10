@@ -634,6 +634,14 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     }
                 }
             }
+            val urlTest: @Composable () -> Unit = {
+                HomeMonitorSection(
+                    connected = connected,
+                    socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
+                    showUrl = st.adv.homeUrlTest,
+                    haptics = st.adv.haptics,
+                )
+            }
             val homeTop: @Composable ColumnScope.() -> Unit = {
                 // 2.0.8: health → red power button + red banner status
                 val vpnPingMs by vm.vpnPingMs.collectAsState()
@@ -647,6 +655,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     active = connected || vpn.state == ConnState.CONNECTING, connected = connected,
                     vpnFails = vpnFails, directFails = directFails, netValidated = netOk)
                 val healthText = net.antibs.client.engine.NetMonitor.healthText(health)
+                // 2.0.33: connection banner → URL test → power button → status / error
                 run {
                     // 1.0.31: the host line always stays; only the speeds/graphs section shows as soon as the VPN
                     // connects (or is connecting) and hides 5 s after it goes off (reconnect within 5 s cancels).
@@ -705,11 +714,9 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         subStyle = st.adv.subRemain,
                     )
                 }
-                // 2.0.11: the banner got 13 dp shorter; the same height goes here, so the power button keeps its place
-                // and the gap banner ↔ power glow (halo ≤ ~13 dp outside the track) grows to ≥ 20 dp.
-                if (!isTv) Spacer(Modifier.height(BANNER_TRIM))
+                urlTest()
                 run {
-                    Box(Modifier.fillMaxWidth().padding(vertical = if (st.adv.homeUrlTest) 4.dp else 10.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
                         PowerToggle(state = vpn.state, since = vpn.since, problem = health != net.antibs.client.engine.NetMonitor.Health.OK, onClick = ::toggle)
                     }
                 }
@@ -766,15 +773,6 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (captcha != null) {
                     run { CaptchaCard(captcha!!) }
                 }
-            }
-            val urlTest: @Composable () -> Unit = {
-                HomeMonitorSection(
-                    connected = connected,
-                    socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
-                    showUrl = st.adv.homeUrlTest,
-                    haptics = st.adv.haptics,
-                )
-            }
             val listHeader: @Composable () -> Unit = {
                 val ids = st.subscriptions.map { it.id }
                 val curSub = if (effLayout == SubLayout.RIBBON) ServerStyleLogic.validRibbon(sRibbon[sStyle] ?: "", ids).let { id -> st.subscriptions.firstOrNull { it.id == id } } else null
@@ -807,13 +805,13 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
+                        // 2.0.33: banner → URL test → power button (one item), then the list
                         item(key = "home-top") { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { homeTop() } }
-                        if (st.adv.homeUrlTest) item(key = "home-url") { urlTest() }
                         item(key = "home-list-head") { listHeader() }
                         serverItems()
                     }
                 } else {
-                    // TV: left = banner + power, right = URL test + subscriptions/servers list
+                    // TV: left = banner + URL test + power, right = subscriptions/servers list
                     Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 2.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Column(Modifier.weight(0.44f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Spacer(Modifier.height(6.dp))
@@ -825,7 +823,6 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                             contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp),
                             verticalArrangement = Arrangement.spacedBy(3.dp),
                         ) {
-                            if (st.adv.homeUrlTest) item(key = "home-url") { urlTest() }
                             item(key = "home-list-head") { listHeader() }
                             serverItems()
                         }
@@ -843,14 +840,14 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
 }
 
 /** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + «Тест скорости», «Сеть». 2.0.33: icons back. */
-internal enum class MainTab(val title: String, val key: String) {
+internal enum class MainTab(val title: String, val i18nKey: String) {
     Shop("Магазин", "tab_shop"), Home("Главная", "tab_home"), Speed("Тест скорости", "tab_speed"), Net("Сеть", "tab_net");
-    val label: String get() = I18n.t(key)
+    val label: String get() = I18n.t(this.i18nKey)
 }
 
 @Composable
 internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
-    // 2.0.33: icon + label per tab (the «Тест скорости» / «Сеть» icons moved here from the home screen).
+    // 2.0.33: icons only (label = contentDescription); the «Тест скорости» / «Сеть» icons moved here from the home screen.
     val pill = if (LocalAppStyle.current == ServerStyle.CLASSIC) AntiBSColors.BlueDeep else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
@@ -862,7 +859,7 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 62.dp).padding(horizontal = 6.dp, vertical = 2.dp),
+            Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 6.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             MainTab.entries.forEach { t ->
@@ -874,18 +871,17 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                 )
                 Column(
                     Modifier
-                        // longer labels («Тест скорости») get a wider slot so they stay on one line
-                        .weight(0.6f + t.label.length.coerceIn(3, 16) * 0.06f)
+                        .weight(1f)
                         .clip(RoundedCornerShape(16.dp))
                         .clickable(onClickLabel = t.label) { if (!sel) onSelect(t) }
-                        .padding(top = 6.dp, bottom = 4.dp),
+                        .padding(vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Box(
                         Modifier
-                            .size(width = 56.dp, height = 28.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .size(width = 60.dp, height = 32.dp)
+                            .clip(RoundedCornerShape(16.dp))
                             .background(if (sel) pill else Color.Transparent),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -898,21 +894,9 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                             },
                             contentDescription = t.label,
                             tint = if (sel) Color.White else muted,
-                            modifier = Modifier.size(20.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+                            modifier = Modifier.size(22.dp).graphicsLayer { scaleX = scale; scaleY = scale },
                         )
                     }
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        t.label,
-                        color = if (sel) AntiBSColors.Blue else muted,
-                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
-                        fontSize = 11.sp,
-                        lineHeight = 13.sp,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
         }

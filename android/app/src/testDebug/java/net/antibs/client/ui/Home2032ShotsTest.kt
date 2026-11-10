@@ -17,7 +17,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** 2.0.32/2.0.33 home redesign previews (2.0.33: bottom bar icon + label) (ABS_SHOTS=1): VPN-only banner (↓ blue / ↑ red, wide graph), compact URL test, text-only tabs. */
+/** 2.0.32/2.0.33 home redesign previews (2.0.33: URL test → power → banner; icon-only bottom bar) (ABS_SHOTS=1): VPN-only banner (↓ blue / ↑ red, wide graph), compact URL test, text-only tabs. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w360dp-h800dp-xxhdpi")
@@ -41,6 +41,10 @@ class Home2032ShotsTest {
         val down = listOf(20f, 60f, 45f, 120f, 90f, 160f, 140f, 110f, 180f, 150f, 130f, 170f)
         val up = listOf(5f, 12f, 9f, 20f, 15f, 30f, 22f, 18f, 35f, 25f, 20f, 28f)
         Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            UrlTestCard(mapOf("google" to 92L, "youtube" to 140L, "telegram" to 210L, "instagram" to -1L), false) {}
+            Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                PowerToggle(state = net.antibs.client.engine.ConnState.CONNECTED, since = System.currentTimeMillis() - 754_000, onClick = {})
+            }
             ConnectionCard(
                 flag = "🇩🇪", name = "Германия · Франкфурт", proto = "VLESS Reality", protoTone = UiLogic.ProtoChipTone.OK,
                 active = false, dot = UiLogic.StatusDot.LIVE,
@@ -49,7 +53,6 @@ class Home2032ShotsTest {
                 statsVisible = true, pingMs = 84, pingStyle = net.antibs.client.data.PingChipStyle(),
                 directMs = 231, status = "Подключено", statusColor = AntiBSColors.Ok,
             )
-            UrlTestCard(mapOf("google" to 92L, "youtube" to 140L, "telegram" to 210L, "instagram" to -1L), false) {}
         }
         MainBottomBar(tab) { }
     }
