@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,6 +49,7 @@ fun ServersHeader(
     subMenu: Subscription?,
     onSubRefresh: (Subscription) -> Unit, onSubPing: (Subscription) -> Unit, onSubCopy: (Subscription) -> Unit,
     onSubDeleteUnreachable: (Subscription) -> Unit, onSubRestoreHidden: (Subscription) -> Unit, onSubDelete: (Subscription) -> Unit,
+    onSubAutoDelete: (Subscription, Boolean) -> Unit = { _, _ -> },
     subExtraMenu: (@Composable (Subscription, () -> Unit) -> Unit)? = null,
     viewOpenInitially: Boolean = false,
     /** 2.0.32: list header on «Главная» (the app top bar stays above): no logo and no «+». */
@@ -57,7 +60,7 @@ fun ServersHeader(
 ) {
     val c = ssColors(style)
     var sortOpen by remember { mutableStateOf(false) }
-    var moreOpen by remember { mutableStateOf(false) }
+    var moreOpen by remember { mutableStateOf(ShotHooks.subMenuOpen && subMenu != null) }
     val iconTint = if (style.glow) c.accent else c.onCard.copy(alpha = 0.8f)
     val menuShape = RoundedCornerShape(16.dp)
     @Composable
@@ -167,6 +170,14 @@ fun ServersHeader(
                 Item(Icons.Filled.Refresh, "Обновить") { moreOpen = false; onSubRefresh(sub) }
                 Item(Icons.Filled.NetworkCheck, "Проверить пинг") { moreOpen = false; onSubPing(sub) }
                 Item(Icons.Filled.ContentCopy, "Скопировать ссылку", enabled = sub.url.isNotBlank()) { moreOpen = false; onSubCopy(sub) }
+                DropdownMenuItem(
+                    text = { Text("Удалять недоступные после пинга", style = MaterialTheme.typography.bodyMedium) },
+                    leadingIcon = { Icon(Icons.Filled.TimerOff, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = { Checkbox(checked = sub.autoDeleteUnreachable, onCheckedChange = null) },
+                    onClick = { onSubAutoDelete(sub, !sub.autoDeleteUnreachable) },
+                    contentPadding = PaddingValues(horizontal = 14.dp),
+                    modifier = Modifier.height(42.dp),
+                )
                 if (sub.hiddenHosts.isNotEmpty()) Item(Icons.Filled.Restore, "Показать удалённые хосты") { moreOpen = false; onSubRestoreHidden(sub) }
                 Item(Icons.Filled.TimerOff, "Удалить недоступные") { moreOpen = false; onSubDeleteUnreachable(sub) }
                 subExtraMenu?.invoke(sub) { moreOpen = false }
@@ -194,6 +205,7 @@ internal fun LazyListScope.styledServers(
     sortMode: String, subNewestFirst: Boolean,
     st: AppState, ui: net.antibs.client.engine.UiSettings, pings: Map<String, Long>, pinging: Set<String>, vm: AppViewModel, ctx: Context,
     nowSec: Long, onSelected: () -> Unit, onLanSendServer: (String) -> Unit = {},
+    homeTab: String = "", homeCountry: String = "",
 ) {
     val all = UiLogic.hostGroups(st.subscriptions, st.servers, emptySet()).filter { it.subscription != null && (it.servers.isNotEmpty() || !UiLogic.isManualSub(it.subscription.id)) }
     val ordered = ServerStyleLogic.orderSubs(all, subNewestFirst)
@@ -202,7 +214,8 @@ internal fun LazyListScope.styledServers(
     val ping: (String) -> Long? = { pings[it] }
     val sel = if (style.fixedLayout != null) ServerStyleLogic.stackSelection(ServerStyleLogic.validRibbon(ribbonSel, ids), ids) else ServerStyleLogic.validRibbon(ribbonSel, ids)
     val shown = if (sel == ServerStyleLogic.RIBBON_ALL) ordered.flatMap { it.servers } else ordered.firstOrNull { it.subscription?.id == sel }?.servers.orEmpty()
-    val list = ServerStyleLogic.sortServers(ServerStyleLogic.filter(shown, filter, favorites, ping), sortMode, ping)
+    val scoped = if (homeTab.isBlank()) shown else HomeFilters.apply(shown, homeTab, homeCountry)
+    val list = ServerStyleLogic.sortServers(ServerStyleLogic.filter(scoped, filter, favorites, ping), sortMode, ping)
     item(key = "ss-top") {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)) {
             val ribbonItems = if (style.fixedLayout == null) listOf(RibbonItem(ServerStyleLogic.RIBBON_ALL, "Все", "${st.servers.size} серв.")) + items else items

@@ -50,6 +50,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.channels.Channel
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Network
 import net.antibs.client.engine.TunnelProbe
 import java.net.InetSocketAddress
@@ -536,7 +537,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun applySettingsBackup(b: SettingsBackup) {
         val ctx = getApplication<Application>()
         val before = store.snapshot()
-        push { SettingsBackupIo.applyPrefs(it, b.prefs) }
+        push { SettingsBackupIo.applyAutoDeleteByUrl(SettingsBackupIo.applyPrefs(it, b.prefs), b.prefs.autoDeleteUnreachableByUrl) }
         Styles.get(ctx).importBackup(b.styles)
         b.schedule?.let { VpnScheduler.save(ctx, it); VpnScheduler.arm(ctx, it) }
         if (SettingsBackupIo.affectsTunnel(before, store.snapshot())) reconnectIfConnected()
@@ -810,6 +811,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (on) refresh(subId, silent = true)
     }
 
+    /** 2.0.35: ⋮ «Удалять недоступные после пинга» — per subscription, default on. */
+    fun setSubscriptionAutoDelete(subId: String, on: Boolean) {
+        push { st -> st.copy(subscriptions = st.subscriptions.map { if (it.id == subId) it.copy(autoDeleteUnreachable = on) else it }) }
+    }
+
     /**
      * 1.0.19: routing profile delivered by a subscription fetch → fetch its custom geo files, reconnect if it is
      * the active profile and the VPN is up, then tell the user (notification + snackbar).
@@ -914,6 +920,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } finally {
                 flushPingUi()
                 _pinging.update { it - ids }
+                maybeAutoDeleteAfterPing(ids)
             }
         }
         pingJobs += job
@@ -1239,6 +1246,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** ⋮ «Показать удалённые хосты»: forget the subscription's deleted hosts and fetch them again. */
+    private fun networkOffline(): Boolean {
+        val cm = getApplication<Application>().getSystemService(ConnectivityManager::class.java) ?: return false
+        val n = cm.activeNetwork ?: return true
+        val caps = cm.getNetworkCapabilities(n) ?: return true
+        return !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    /** 2.0.35: after ping-all / subscription ping, auto-hide unreachable hosts when the toggle is on. */
+    private fun maybeAutoDeleteAfterPing(ids: Set<String>) {
+        val batch = _pingBatch.value
+        if (batch.isEmpty() || ids.none { it in batch }) return
+        val stopped = _pingStopped.value
+        val offline = networkOffline()
+        val (protect, name) = connectedProtect()
+        val pings = _pings.value
+        val servers = store.servers()
+        val bySub = servers.filter { it.id in ids }.mapNotNull { it.subscriptionId }.toSet()
+        var n = 0
+        for (subId in bySub) {
+            val sub = store.subscriptions().firstOrNull { it.id == subId } ?: continue
+            if (!sub.autoDeleteUnreachable) continue
+            val hosts = UiLogic.pingTargets(store.servers(), subId)
+            val del = AutoDeleteUnreachable.idsToDelete(
+                hosts, batchIds = ids, pings = pings,
+                protectIds = protect, protectName = name,
+                stoppedEarly = stopped, networkOffline = offline,
+            )
+            del.forEach { id ->
+                if (store.deleteHost(id) != null) { _pings.update { it - id }; n++ }
+            }
+        }
+        if (n > 0) _toast.value = "Удалено недоступных серверов: $n"
+    }
+
     fun restoreHiddenHosts(subId: String) {
         val n = store.subscriptions().firstOrNull { it.id == subId }?.hiddenHosts?.size ?: 0
         if (n == 0) { _toast.value = "Удалённых хостов нет"; return }

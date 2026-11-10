@@ -178,4 +178,36 @@ class SettingsBackupTest {
         assertTrue(SettingsBackupIo.affectsTunnel(a, b))
         assertFalse(SettingsBackupIo.affectsTunnel(a, a.copy(theme = "dark")))
     }
+
+    @Test fun autoDeleteToggleIsBackedUpByUrlHash() {
+        val off = secretSub.copy(autoDeleteUnreachable = false)
+        val json = SettingsBackup.toJson(SettingsBackupIo.fromAppState(
+            dirty.copy(subscriptions = listOf(off)),
+            appVersion = "2.0.35",
+            styles = BackupStyles(homeFilterTab = "IPv4", homeFilterCountry = "DE"),
+            schedule = null,
+            exportedAt = "2026-11-10T10:00:00Z",
+        ))
+        assertFalse(json.contains("secret-token-xyz"))
+        assertFalse(json.contains(off.url))
+        val key = SettingsBackupIo.urlKey(off.url)
+        assertTrue(key.length == 64)
+        assertTrue(json.contains(key))
+        val parsed = SettingsBackup.parse(json).getOrThrow()
+        assertEquals(false, parsed.prefs.autoDeleteUnreachableByUrl[key])
+        assertEquals("IPv4", parsed.styles.homeFilterTab)
+        assertEquals("DE", parsed.styles.homeFilterCountry)
+
+        val already = AppState(subscriptions = listOf(secretSub.copy(autoDeleteUnreachable = true)))
+        val next = SettingsBackupIo.applyAutoDeleteByUrl(already, parsed.prefs.autoDeleteUnreachableByUrl)
+        assertEquals(false, next.subscriptions.single().autoDeleteUnreachable)
+        // unknown URL hashes do not touch other subscriptions
+        val other = Subscription(id = "other", url = "https://other.example/sub")
+        val mixed = SettingsBackupIo.applyAutoDeleteByUrl(
+            AppState(subscriptions = listOf(secretSub, other)),
+            parsed.prefs.autoDeleteUnreachableByUrl,
+        )
+        assertEquals(false, mixed.subscriptions[0].autoDeleteUnreachable)
+        assertEquals(true, mixed.subscriptions[1].autoDeleteUnreachable)
+    }
 }

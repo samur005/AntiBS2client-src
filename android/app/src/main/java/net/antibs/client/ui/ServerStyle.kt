@@ -201,6 +201,14 @@ class StylePrefs(private val kv: StyleKv) {
         kv.putSet("ss_favorites", next); _favorites.value = next
     }
 
+    // 2.0.35: Home СЕТЬ-style tab + country (empty tab = default IPv4/first; empty country = all).
+    private val _homeTab = MutableStateFlow(kv.getString("ss_home_tab") ?: "")
+    val homeTab: StateFlow<String> = _homeTab.asStateFlow()
+    fun setHomeTab(tab: String) { kv.putString("ss_home_tab", tab); _homeTab.value = tab }
+    private val _homeCountry = MutableStateFlow(kv.getString("ss_home_country") ?: "")
+    val homeCountry: StateFlow<String> = _homeCountry.asStateFlow()
+    fun setHomeCountry(code: String) { kv.putString("ss_home_country", code); _homeCountry.value = code }
+
     /** 2.0.34: style/sort/filter only — no favourites or ribbon (those are server/subscription ids). */
     fun exportBackup(): BackupStyles = BackupStyles(
         style = style.value.key,
@@ -211,6 +219,8 @@ class StylePrefs(private val kv: StyleKv) {
             st.key to BackupStyleOpt(layout = o.layout.key, bestCard = o.bestCard)
         },
         filter = ServerStyle.entries.associate { st -> st.key to (_filter.value[st] ?: ServerFilter.ALL).key },
+        homeFilterTab = homeTab.value,
+        homeFilterCountry = homeCountry.value,
     )
 
     fun importBackup(b: BackupStyles) {
@@ -226,11 +236,17 @@ class StylePrefs(private val kv: StyleKv) {
             val st = ServerStyle.entries.firstOrNull { it.key == k } ?: return@forEach
             setFilter(st, ServerFilter.of(v))
         }
+        setHomeTab(b.homeFilterTab)
+        setHomeCountry(b.homeFilterCountry)
     }
 }
 
 /** Test-only hooks for screenshot rendering (never set in the app). */
-internal object ShotHooks { @JvmField var viewMenuOpen: Boolean = false }
+internal object ShotHooks {
+    @JvmField var viewMenuOpen: Boolean = false
+    /** 2.0.35: open the subscription ⋮ menu for screenshot tests. */
+    @JvmField var subMenuOpen: Boolean = false
+}
 
 /** AntiBS2client: hand-added servers live in the «Серверы» pseudo-subscription. */
 internal fun UiLogic.isManualSub(id: String?): Boolean = id == null || id == ProtocolSupport.MANUAL_SUB_ID

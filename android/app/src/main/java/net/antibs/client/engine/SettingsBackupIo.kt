@@ -6,6 +6,7 @@ import net.antibs.client.data.BackupStyleOpt
 import net.antibs.client.data.BackupStyles
 import net.antibs.client.data.SettingsBackup
 import net.antibs.client.data.VpnScheduleCfg
+import java.security.MessageDigest
 
 /** AppState / store glue for [SettingsBackup] (kept out of :data to avoid a package cycle). */
 object SettingsBackupIo {
@@ -31,6 +32,9 @@ object SettingsBackupIo {
         subUpdateHours = st.subUpdateHours,
         subUpdateWifiOnly = st.subUpdateWifiOnly,
         adv = SettingsBackup.sanitizeAdv(st.adv),
+        autoDeleteUnreachableByUrl = st.subscriptions
+            .filter { it.url.isNotBlank() && it.kind != "manual" }
+            .associate { urlKey(it.url) to it.autoDeleteUnreachable },
     )
 
     fun fromAppState(
@@ -112,7 +116,28 @@ object SettingsBackupIo {
     ) {
         if (store.snapshot().seeded) return
         val b = loadAssetDefaults(ctx) ?: return
-        store.update { applyPrefs(it, b.prefs) }
+        store.update { applyAutoDeleteByUrl(applyPrefs(it, b.prefs), b.prefs.autoDeleteUnreachableByUrl) }
         applyExtras(b.styles, b.schedule)
+    }
+
+    /** SHA-256 hex of a normalized subscription URL — used as a backup key so tokens never leave the device. */
+    fun urlKey(url: String): String {
+        val n = url.trim().trimEnd('/')
+        val md = MessageDigest.getInstance("SHA-256")
+        return md.digest(n.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    }
+
+    /** Apply [autoDeleteUnreachableByUrl] onto matching current subscriptions (by URL hash). Others unchanged. */
+    fun applyAutoDeleteByUrl(cur: AppState, byUrl: Map<String, Boolean>): AppState {
+        if (byUrl.isEmpty()) return cur
+        var changed = false
+        val subs = cur.subscriptions.map { s ->
+            if (s.url.isBlank() || s.kind == "manual") s
+            else {
+                val v = byUrl[urlKey(s.url)] ?: return@map s
+                if (s.autoDeleteUnreachable == v) s else { changed = true; s.copy(autoDeleteUnreachable = v) }
+            }
+        }
+        return if (changed) cur.copy(subscriptions = subs) else cur
     }
 }

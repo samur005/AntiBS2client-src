@@ -288,6 +288,8 @@ data class Subscription(
     val hiddenHosts: List<String> = emptyList(),
     /** 1.0.22: user edits of subscription hosts (by host id) — re-applied after every refresh. */
     val hostOverrides: Map<String, HostOverride> = emptyMap(),
+    /** 2.0.35: after a completed ping of this subscription (or ping-all), hide unreachable hosts. Default on. */
+    val autoDeleteUnreachable: Boolean = true,
 )
 
 /** 1.0.22: an edited subscription host: [profile] is what the user saved, [original] what the subscription delivered. */

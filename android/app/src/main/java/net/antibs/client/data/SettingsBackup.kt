@@ -100,6 +100,11 @@ data class BackupPrefs(
     val subUpdateHours: Int = SubAutoUpdate.DEFAULT_HOURS,
     val subUpdateWifiOnly: Boolean = false,
     val adv: AdvancedSettings = AdvancedSettings(),
+    /**
+     * 2.0.35: per-subscription «Удалять недоступные после пинга», keyed by SHA-256 of the
+     * subscription URL (the URL itself is not stored — it may contain a token).
+     */
+    val autoDeleteUnreachableByUrl: Map<String, Boolean> = emptyMap(),
 )
 
 @Serializable
@@ -112,4 +117,7 @@ data class BackupStyles(
     val subNewestFirst: Boolean = true,
     val options: Map<String, BackupStyleOpt> = emptyMap(),
     val filter: Map<String, String> = emptyMap(),
+    /** 2.0.35: Home filter tab id (IPv4 / Антиблок / protocol) and country code; empty = default / all. */
+    val homeFilterTab: String = "",
+    val homeFilterCountry: String = "",
 )

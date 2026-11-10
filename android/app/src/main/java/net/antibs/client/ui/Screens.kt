@@ -139,6 +139,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -475,6 +476,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val sFav by sp.favorites.collectAsState()
     val sSort by sp.sort.collectAsState()
     val sSubNew by sp.subNewestFirst.collectAsState()
+    val homeTabRaw by sp.homeTab.collectAsState()
+    val homeCountryRaw by sp.homeCountry.collectAsState()
     val opts = sOpts[sStyle] ?: ServerStyleLogic.defaultOptions(sStyle)
     val effLayout = ServerStyleLogic.effectiveLayout(sStyle, opts)
     val bg = ssBackground(sStyle)
@@ -523,6 +526,20 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     if (homeOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) vm.setHomeVisible(true)
                     onDispose { homeOwner.lifecycle.removeObserver(obs); vm.setHomeVisible(false) }
                 }
+            val ribbonIds = st.subscriptions.map { it.id }
+            val ribbonSel = if (sStyle != ServerStyle.CLASSIC && effLayout == SubLayout.RIBBON)
+                ServerStyleLogic.validRibbon(sRibbon[sStyle] ?: ServerStyleLogic.RIBBON_FIRST, ribbonIds) else null
+            val filterScope = if (ribbonSel != null && ribbonSel != ServerStyleLogic.RIBBON_ALL)
+                st.servers.filter { ServerStyleLogic.inGroup(it, ribbonSel) } else st.servers
+            val filterTabs = HomeFilters.tabs(UiLogic.visibleServers(filterScope))
+            val homeTab = HomeFilters.resolveTab(homeTabRaw, filterTabs)
+            val tabServers = filterScope.filter { HomeFilters.matchesTab(it, homeTab) }
+            val filterCountries = HomeFilters.countries(tabServers, pings)
+            val homeCountry = HomeFilters.resolveCountry(homeCountryRaw, filterCountries)
+            LaunchedEffect(homeTab, homeCountry, homeTabRaw, homeCountryRaw) {
+                if (homeTab != homeTabRaw) sp.setHomeTab(homeTab)
+                if (homeCountry != homeCountryRaw) sp.setHomeCountry(homeCountry)
+            }
             val serverItems: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
                 run {
                 if (pingBatch.isNotEmpty()) item(key = "ping-counter") { Box(Modifier.animateItem()) { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }, onStop = { vm.stopPingBatch() }, stopped = pingStopped) } }
@@ -534,7 +551,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     styledServers(sStyle, effLayout, opts.bestCard, sRibbon[sStyle] ?: ServerStyleLogic.RIBBON_FIRST, { sp.setRibbon(sStyle, it) },
                         sFilter[sStyle] ?: ServerFilter.ALL, { sp.setFilter(sStyle, it) }, sFav, sSort, sSubNew,
                         st, ui, pings, pinging, vm, ctx, nowSec, onSelected = { toTop() },
-                        onLanSendServer = onLanSendServer)
+                        onLanSendServer = onLanSendServer, homeTab = homeTab, homeCountry = homeCountry)
                     return@run
                 }
                 if (sStyle != ServerStyle.CLASSIC && opts.bestCard) item(key = "ss-best") {
@@ -550,7 +567,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 val sFilt = sFilter[sStyle] ?: ServerFilter.ALL
                 val shownGroups = ServerStyleLogic.orderSubs(groups, sSubNew)
                 shownGroups.forEach { g0 ->
-                        val g = g0.copy(servers = ServerStyleLogic.sortServers(ServerStyleLogic.filter(g0.servers, sFilt, sFav) { pings[it] }, sSort) { pings[it] })
+                        val scoped = HomeFilters.apply(g0.servers, homeTab, homeCountry)
+                        val g = g0.copy(servers = ServerStyleLogic.sortServers(ServerStyleLogic.filter(scoped, sFilt, sFav) { pings[it] }, sSort) { pings[it] })
                         val sub = g.subscription
                         // «Серверы» (manual) is omitted entirely when empty — no blank card/header.
                         if (sub != null && sub.id == ProtocolSupport.MANUAL_SUB_ID && g.total == 0 && st.adv.hideEmptyManual &&
@@ -577,6 +595,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                     onRestoreHidden = { vm.restoreHiddenHosts(sub.id) },
                                     onDeleteUnreachable = { vm.askDeleteUnreachable(sub.id) },
                                     scanningUnreachable = sub.id in unreachableScan,
+                                    onAutoDeleteUnreachable = { on -> vm.setSubscriptionAutoDelete(sub.id, on) },
                                     extraMenu = { close ->
                                         GroupingMenuItems(vm, st.adv.serverGrouping, sub.id, close)
                                         androidx.compose.material3.DropdownMenuItem(text = { Text("Передать на устройство") }, leadingIcon = { MenuIcon(Icons.Filled.SendToMobile) }, onClick = { close(); onLanSend(sub.id) })
@@ -797,12 +816,25 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     onSubRefresh = { vm.refresh(it.id) }, onSubPing = { vm.pingSubscription(it.id) },
                     onSubCopy = { copyText(ctx, it.url); vm.message("Ссылка скопирована") },
                     onSubDeleteUnreachable = { vm.askDeleteUnreachable(it.id) }, onSubRestoreHidden = { vm.restoreHiddenHosts(it.id) },
+                    onSubAutoDelete = { sub, on -> vm.setSubscriptionAutoDelete(sub.id, on) },
                     subExtraMenu = { sb, close -> GroupingMenuItems(vm, st.adv.serverGrouping, sb.id, close) },
                     onSubDelete = { vm.removeSubscription(it.id) },
                     compact = true,
                     holiday = net.antibs.client.data.HolidayStyle.stripHoliday(st.adv.seasonalDecor, st.adv.seasonalFx.showLabel, st.adv.customHolidays),
                     holidayFx = st.adv.seasonalFx,
                 )
+                if (filterTabs.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    HomeFiltersBar(
+                        tabs = filterTabs,
+                        selectedTab = homeTab,
+                        onTab = { sp.setHomeTab(it); sp.setHomeCountry(HomeFilters.COUNTRY_ALL) },
+                        countries = filterCountries,
+                        selectedCountry = homeCountry,
+                        allCount = filterCountries.size,
+                        onCountry = { sp.setHomeCountry(it) },
+                    )
+                }
             }
             // Pull-to-refresh = refresh all subscriptions + ping hosts.
             PullToRefreshBox(
@@ -1098,7 +1130,8 @@ internal fun ConnectionCard(
             // (start-aligned, 2dp gap). The graph is exactly as tall as the two rows (14 + 2 + 14 dp) and top-aligned,
             // so its top is level with the ↓ row and its bottom with the ↑ row.
             // 2.0.32: VPN only — ↓ incoming blue, ↑ outgoing red; the graph stretches from the totals to the card edge.
-            Row(verticalAlignment = Alignment.Top) {
+            // 2.0.35: start = 16.dp matches «Подключено» (StatusDot 8.dp + Spacer 8.dp) so ↓/↑ sit under «П».
+            Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(start = 16.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
                     AliveArrow(down = true, color = VpnDownColor, rate = downRate, connected = active)
                     AliveArrow(down = false, color = VpnUpColor, rate = upRate, connected = active)
@@ -1109,7 +1142,7 @@ internal fun ConnectionCard(
                     RateCell(VpnUpColor, upSpeed, upTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
                 }
                 Spacer(Modifier.width(6.dp))
-                Sparkline(vpnSamples, upSamples, sampleTimes, active, Modifier.weight(1f).height(RowH * 2 + RowGap))
+                Sparkline(vpnSamples, upSamples, sampleTimes, active, Modifier.weight(1f).height(RowH * 2 + RowGap).offset(y = (-1.5).dp))
             }
             }
             }
@@ -1296,7 +1329,8 @@ private fun RateCell(
     color: Color, speed: String, total: String, speedW: Dp, totalW: Dp,
     speedAlign: TextAlign = TextAlign.End, totalAlign: TextAlign = TextAlign.End, gap: Dp = 3.dp,
 ) {
-    Row(Modifier.height(RowH), verticalAlignment = Alignment.CenterVertically) {
+    // 2.0.35: glyphs sit on the row bottom so the sparkline baseline meets the ↑ counter line.
+    Row(Modifier.height(RowH), verticalAlignment = Alignment.Bottom) {
         Text(speed, style = SpeedStyle, color = color, textAlign = speedAlign, maxLines = 1, softWrap = false, modifier = Modifier.width(speedW))
         Spacer(Modifier.width(gap))
         Text(total, style = TotalStyle, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = totalAlign, maxLines = 1, softWrap = false, modifier = Modifier.width(totalW))
@@ -1327,8 +1361,8 @@ private fun Sparkline(down: List<Float>, up: List<Float>, times: List<Long>, act
         val dotR = 2.6.dp.toPx()
         val top = stroke + 1f
         val usable = h - top - 1.5f
-        // soft baseline + faint mid grid line
-        drawLine(grid, Offset(0f, h - 1f), Offset(w, h - 1f), strokeWidth = 1f)
+        // 2.0.35: slightly clearer baseline at the canvas bottom (= ↑ text bottom).
+        drawLine(grid.copy(alpha = 0.28f), Offset(0f, h - 1f), Offset(w, h - 1f), strokeWidth = 1.25f)
         drawLine(grid, Offset(0f, top + usable / 2f), Offset(w, top + usable / 2f), strokeWidth = 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f)))
         val headX = w - dotR * 2.2f // live end, inset so the dot and its glow stay inside
         val step = headX / UiLogic.SPARK_HISTORY
@@ -1425,9 +1459,10 @@ internal fun SubCard(
     onRestoreHidden: () -> Unit = {},
     onDeleteUnreachable: () -> Unit = {},
     scanningUnreachable: Boolean = false,
+    onAutoDeleteUnreachable: (Boolean) -> Unit = {},
     extraMenu: (@Composable (close: () -> Unit) -> Unit)? = null,
 ) {
-    var menu by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(ShotHooks.subMenuOpen) }
     val traffic = UiLogic.traffic(sub)
     val uri = LocalUriHandler.current
     val shape = RoundedCornerShape(14.dp)
@@ -1471,6 +1506,12 @@ internal fun SubCard(
                         }
                         DropdownMenuItem(text = { Text("Проверить пинг") }, leadingIcon = { MenuIcon(Icons.Filled.NetworkCheck) }, onClick = { menu = false; onPing() })
                         extraMenu?.invoke { menu = false }
+                        DropdownMenuItem(
+                            text = { Text("Удалять недоступные после пинга") },
+                            leadingIcon = { MenuIcon(Icons.Filled.DeleteSweep) },
+                            trailingIcon = { Checkbox(checked = sub.autoDeleteUnreachable, onCheckedChange = null) },
+                            onClick = { onAutoDeleteUnreachable(!sub.autoDeleteUnreachable) },
+                        )
                         if (realServers > 0) DropdownMenuItem(
                             text = { Text(if (scanningUnreachable) "Удалить недоступные (пинг…)" else "Удалить недоступные") },
                             leadingIcon = { MenuIcon(Icons.Filled.DeleteSweep) },
