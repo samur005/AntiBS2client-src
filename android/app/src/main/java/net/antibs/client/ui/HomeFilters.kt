@@ -6,14 +6,17 @@ import net.antibs.client.data.ServerEntry
 import net.antibs.client.data.ServerGrouping
 
 /**
- * 2.0.36: СЕТЬ-style Home filters — IPv4 / IPv6 / Антиблок, then one tab per protocol
+ * 2.0.36: СЕТЬ-style Home filters — IPv4 / IPv6 / Антиблок / Мосты, then one tab per protocol
  * present in the current list (zero-count tabs are hidden). Country chips combine with the tab (AND).
  * Empty tab+country = no filter (subscription banners). A selected tab or country shows a flat list.
+ * 2.0.39: «Мосты» matches local chain profiles, a route in the name (arrows / 2+ distinct flags),
+ * or bridge keywords; country for those hosts is the exit (last) flag.
  */
 object HomeFilters {
     const val TAB_IPV6 = "IPv6"
     const val TAB_IPV4 = "IPv4"
     const val TAB_ANTIBLOCK = "Антиблок"
+    const val TAB_BRIDGES = "Мосты"
     const val COUNTRY_ALL = ""
 
     data class Tab(val id: String, val label: String, val count: Int)
@@ -24,6 +27,12 @@ object HomeFilters {
     private val MARK_V4 = Regex("""(?i)(?<![a-z0-9])(ipv4|ip-v4)(?![a-z0-9])|(?<![a-z0-9])v4(?![a-z0-9])""")
     private val ANTIBLOCK_RE = Regex("""(?i)q?wdtt|(?<![a-z0-9а-яё])4g(?![a-z0-9а-яё])""")
     private val IPV4_IN_TEXT = Regex("""(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])""")
+    /** Arrow between hops, including a spaced ASCII '>'. */
+    private val ROUTE_ARROW_RE = Regex("""→|->|=>|➡|⇒|»|›|\s>\s""")
+    /** Whole-word or word-start, not preceded by a letter (so «Телемост» does not match «мост»). */
+    private val BRIDGE_KEYWORD_RE = Regex(
+        """(?iu)(?<![\p{L}])(мосты|мост|каскад|bridges?|cascades?|relays?|via|через)""",
+    )
 
     private val PROTO_ORDER = listOf(
         "VLESS Reality", "VLESS WS", "Trojan", "SS", "HY2", "TUIC", "WG", "gRPC", "xHTTP",
@@ -77,6 +86,42 @@ object HomeFilters {
         return ANTIBLOCK_RE.containsMatchIn(n)
     }
 
+    /** 2.0.39: local chain profile, a hop route in the name, or a bridge/cascade keyword. */
+    fun isBridge(s: ServerEntry): Boolean =
+        s.xray?.protocol.equals("chain", ignoreCase = true) == true || nameIsBridge(s.name)
+
+    /**
+     * Pure name-side test for [isBridge] (no GeoIP). A name is a bridge/cascade when it has
+     * a hop arrow, two or more distinct country-flag emojis, or a keyword (мост, каскад, bridge, …).
+     */
+    fun nameIsBridge(name: String): Boolean {
+        if (name.isBlank()) return false
+        if (ROUTE_ARROW_RE.containsMatchIn(name)) return true
+        if (flagEmojis(name).distinct().size >= 2) return true
+        return BRIDGE_KEYWORD_RE.containsMatchIn(name)
+    }
+
+    /** Regional-indicator flag emoji pairs in [name], in order of appearance. */
+    fun flagEmojis(name: String): List<String> {
+        val cps = name.codePoints().toArray()
+        val out = ArrayList<String>()
+        var i = 0
+        while (i < cps.size - 1) {
+            if (cps[i] in 0x1F1E6..0x1F1FF && cps[i + 1] in 0x1F1E6..0x1F1FF) {
+                out += String(cps, i, 2)
+                i += 2
+            } else i++
+        }
+        return out
+    }
+
+    /** ISO country code of the last flag in [name], or null when there is none. */
+    fun lastCountryCode(name: String): String? {
+        val flag = UiLogic.exitFlag(name)
+        if (flag == "🌐") return null
+        return ServerGrouping.countryCode(flag)
+    }
+
     /** Compact protocol tab for a host; null = no protocol tab (qWDTT / auto-select). */
     fun protocolTab(s: ServerEntry): String? {
         if (s.engine == EngineKind.QWDTT) return null
@@ -106,11 +151,15 @@ object HomeFilters {
         TAB_IPV6 -> hasIpv6(s)
         TAB_IPV4 -> hasIpv4(s)
         TAB_ANTIBLOCK -> isAntiblock(s)
+        TAB_BRIDGES -> isBridge(s)
         else -> protocolTab(s) == tab
     }
 
-    fun countryCode(s: ServerEntry): String =
-        ServerGrouping.countryCode(s.name) ?: ServerGrouping.OTHER
+    /** Exit (last) flag for a bridge/cascade; otherwise the first flag, else «Другие». */
+    fun countryCode(s: ServerEntry): String {
+        if (isBridge(s)) lastCountryCode(s.name)?.let { return it }
+        return ServerGrouping.countryCode(s.name) ?: ServerGrouping.OTHER
+    }
 
     fun matchesCountry(s: ServerEntry, country: String): Boolean =
         country.isEmpty() || country == COUNTRY_ALL || countryCode(s) == country
@@ -152,6 +201,7 @@ object HomeFilters {
         addFixed(TAB_IPV4, ::hasIpv4)
         addFixed(TAB_IPV6, ::hasIpv6)
         addFixed(TAB_ANTIBLOCK, ::isAntiblock)
+        addFixed(TAB_BRIDGES, ::isBridge)
         val protoCounts = LinkedHashMap<String, Int>()
         for (s in servers) {
             val t = protocolTab(s) ?: continue
@@ -170,16 +220,19 @@ object HomeFilters {
 
     fun countries(servers: List<ServerEntry>, pings: Map<String, Long> = emptyMap()): List<Country> {
         if (servers.isEmpty()) return emptyList()
-        val grouped = ServerGrouping.group(servers, { it.name }, ServerGrouping.SORT_NAME, ping = { pings[it.id] })
-        return grouped.map { (code, list) ->
-            Country(
-                code = code,
-                flag = if (code == ServerGrouping.OTHER) "🌐" else ServerGrouping.flag(code),
-                name = ServerGrouping.countryName(code),
-                count = list.size,
-                bestPing = ServerGrouping.bestPing(list.map { pings[it.id] }),
-            )
-        }
+        val grouped = LinkedHashMap<String, MutableList<ServerEntry>>()
+        for (s in servers) grouped.getOrPut(countryCode(s)) { ArrayList() }.add(s)
+        val other = grouped.remove(ServerGrouping.OTHER)
+        val keys = grouped.keys.sortedBy { ServerGrouping.countryName(it).lowercase() }
+        fun toCountry(code: String, list: List<ServerEntry>) = Country(
+            code = code,
+            flag = if (code == ServerGrouping.OTHER) "🌐" else ServerGrouping.flag(code),
+            name = ServerGrouping.countryName(code),
+            count = list.size,
+            bestPing = ServerGrouping.bestPing(list.map { pings[it.id] }),
+        )
+        return keys.map { toCountry(it, grouped.getValue(it)) } +
+            listOfNotNull(other?.let { toCountry(ServerGrouping.OTHER, it) })
     }
 
     /** Keep [selected] when it still exists; otherwise no tab (""). Never auto-picks IPv4. */

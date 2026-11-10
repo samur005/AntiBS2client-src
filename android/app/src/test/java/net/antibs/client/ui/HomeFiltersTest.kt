@@ -158,4 +158,75 @@ class HomeFiltersTest {
         assertEquals("IPv4", HomeFilters.chipLabel("IPv4", "", emptyList()))
         assertEquals("Все страны", HomeFilters.chipLabel("", "", emptyList()))
     }
+
+    @Test fun nameIsBridgeDetectsRoutesAndKeywords() {
+        val yes = listOf(
+            "🇷🇺→🇩🇪 Германия",
+            "🇷🇺🇳🇱",
+            "RU -> DE",
+            "RU => DE",
+            "NL ➡ FI",
+            "RU ⇒ DE",
+            "RU » DE",
+            "RU › DE",
+            "RU > DE",
+            "Мост Германия",
+            "Мосты NL-DE",
+            "Каскад NL",
+            "DE bridge",
+            "cascade to FI",
+            "relay NL",
+            "via Germany",
+            "через NL",
+            "BRIDGES west",
+        )
+        for (n in yes) assertTrue("expected bridge: $n", HomeFilters.nameIsBridge(n))
+        val no = listOf(
+            "Телемост",
+            "Яндекс Телемост",
+            "olcRTC Телемост",
+            "🇩🇪 Германия",
+            "Германия IPv6",
+            "🇩🇪 Франкфурт",
+            "Latvia",
+            "mystery-node",
+            "RU>DE", // ASCII '>' only counts with spaces
+        )
+        for (n in no) assertFalse("not a bridge: $n", HomeFilters.nameIsBridge(n))
+        assertTrue(HomeFilters.isBridge(xray("plain chain", protocol = "chain")))
+        assertFalse(HomeFilters.isBridge(xray("🇩🇪 Франкфурт")))
+    }
+
+    @Test fun bridgesTabSitsAfterAntiblockAndHidesWhenEmpty() {
+        val servers = listOf(
+            xray("🇩🇪 Франкфурт", security = "reality"),
+            qwdtt("🇳🇱 Амстердам WDTT"),
+            xray("🇷🇺→🇩🇪 Германия", security = "reality"),
+            xray("plain chain", protocol = "chain"),
+        )
+        val tabs = HomeFilters.tabs(servers)
+        assertEquals(listOf("IPv4", "Антиблок", "Мосты", "VLESS Reality", "Цепь"), tabs.map { it.id })
+        assertEquals(2, tabs.first { it.id == "Мосты" }.count)
+        // no bridges → chip is hidden
+        val noBridges = HomeFilters.tabs(listOf(xray("🇩🇪 Франкфурт", security = "reality"), qwdtt("4G")))
+        assertTrue(noBridges.none { it.id == "Мосты" })
+        assertEquals(listOf("IPv4", "Антиблок", "VLESS Reality"), noBridges.map { it.id })
+    }
+
+    @Test fun bridgeCountryIsTheExitFlagAndChipsStayIndependent() {
+        val cascade = xray("🇷🇺→🇩🇪 Германия", security = "reality", server = "de.example.com")
+        val flagsOnly = xray("🇷🇺🇳🇱", security = "reality")
+        val plainDe = xray("🇩🇪 Франкфурт", security = "reality")
+        assertEquals("DE", HomeFilters.countryCode(cascade))
+        assertEquals("NL", HomeFilters.countryCode(flagsOnly))
+        assertEquals("DE", HomeFilters.countryCode(plainDe))
+        val all = listOf(cascade, flagsOnly, plainDe)
+        assertEquals(setOf(cascade.id, flagsOnly.id), HomeFilters.chipTargets(all, tab = "Мосты").map { it.id }.toSet())
+        // same cascade also belongs to IPv4 and its protocol chip
+        assertTrue(cascade in HomeFilters.chipTargets(all, tab = "IPv4"))
+        assertTrue(cascade in HomeFilters.chipTargets(all, tab = "VLESS Reality"))
+        val cs = HomeFilters.countries(listOf(cascade, flagsOnly))
+        assertEquals(listOf("DE", "NL"), cs.map { it.code })
+        assertEquals("Германия", cs.first { it.code == "DE" }.name)
+    }
 }
