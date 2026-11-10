@@ -47,6 +47,8 @@ fun ServersHeader(
     onSubDeleteUnreachable: (Subscription) -> Unit, onSubRestoreHidden: (Subscription) -> Unit, onSubDelete: (Subscription) -> Unit,
     subExtraMenu: (@Composable (Subscription, () -> Unit) -> Unit)? = null,
     viewOpenInitially: Boolean = false,
+    /** 2.0.32: list header on «Главная» (the app top bar stays above): small title, no logo and no «+». */
+    compact: Boolean = false,
 ) {
     val c = ssColors(style)
     var sortOpen by remember { mutableStateOf(false) }
@@ -72,8 +74,10 @@ fun ServersHeader(
     fun Section(t: String) = Text(t, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
 
-    Row(Modifier.fillMaxWidth().height(46.dp).padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (style == ServerStyle.MATERIAL) {
+    Row(Modifier.fillMaxWidth().height(if (compact) 38.dp else 46.dp).padding(start = if (compact) 4.dp else 12.dp, end = if (compact) 0.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (compact) {
+            Text("Подписки и серверы", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = c.onCard, maxLines = 1)
+        } else if (style == ServerStyle.MATERIAL) {
             Text("Серверы", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = c.onCard, modifier = Modifier.padding(start = 4.dp))
         } else {
             androidx.compose.foundation.Image(painterResource(net.antibs.client.R.drawable.brand_icon), null,
@@ -123,7 +127,7 @@ fun ServersHeader(
                 Item(Icons.Filled.Speed, if (testing) "Проверка…" else "Проверить все", enabled = !testing) { sortOpen = false; onTestAll() }
             }
         }
-        HeadIcon(Icons.Filled.Add, "Добавить серверы") { onAdd() }
+        if (!compact) HeadIcon(Icons.Filled.Add, "Добавить серверы") { onAdd() }
         if (subMenu != null) Box {
             val sub = subMenu
             HeadIcon(Icons.Filled.MoreVert, "Меню подписки") { moreOpen = true }

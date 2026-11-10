@@ -334,15 +334,16 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(vpn.state) { while (true) { delay(1000); tick++ } }
     // 1.0.10: 60 s of EMA-smoothed history; [sampleSeq] drives the smooth scroll animation in the sparkline.
+    // 2.0.32: VPN only — ↓ incoming (blue) and ↑ outgoing (red) as two series; direct traffic left the banner.
     val vpnSamples = remember { mutableStateListOf<Float>() }
-    val directSamples = remember { mutableStateListOf<Float>() }
+    val upSamples = remember { mutableStateListOf<Float>() }
     var sampleSeq by remember { mutableIntStateOf(0) }
     // 1.0.24: arrival time of every sample (uptime ms) — the sparkline scrolls by wall-clock, not by sample count.
     val sampleTimes = remember { mutableStateListOf<Long>() }
     LaunchedEffect(tick) {
         if (vpn.state == ConnState.CONNECTED) {
-            UiLogic.pushSmoothed(vpnSamples, (vpn.downSpeed + vpn.upSpeed).toFloat())
-            UiLogic.pushSmoothed(directSamples, (vpn.directDownSpeed + vpn.directUpSpeed).toFloat())
+            UiLogic.pushSmoothed(vpnSamples, vpn.downSpeed.toFloat())
+            UiLogic.pushSmoothed(upSamples, vpn.upSpeed.toFloat())
             sampleTimes.add(android.os.SystemClock.uptimeMillis())
             while (sampleTimes.size > vpnSamples.size) sampleTimes.removeAt(0)
             sampleSeq++
@@ -372,8 +373,10 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val payReturn by net.antibs.client.MainActivity.paymentReturn.collectAsState()
     LaunchedEffect(payReturn) { if (payReturn != null) tabName = MainTab.Shop.name }
 
+    // 2.0.32: «Главная» = banner + power + the subscriptions/servers list (map/globe and the «Серверы» tab removed)
+    val homeList = androidx.compose.foundation.lazy.rememberLazyListState()
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
-        TopBar(
+        if (tab != MainTab.Speed) TopBar(
             theme = ui.theme,
             onTheme = { vm.setTheme(it) },
             onSettings = onOpenSettings,
@@ -391,23 +394,28 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             label = "main-tab",
         ) { shown ->
         if (shown == MainTab.Shop) {
-            ShopScreen(vm, onOpenServers = { tabName = MainTab.Servers.name })
+            ShopScreen(vm, onOpenServers = { tabName = MainTab.Home.name })
             return@AnimatedContent
         }
-        // 1.0.46: «Главная» = speed card, power button and the globe / map filling the rest (no list).
-        if (shown == MainTab.Home) {
-            PullToRefreshBox(
-                isRefreshing = refreshing.isNotEmpty(),
-                onRefresh = { vm.refreshAll() },
+        // 2.0.32: «Тест скорости» is a bottom-bar tab (same page, no back arrow inside the tab)
+        if (shown == MainTab.Speed) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalInTabs provides true) { SpeedTestPage(vm, onBack = { tabName = MainTab.Home.name }) }
+            return@AnimatedContent
+        }
+        // Pull-to-refresh = refresh all subscriptions + ping hosts.
+        PullToRefreshBox(
+            isRefreshing = refreshing.isNotEmpty(),
+            onRefresh = { vm.refreshAll() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            LazyColumn(
+                state = homeList,
                 modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val fullH = maxHeight
-                    Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-                        Column(
-                            Modifier.fillMaxWidth().height(fullH).padding(start = 12.dp, end = 12.dp, top = 2.dp),
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
-                        ) {
+                item(key = "home-top") {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 run {
                     // 1.0.31: the host line always stays; only the speeds/graphs section shows as soon as the VPN
                     // connects (or is connecting) and hides 5 s after it goes off (reconnect within 5 s cancels).
@@ -427,19 +435,13 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         active = connected,
                         downRate = vpn.downSpeed,
                         upRate = vpn.upSpeed,
-                        directDownRate = vpn.directDownSpeed,
-                        directUpRate = vpn.directUpSpeed,
                         dot = UiLogic.statusDot(vpn.state, tunnelPing),
                         downSpeed = Format.speedFixed(vpn.downSpeed),
                         upSpeed = Format.speedFixed(vpn.upSpeed),
                         downTotal = Format.bytesFixed(vpn.downBytes),
                         upTotal = Format.bytesFixed(vpn.upBytes),
-                        directDownSpeed = Format.speedFixed(vpn.directDownSpeed),
-                        directUpSpeed = Format.speedFixed(vpn.directUpSpeed),
-                        directDownTotal = Format.bytesFixed(vpn.directDownBytes),
-                        directUpTotal = Format.bytesFixed(vpn.directUpBytes),
                         vpnSamples = vpnSamples,
-                        directSamples = directSamples,
+                        upSamples = upSamples,
                         sampleSeq = sampleSeq,
                         sampleTimes = sampleTimes,
                         onLongPress = onOpenSpeedTest,
@@ -464,39 +466,14 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (captcha != null) {
                     run { CaptchaCard(captcha!!) }
                 }
-                            val liveName = if (connected || vpn.state == ConnState.CONNECTING) UiLogic.liveHostName(vpn.serverName, vpn.pickName, connected).ifEmpty { server?.name.orEmpty() } else server?.name.orEmpty()
-                            HomeWorld(
-                                WorldInput(
-                                    connected = connected,
-                                    connecting = vpn.state == ConnState.CONNECTING,
-                                    liveName = liveName,
-                                    serverNames = remember(st.servers) { st.servers.map { it.name } },
-                                    socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
-                                ),
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                bleed = 12.dp,
-                                onServers = { tabName = MainTab.Servers.name },
-                                // 1.0.48: left-edge ping of the selected server (same measurement as the host list)
-                                ping = WorldPing(busy = server != null && server.id in pinging, ms = server?.id?.let { pings[it] }, stamp = pingStamp),
-                                onPing = server?.let { sv -> { pingAsked = true; vm.pingOne(sv) } },
-                            )
-                        }
                     }
                 }
-            }
-            return@AnimatedContent
-        }
-        // Pull-to-refresh = refresh all subscriptions + ping hosts (the top-bar ↻ was removed in 1.0.18).
-        PullToRefreshBox(
-            isRefreshing = refreshing.isNotEmpty(),
-            onRefresh = { vm.refreshAll() },
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
+                item(key = "home-list-head") {
+                    Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 6.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Подписки и серверы", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { vm.pingAll() }, enabled = pinging.isEmpty()) { Text(if (pinging.isEmpty()) "Проверить все" else "Проверка…", fontSize = 13.sp) }
+                    }
+                }
                 run {
                 if (pingBatch.isNotEmpty()) item(key = "ping-counter") { Box(Modifier.animateItem()) { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }, onStop = { vm.stopPingBatch() }, stopped = pingStopped) } }
                 if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
@@ -556,44 +533,54 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     if (showAdd) AddServersSheet(vm = vm, servers = st.servers, onDismiss = { showAdd = false })
 }
 
-/** 1.0.42: bottom tabs, left → right. */
-internal enum class MainTab(val title: String) { Shop("Магазин"), Home("Главная"), Servers("Серверы") }
+/** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + «Тест скорости».
+ *  («Сеть» is Android-only: the Windows build has no network tools screen.) */
+internal enum class MainTab(val title: String) { Shop("Магазин"), Home("Главная"), Speed("Тест скорости") }
+
+/** 2.0.32: banner VPN traffic colours — ↓ incoming blue, ↑ outgoing red (text, arrows and graph). */
+internal val VpnDownColor = AntiBSColors.VpnGraph
+internal val VpnUpColor = AntiBSColors.DirectGraph
 
 @Composable
 private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
+    // 2.0.32: text-only tabs (no icons); the selected tab sits on the accent pill.
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-    androidx.compose.material3.NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
-        modifier = Modifier.clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
     ) {
-        MainTab.entries.forEach { t ->
-            val sel = t == tab
-            val scale by androidx.compose.animation.core.animateFloatAsState(if (sel) 1.15f else 1f,
-                androidx.compose.animation.core.spring(dampingRatio = 0.5f, stiffness = 400f), label = "tab-scale")
-            NavigationBarItem(
-                selected = sel,
-                onClick = { if (!sel) { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onSelect(t) } },
-                icon = {
-                    Icon(
-                        when (t) {
-                            MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
-                            MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
-                            MainTab.Servers -> if (sel) Icons.Filled.Dns else Icons.Outlined.Dns
-                        },
-                        contentDescription = t.title,
-                        modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 50.dp).padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            MainTab.entries.forEach { t ->
+                val sel = t == tab
+                val bgc by androidx.compose.animation.animateColorAsState(if (sel) AntiBSColors.BlueDeep else Color.Transparent, label = "tab-bg")
+                Box(
+                    Modifier
+                        // longer labels («Тест скорости») get a wider slot so they stay on one line
+                        .weight(0.6f + t.title.length.coerceIn(3, 16) * 0.06f)
+                        .heightIn(min = 38.dp)
+                        .clip(RoundedCornerShape(19.dp))
+                        .background(bgc)
+                        .clickable(onClickLabel = t.title) { if (!sel) { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onSelect(t) } }
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        t.title,
+                        color = if (sel) Color.White else muted,
+                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                },
-                label = { Text(t.title, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
-                colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color.White,
-                    selectedTextColor = AntiBSColors.Blue,
-                    indicatorColor = AntiBSColors.BlueDeep,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
-            )
+                }
+            }
         }
     }
 }
@@ -648,7 +635,6 @@ private fun TopBar(
                 contentDescription = "Сменить тему", tint = tint,
             )
         }
-        IconButton(onClick = onSpeedTest) { Icon(Icons.Filled.Speed, "Тест скорости", tint = tint) }
         IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Настройки", tint = tint) }
         IconButton(onClick = onAdd) { Icon(Icons.Filled.Add, "Добавить серверы", tint = tint, modifier = Modifier.size(28.dp)) }
     }
@@ -666,18 +652,14 @@ private fun ConnectionCard(
     upSpeed: String,
     downTotal: String,
     upTotal: String,
-    directDownSpeed: String,
-    directUpSpeed: String,
-    directDownTotal: String,
-    directUpTotal: String,
+    /** ↓ incoming VPN traffic samples (blue). */
     vpnSamples: List<Float>,
-    directSamples: List<Float>,
+    /** 2.0.32: ↑ outgoing VPN traffic samples (red). */
+    upSamples: List<Float>,
     sampleSeq: Int,
     sampleTimes: List<Long> = emptyList(),
     downRate: Long = 0,
     upRate: Long = 0,
-    directDownRate: Long = 0,
-    directUpRate: Long = 0,
     onLongPress: () -> Unit = {},
     statsVisible: Boolean = true,
 ) {
@@ -742,31 +724,19 @@ private fun ConnectionCard(
             // of the red column follow direct speed only. The VPN total starts right after the VPN speed slot
             // (start-aligned, 2dp gap). The graph is exactly as tall as the two rows (14 + 2 + 14 dp) and top-aligned,
             // so its top is level with the ↓ row and its bottom with the ↑ row.
+            // 2.0.32: VPN only — ↓ incoming blue, ↑ outgoing red; the graph stretches from the totals to the card edge.
             Row(verticalAlignment = Alignment.Top) {
                 Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
-                    AliveArrow(down = true, color = downArrowColor(), rate = downRate, connected = active)
-                    AliveArrow(down = false, color = AntiBSColors.Warn, rate = upRate, connected = active)
+                    AliveArrow(down = true, color = VpnDownColor, rate = downRate, connected = active)
+                    AliveArrow(down = false, color = VpnUpColor, rate = upRate, connected = active)
                 }
                 Spacer(Modifier.width(3.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
-                    RateCell(AntiBSColors.VpnGraph, downSpeed, downTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
-                    RateCell(AntiBSColors.VpnGraph, upSpeed, upTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
+                    RateCell(VpnDownColor, downSpeed, downTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
+                    RateCell(VpnUpColor, upSpeed, upTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
                 }
                 Spacer(Modifier.width(6.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
-                    AliveArrow(down = true, color = downArrowColor(), rate = directDownRate, connected = active)
-                    AliveArrow(down = false, color = AntiBSColors.Warn, rate = directUpRate, connected = active)
-                }
-                // 1.0.17: red column mirrors the VPN one — speed start-aligned right after its arrow, total 2dp after.
-                Spacer(Modifier.width(3.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
-                    RateCell(AntiBSColors.DirectGraph, directDownSpeed, directDownTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
-                    RateCell(AntiBSColors.DirectGraph, directUpSpeed, directUpTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
-                }
-                Spacer(Modifier.width(8.dp))
-                Box(Modifier.weight(1f), contentAlignment = Alignment.TopEnd) {
-                    Sparkline(vpnSamples, directSamples, sampleTimes, active, Modifier.widthIn(max = 110.dp).fillMaxWidth().height(RowH * 2 + RowGap))
-                }
+                Sparkline(vpnSamples, upSamples, sampleTimes, active, Modifier.weight(1f).height(RowH * 2 + RowGap))
             }
             }
             }
@@ -778,10 +748,6 @@ private fun ConnectionCard(
 private val RowH = 14.dp
 private val RowGap = 2.dp
 
-/** ↓ arrow: yellow (1.0.13), a deeper amber on light surfaces so it stays readable. */
-@Composable
-private fun downArrowColor(): Color =
-    if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) AntiBSColors.ArrowYellowLight else AntiBSColors.ArrowYellow
 
 /**
  * 1.0.14 header status dot (1.0.19: while connected its colour follows the tunnel ping — CHECKING amber,
@@ -922,9 +888,9 @@ private fun RateCell(
 }
 
 @Composable
-private fun Sparkline(vpn: List<Float>, direct: List<Float>, times: List<Long>, active: Boolean, modifier: Modifier) {
-    val vpnColor = AntiBSColors.VpnGraph
-    val directColor = AntiBSColors.DirectGraph
+private fun Sparkline(down: List<Float>, up: List<Float>, times: List<Long>, active: Boolean, modifier: Modifier) {
+    val downColor = VpnDownColor
+    val upColor = VpnUpColor
     val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     // 1.0.24: frame clock — the graph scrolls continuously at a constant speed (one step per sample interval)
     // and the live head slides between the previous and the newest value. Runs only while connected and the
@@ -934,7 +900,7 @@ private fun Sparkline(vpn: List<Float>, direct: List<Float>, times: List<Long>, 
         if (!active) return@LaunchedEffect
         while (true) withFrameNanos { clock.longValue = android.os.SystemClock.uptimeMillis() }
     }
-    val scaleTarget = UiLogic.sparkScale(vpn.takeLast(UiLogic.SPARK_HISTORY + 2), direct.takeLast(UiLogic.SPARK_HISTORY + 2))
+    val scaleTarget = UiLogic.sparkScale(down.takeLast(UiLogic.SPARK_HISTORY + 2), up.takeLast(UiLogic.SPARK_HISTORY + 2))
     val scale = animateFloatAsState(scaleTarget, animationSpec = tween(900, easing = FastOutSlowInEasing), label = "sparkScale")
     Canvas(modifier) {
         val w = size.width
@@ -994,8 +960,8 @@ private fun Sparkline(vpn: List<Float>, direct: List<Float>, times: List<Long>, 
             drawCircle(Color.White.copy(alpha = 0.85f), dotR * 0.38f, Offset(hx, hy))
         }
         clipRect(left = 0f, top = 0f, right = w, bottom = h) {
-            drawSeries(direct, directColor)
-            drawSeries(vpn, vpnColor)
+            drawSeries(down, downColor)
+            drawSeries(up, upColor)
         }
     }
 }

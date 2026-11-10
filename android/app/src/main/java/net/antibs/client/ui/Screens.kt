@@ -194,6 +194,7 @@ import net.antibs.client.engine.UiSettings
 import net.antibs.client.engine.VpnState
 import net.antibs.client.service.AntiBSVpnService
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.text.drawText
@@ -424,15 +425,16 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(vpn.state) { while (true) { delay(1000); tick++ } }
     // 1.0.10: 60 s of EMA-smoothed history; [sampleSeq] drives the smooth scroll animation in the sparkline.
+    // 2.0.32: VPN only — ↓ incoming (blue) and ↑ outgoing (red) as two series; direct traffic left the banner.
     val vpnSamples = remember { mutableStateListOf<Float>() }
-    val directSamples = remember { mutableStateListOf<Float>() }
+    val upSamples = remember { mutableStateListOf<Float>() }
     var sampleSeq by remember { mutableIntStateOf(0) }
     // 1.0.24: arrival time of every sample (uptime ms) — the sparkline scrolls by wall-clock, not by sample count.
     val sampleTimes = remember { mutableStateListOf<Long>() }
     LaunchedEffect(tick) {
         if (vpn.state == ConnState.CONNECTED) {
-            UiLogic.pushSmoothed(vpnSamples, (vpn.downSpeed + vpn.upSpeed).toFloat())
-            UiLogic.pushSmoothed(directSamples, (vpn.directDownSpeed + vpn.directUpSpeed).toFloat())
+            UiLogic.pushSmoothed(vpnSamples, vpn.downSpeed.toFloat())
+            UiLogic.pushSmoothed(upSamples, vpn.upSpeed.toFloat())
             sampleTimes.add(android.os.SystemClock.uptimeMillis())
             while (sampleTimes.size > vpnSamples.size) sampleTimes.removeAt(0)
             sampleSeq++
@@ -477,27 +479,16 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val effLayout = ServerStyleLogic.effectiveLayout(sStyle, opts)
     val bg = ssBackground(sStyle)
     val isTv = LocalIsTv.current
+    // 2.0.32: «Главная» = banner + power + URL test + the subscriptions/servers list (map/globe and the «Серверы» tab removed)
+    val homeList = androidx.compose.foundation.lazy.rememberLazyListState()
+    val homeScope = androidx.compose.runtime.rememberCoroutineScope()
+    val toTop: () -> Unit = { homeScope.launch { runCatching { homeList.animateScrollToItem(0) } } }
+    val vDrag = remember { VReorderState() }
+    val dragHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     Row(Modifier.fillMaxSize()) {
     if (isTv) MainSideRail(tab, onSelect = { tabName = it.name })
-    Column(Modifier.weight(1f).fillMaxHeight().then(if (bg != null && tab == MainTab.Servers) Modifier.background(bg) else Modifier).windowInsetsPadding(WindowInsets.statusBars)) {
-        if (tab == MainTab.Servers) {
-            val ids = st.subscriptions.map { it.id }
-            val curSub = if (effLayout == SubLayout.RIBBON) ServerStyleLogic.validRibbon(sRibbon[sStyle] ?: "", ids).let { id -> st.subscriptions.firstOrNull { it.id == id } } else null
-            ServersHeader(
-                style = sStyle, layout = opts.layout, bestCard = opts.bestCard,
-                onStyle = { sp.setStyle(it) }, onLayout = { sp.setLayout(sStyle, it) }, onBestCard = { sp.setBestCard(sStyle, it) },
-                sortMode = sSort, onSortMode = { sp.setSort(it) }, subNewestFirst = sSubNew, onSubOrder = { sp.setSubNewestFirst(it) },
-                filter = sFilter[sStyle] ?: ServerFilter.ALL, onFilter = { sp.setFilter(sStyle, it) },
-                testing = pinging.isNotEmpty(), onTestAll = { vm.pingAll() },
-                onAdd = { showAdd = true },
-                subMenu = curSub,
-                onSubRefresh = { vm.refresh(it.id) }, onSubPing = { vm.pingSubscription(it.id) },
-                onSubCopy = { copyText(ctx, it.url); vm.message("Ссылка скопирована") },
-                onSubDeleteUnreachable = { vm.askDeleteUnreachable(it.id) }, onSubRestoreHidden = { vm.restoreHiddenHosts(it.id) },
-                subExtraMenu = { sb, close -> GroupingMenuItems(vm, st.adv.serverGrouping, sb.id, close) },
-                onSubDelete = { vm.removeSubscription(it.id) },
-            )
-        } else TopBar(
+    Column(Modifier.weight(1f).fillMaxHeight().then(if (bg != null && tab == MainTab.Home) Modifier.background(bg) else Modifier).windowInsetsPadding(WindowInsets.statusBars)) {
+        if (tab == MainTab.Home || tab == MainTab.Shop) TopBar(
             theme = ui.theme,
             onTheme = { vm.setTheme(it) },
             onSettings = onOpenSettings,
@@ -516,29 +507,134 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             modifier = Modifier.weight(1f).fillMaxWidth(),
             label = "main-tab",
         ) { shown ->
-        if (shown == MainTab.Shop) {
-            TvColumn(isTv) { ShopScreen(vm, onOpenServers = { tabName = MainTab.Servers.name }) }
-            return@AnimatedContent
-        }
-        // 1.0.46: «Главная» = speed card, power button and the globe / map filling the rest (no list).
-        if (shown == MainTab.Home) {
-            PullToRefreshBox(
-                isRefreshing = refreshing.isNotEmpty(),
-                onRefresh = { vm.refreshAll() },
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val fullH = maxHeight
-                    Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-                        Column(
-                            Modifier.fillMaxWidth().height(run {
-                                // 2.0.7: variant B — keep ≥170 dp for the world strip; scroll only when the screen is too short
-                                val extra = if (st.adv.homeUrlTest) 140.dp else 0.dp
-                                if (extra.value == 0f || isTv) fullH else maxOf(fullH, 470.dp + extra)
-                            }).padding(start = 12.dp, end = 12.dp, top = 2.dp),
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
-                        ) {
-                HomeSplit(isTv, left = {
+        when (shown) {
+        MainTab.Shop -> TvColumn(isTv) { ShopScreen(vm, onOpenServers = { tabName = MainTab.Home.name }) }
+        // 2.0.32: «Тест скорости» and «Сеть» are bottom-bar tabs (same pages, no back arrow inside the tab)
+        MainTab.Speed -> CompositionLocalProvider(LocalInTabs provides true) { TvColumn(isTv) { SpeedTestPage(vm, onBack = { tabName = MainTab.Home.name }) } }
+        MainTab.Net -> CompositionLocalProvider(LocalInTabs provides true) { TvColumn(isTv) { NetToolsPage(vm, onBack = { tabName = MainTab.Home.name }) } }
+        MainTab.Home -> {
+                val homeOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+                DisposableEffect(homeOwner) {
+                    val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                        if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.setHomeVisible(true)
+                        if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) vm.setHomeVisible(false)
+                    }
+                    homeOwner.lifecycle.addObserver(obs)
+                    if (homeOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) vm.setHomeVisible(true)
+                    onDispose { homeOwner.lifecycle.removeObserver(obs); vm.setHomeVisible(false) }
+                }
+            val serverItems: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
+                run {
+                if (pingBatch.isNotEmpty()) item(key = "ping-counter") { Box(Modifier.animateItem()) { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }, onStop = { vm.stopPingBatch() }, stopped = pingStopped) } }
+                if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
+                    item { Text("Нет подписок. Нажмите «+» вверху справа или купите подписку в «Магазине».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp)) }
+                }
+                // styles: ribbon / card stack / Material You pick one subscription at a time
+                if (sStyle != ServerStyle.CLASSIC && effLayout == SubLayout.RIBBON) {
+                    styledServers(sStyle, effLayout, opts.bestCard, sRibbon[sStyle] ?: ServerStyleLogic.RIBBON_FIRST, { sp.setRibbon(sStyle, it) },
+                        sFilter[sStyle] ?: ServerFilter.ALL, { sp.setFilter(sStyle, it) }, sFav, sSort, sSubNew,
+                        st, ui, pings, pinging, vm, ctx, nowSec, onSelected = { toTop() },
+                        onLanSendServer = onLanSendServer)
+                    return@run
+                }
+                if (sStyle != ServerStyle.CLASSIC && opts.bestCard) item(key = "ss-best") {
+                    val pf: (String) -> Long? = { pings[it] }
+                    val best = ServerStyleLogic.best(st.servers, pf)
+                    val ms = best?.let { ServerStyleLogic.pingMs(pf(it.id)) }
+                    Box(Modifier.padding(vertical = 4.dp)) {
+                        BestServerCard(sStyle, "Лучший сервер", best?.let { UiLogic.displayName(it.name) } ?: "", best?.let { UiLogic.protocolGroup(it) } ?: "",
+                            ms, ms?.let { "$it мс" } ?: "", "Подключить", "Проверьте пинг, чтобы найти лучший сервер",
+                            onAction = { best?.let { vm.select(it.id); toTop() } }, onRetest = { vm.pingAll() })
+                    }
+                }
+                val sFilt = sFilter[sStyle] ?: ServerFilter.ALL
+                val shownGroups = ServerStyleLogic.orderSubs(groups, sSubNew)
+                shownGroups.forEach { g0 ->
+                        val g = g0.copy(servers = ServerStyleLogic.sortServers(ServerStyleLogic.filter(g0.servers, sFilt, sFav) { pings[it] }, sSort) { pings[it] })
+                        val sub = g.subscription
+                        // «Серверы» (manual) is omitted entirely when empty — no blank card/header.
+                        if (sub != null && sub.id == ProtocolSupport.MANUAL_SUB_ID && g.total == 0 && st.adv.hideEmptyManual &&
+                            st.servers.none { it.subscriptionId == sub.id }) {
+                            return@forEach
+                        }
+                        if (sub != null) {
+                            item(key = "sub-${sub.id}") {
+                                // 1.0.55: long-press + drag to reorder subscriptions
+                                Box(Modifier.vReorderItem(vDrag, homeList, sub.id, dragHaptic) { d, t ->
+                                    vm.moveSubscription(d, t, sp.subNewestFirst.value)
+                                }) {
+                                SubCard(
+                                    sub = sub,
+                                    realServers = UiLogic.realServerCount(st.servers, sub.id),
+                                    refreshing = sub.id in refreshing,
+                                    pinging = UiLogic.subPinging(st.servers, sub.id, pinging),
+                                    nowSec = nowSec,
+                                    expanded = g.expanded,
+                                    onToggle = { vm.toggleSubCollapsed(sub.id) },
+                                    onRefresh = { vm.refresh(sub.id) },
+                                    onPing = { vm.pingSubscription(sub.id) },
+                                    onDelete = { vm.removeSubscription(sub.id) },
+                                    onRestoreHidden = { vm.restoreHiddenHosts(sub.id) },
+                                    onDeleteUnreachable = { vm.askDeleteUnreachable(sub.id) },
+                                    scanningUnreachable = sub.id in unreachableScan,
+                                    extraMenu = { close ->
+                                        GroupingMenuItems(vm, st.adv.serverGrouping, sub.id, close)
+                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Передать на устройство") }, leadingIcon = { MenuIcon(Icons.Filled.SendToMobile) }, onClick = { close(); onLanSend(sub.id) })
+                                        // 2.0.11: TV has no long-press drag → move up / down in the ⋮ menu
+                                        if (isTv) {
+                                            val order = shownGroups.mapNotNull { it.subscription?.id }
+                                            val i = order.indexOf(sub.id)
+                                            if (i > 0) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить выше") }, leadingIcon = { MenuIcon(Icons.Filled.ArrowUpward) },
+                                                onClick = { close(); vm.moveSubscription(sub.id, order[i - 1], sp.subNewestFirst.value) })
+                                            if (i in 0 until order.lastIndex) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить ниже") }, leadingIcon = { MenuIcon(Icons.Filled.ArrowDownward) },
+                                                onClick = { close(); vm.moveSubscription(sub.id, order[i + 1], sp.subNewestFirst.value) })
+                                        }
+                                    },
+                                    onCopy = {
+                                        copyText(ctx, sub.url)
+                                        vm.message("Ссылка скопирована")
+                                    },
+                                )
+                                }
+                            }
+                        } else if (g.total > 0 || !g.expanded) {
+                            item(key = "sub-orphans") {
+                                SectionHeader(
+                                    title = "Без подписки",
+                                    count = g.total,
+                                    expanded = g.expanded,
+                                    onToggle = { vm.toggleSubCollapsed(UiLogic.ORPHAN_GROUP) },
+                                )
+                            }
+                        }
+                        // 1.0.9: hosts are always a single-column list (the grid toggle was removed;
+                        // the legacy persisted «host_grid» flag is still read/written but ignored).
+                        val gid = sub?.id ?: UiLogic.ORPHAN_GROUP
+                        val sg = st.adv.serverGrouping
+                        // 2.0.6 (ABS): «Группировать по странам» — per subscription, with its own override
+                        if (sg.isOn(gid) && g.servers.size > 1) {
+                            val gs = sg.forSub(gid)
+                            net.antibs.client.data.ServerGrouping.group(g.servers, { it.name }, gs.sort, { pings[it.id] }).forEach { (code, list) ->
+                                val open = sg.isOpen(gid, code)
+                                item(key = "cg-$gid-$code") {
+                                    CountryHeader(code, list.size, open, net.antibs.client.data.ServerGrouping.bestPing(list.map { pings[it.id] }), gs.showPing) {
+                                        vm.setAdv { it.copy(serverGrouping = it.serverGrouping.toggle(gid, code)) }
+                                    }
+                                }
+                                if (open) items(list, key = { it.id }) { s ->
+                                    if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { toTop() }, onLanSend = { onLanSendServer(s.id) })
+                                    else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { toTop() }, onLanSend = { onLanSendServer(s.id) })
+                                }
+                            }
+                        } else
+                        items(g.servers, key = { it.id }) { s ->
+                            if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { toTop() }, onLanSend = { onLanSendServer(s.id) })
+                            else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { toTop() }, onLanSend = { onLanSendServer(s.id) })
+                        }
+                    }
+                }
+            }
+            val homeTop: @Composable ColumnScope.() -> Unit = {
                 // 2.0.8: health → red power button + red banner status
                 val vpnPingMs by vm.vpnPingMs.collectAsState()
                 val vpnBusy by vm.vpnBusy.collectAsState()
@@ -551,16 +647,6 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     active = connected || vpn.state == ConnState.CONNECTING, connected = connected,
                     vpnFails = vpnFails, directFails = directFails, netValidated = netOk)
                 val healthText = net.antibs.client.engine.NetMonitor.healthText(health)
-                val homeOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
-                DisposableEffect(homeOwner) {
-                    val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
-                        if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.setHomeVisible(true)
-                        if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) vm.setHomeVisible(false)
-                    }
-                    homeOwner.lifecycle.addObserver(obs)
-                    if (homeOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) vm.setHomeVisible(true)
-                    onDispose { homeOwner.lifecycle.removeObserver(obs); vm.setHomeVisible(false) }
-                }
                 run {
                     // 1.0.31: the host line always stays; only the speeds/graphs section shows as soon as the VPN
                     // connects (or is connecting) and hides 5 s after it goes off (reconnect within 5 s cancels).
@@ -580,19 +666,13 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         active = connected,
                         downRate = vpn.downSpeed,
                         upRate = vpn.upSpeed,
-                        directDownRate = vpn.directDownSpeed,
-                        directUpRate = vpn.directUpSpeed,
                         dot = UiLogic.statusDot(vpn.state, tunnelPing),
                         downSpeed = Format.speedFixed(vpn.downSpeed, st.adv.speedUnits == "bits"),
                         upSpeed = Format.speedFixed(vpn.upSpeed, st.adv.speedUnits == "bits"),
                         downTotal = Format.bytesFixed(vpn.downBytes),
                         upTotal = Format.bytesFixed(vpn.upBytes),
-                        directDownSpeed = Format.speedFixed(vpn.directDownSpeed, st.adv.speedUnits == "bits"),
-                        directUpSpeed = Format.speedFixed(vpn.directUpSpeed, st.adv.speedUnits == "bits"),
-                        directDownTotal = Format.bytesFixed(vpn.directDownBytes),
-                        directUpTotal = Format.bytesFixed(vpn.directUpBytes),
                         vpnSamples = vpnSamples,
-                        directSamples = directSamples,
+                        upSamples = upSamples,
                         sampleSeq = sampleSeq,
                         sampleTimes = sampleTimes,
                         onLongPress = onOpenSpeedTest,
@@ -686,175 +766,73 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (captcha != null) {
                     run { CaptchaCard(captcha!!) }
                 }
-                }, right = {
-                            val liveName = if (connected || vpn.state == ConnState.CONNECTING) UiLogic.liveHostName(vpn.serverName, vpn.pickName, connected).ifEmpty { server?.name.orEmpty() } else server?.name.orEmpty()
-                            HomeWorld(
-                                holiday = runCatching {
-                                    val mode = st.adv.seasonalDecor
-                                    if (mode == "off") null
-                                    else if (mode == "auto") net.antibs.client.data.HolidayCalendar.current(custom = st.adv.customHolidays)
-                                    else net.antibs.client.data.HolidayCalendar.byId(mode, st.adv.customHolidays)
-                                }.getOrNull(),
-                                input = WorldInput(
-                                    connected = connected,
-                                    connecting = vpn.state == ConnState.CONNECTING,
-                                    liveName = liveName,
-                                    serverNames = remember(st.servers) { st.servers.map { it.name } },
-                                    socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
-                                ),
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                bleed = 12.dp,
-                                onServers = { tabName = MainTab.Servers.name },
-                                // 1.0.48: left-edge ping of the selected server (same measurement as the host list)
-                                ping = WorldPing(busy = server != null && server.id in pinging, ms = server?.id?.let { pings[it] }, stamp = pingStamp),
-                                onPing = null,   // 2.0.6: the ping moved into the connection card («пинг: N мс»)
-                                seasonalFx = st.adv.seasonalFx,
-                                onNet = onOpenNet,
-                                onSpeed = onOpenSpeedTest,
-                                // 2.0.8: icons right under the power button, then «URL Тест», then the map fills the rest
-                                middle = {
-                            HomeMonitorSection(
-                                connected = connected,
-                                socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
-                                                                showUrl = st.adv.homeUrlTest,
-                                haptics = st.adv.haptics,
-                            )
-                                },
-                            )
-                })
-                        }
-                    }
-                }
             }
-            return@AnimatedContent
-        }
-        // Pull-to-refresh = refresh all subscriptions + ping hosts (the top-bar ↻ was removed in 1.0.18).
-        PullToRefreshBox(
-            isRefreshing = refreshing.isNotEmpty(),
-            onRefresh = { vm.refreshAll() },
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            val subListState = androidx.compose.foundation.lazy.rememberLazyListState()
-            val vDrag = remember { VReorderState() }
-            val dragHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-            TvColumn(isTv) {
-            LazyColumn(
-                state = subListState,
+            val urlTest: @Composable () -> Unit = {
+                HomeMonitorSection(
+                    connected = connected,
+                    socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
+                    showUrl = st.adv.homeUrlTest,
+                    haptics = st.adv.haptics,
+                )
+            }
+            val listHeader: @Composable () -> Unit = {
+                val ids = st.subscriptions.map { it.id }
+                val curSub = if (effLayout == SubLayout.RIBBON) ServerStyleLogic.validRibbon(sRibbon[sStyle] ?: "", ids).let { id -> st.subscriptions.firstOrNull { it.id == id } } else null
+                ServersHeader(
+                    style = sStyle, layout = opts.layout, bestCard = opts.bestCard,
+                    onStyle = { sp.setStyle(it) }, onLayout = { sp.setLayout(sStyle, it) }, onBestCard = { sp.setBestCard(sStyle, it) },
+                    sortMode = sSort, onSortMode = { sp.setSort(it) }, subNewestFirst = sSubNew, onSubOrder = { sp.setSubNewestFirst(it) },
+                    filter = sFilter[sStyle] ?: ServerFilter.ALL, onFilter = { sp.setFilter(sStyle, it) },
+                    testing = pinging.isNotEmpty(), onTestAll = { vm.pingAll() },
+                    onAdd = { showAdd = true },
+                    subMenu = curSub,
+                    onSubRefresh = { vm.refresh(it.id) }, onSubPing = { vm.pingSubscription(it.id) },
+                    onSubCopy = { copyText(ctx, it.url); vm.message("Ссылка скопирована") },
+                    onSubDeleteUnreachable = { vm.askDeleteUnreachable(it.id) }, onSubRestoreHidden = { vm.restoreHiddenHosts(it.id) },
+                    subExtraMenu = { sb, close -> GroupingMenuItems(vm, st.adv.serverGrouping, sb.id, close) },
+                    onSubDelete = { vm.removeSubscription(it.id) },
+                    compact = true,
+                )
+            }
+            // Pull-to-refresh = refresh all subscriptions + ping hosts.
+            PullToRefreshBox(
+                isRefreshing = refreshing.isNotEmpty(),
+                onRefresh = { vm.refreshAll() },
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                run {
-                if (pingBatch.isNotEmpty()) item(key = "ping-counter") { Box(Modifier.animateItem()) { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }, onStop = { vm.stopPingBatch() }, stopped = pingStopped) } }
-                if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
-                    item { Text("Нет подписок. Нажмите «+» вверху справа или купите подписку в «Магазине».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp)) }
-                }
-                // styles: ribbon / card stack / Material You pick one subscription at a time
-                if (sStyle != ServerStyle.CLASSIC && effLayout == SubLayout.RIBBON) {
-                    styledServers(sStyle, effLayout, opts.bestCard, sRibbon[sStyle] ?: ServerStyleLogic.RIBBON_FIRST, { sp.setRibbon(sStyle, it) },
-                        sFilter[sStyle] ?: ServerFilter.ALL, { sp.setFilter(sStyle, it) }, sFav, sSort, sSubNew,
-                        st, ui, pings, pinging, vm, ctx, nowSec, onSelected = { tabName = MainTab.Home.name },
-                        onLanSendServer = onLanSendServer)
-                    return@run
-                }
-                if (sStyle != ServerStyle.CLASSIC && opts.bestCard) item(key = "ss-best") {
-                    val pf: (String) -> Long? = { pings[it] }
-                    val best = ServerStyleLogic.best(st.servers, pf)
-                    val ms = best?.let { ServerStyleLogic.pingMs(pf(it.id)) }
-                    Box(Modifier.padding(vertical = 4.dp)) {
-                        BestServerCard(sStyle, "Лучший сервер", best?.let { UiLogic.displayName(it.name) } ?: "", best?.let { UiLogic.protocolGroup(it) } ?: "",
-                            ms, ms?.let { "$it мс" } ?: "", "Подключить", "Проверьте пинг, чтобы найти лучший сервер",
-                            onAction = { best?.let { vm.select(it.id); tabName = MainTab.Home.name } }, onRetest = { vm.pingAll() })
+                if (!isTv) {
+                    LazyColumn(
+                        state = homeList,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        item(key = "home-top") { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { homeTop() } }
+                        if (st.adv.homeUrlTest) item(key = "home-url") { urlTest() }
+                        item(key = "home-list-head") { listHeader() }
+                        serverItems()
                     }
-                }
-                val sFilt = sFilter[sStyle] ?: ServerFilter.ALL
-                val shownGroups = ServerStyleLogic.orderSubs(groups, sSubNew)
-                shownGroups.forEach { g0 ->
-                        val g = g0.copy(servers = ServerStyleLogic.sortServers(ServerStyleLogic.filter(g0.servers, sFilt, sFav) { pings[it] }, sSort) { pings[it] })
-                        val sub = g.subscription
-                        // «Серверы» (manual) is omitted entirely when empty — no blank card/header.
-                        if (sub != null && sub.id == ProtocolSupport.MANUAL_SUB_ID && g.total == 0 && st.adv.hideEmptyManual &&
-                            st.servers.none { it.subscriptionId == sub.id }) {
-                            return@forEach
+                } else {
+                    // TV: left = banner + power, right = URL test + subscriptions/servers list
+                    Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 2.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.weight(0.44f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Spacer(Modifier.height(6.dp))
+                            homeTop()
                         }
-                        if (sub != null) {
-                            item(key = "sub-${sub.id}") {
-                                // 1.0.55: long-press + drag to reorder subscriptions
-                                Box(Modifier.vReorderItem(vDrag, subListState, sub.id, dragHaptic) { d, t ->
-                                    vm.moveSubscription(d, t, sp.subNewestFirst.value)
-                                }) {
-                                SubCard(
-                                    sub = sub,
-                                    realServers = UiLogic.realServerCount(st.servers, sub.id),
-                                    refreshing = sub.id in refreshing,
-                                    pinging = UiLogic.subPinging(st.servers, sub.id, pinging),
-                                    nowSec = nowSec,
-                                    expanded = g.expanded,
-                                    onToggle = { vm.toggleSubCollapsed(sub.id) },
-                                    onRefresh = { vm.refresh(sub.id) },
-                                    onPing = { vm.pingSubscription(sub.id) },
-                                    onDelete = { vm.removeSubscription(sub.id) },
-                                    onRestoreHidden = { vm.restoreHiddenHosts(sub.id) },
-                                    onDeleteUnreachable = { vm.askDeleteUnreachable(sub.id) },
-                                    scanningUnreachable = sub.id in unreachableScan,
-                                    extraMenu = { close ->
-                                        GroupingMenuItems(vm, st.adv.serverGrouping, sub.id, close)
-                                        androidx.compose.material3.DropdownMenuItem(text = { Text("Передать на устройство") }, leadingIcon = { MenuIcon(Icons.Filled.SendToMobile) }, onClick = { close(); onLanSend(sub.id) })
-                                        // 2.0.11: TV has no long-press drag → move up / down in the ⋮ menu
-                                        if (isTv) {
-                                            val order = shownGroups.mapNotNull { it.subscription?.id }
-                                            val i = order.indexOf(sub.id)
-                                            if (i > 0) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить выше") }, leadingIcon = { MenuIcon(Icons.Filled.ArrowUpward) },
-                                                onClick = { close(); vm.moveSubscription(sub.id, order[i - 1], sp.subNewestFirst.value) })
-                                            if (i in 0 until order.lastIndex) androidx.compose.material3.DropdownMenuItem(text = { Text("Переместить ниже") }, leadingIcon = { MenuIcon(Icons.Filled.ArrowDownward) },
-                                                onClick = { close(); vm.moveSubscription(sub.id, order[i + 1], sp.subNewestFirst.value) })
-                                        }
-                                    },
-                                    onCopy = {
-                                        copyText(ctx, sub.url)
-                                        vm.message("Ссылка скопирована")
-                                    },
-                                )
-                                }
-                            }
-                        } else if (g.total > 0 || !g.expanded) {
-                            item(key = "sub-orphans") {
-                                SectionHeader(
-                                    title = "Без подписки",
-                                    count = g.total,
-                                    expanded = g.expanded,
-                                    onToggle = { vm.toggleSubCollapsed(UiLogic.ORPHAN_GROUP) },
-                                )
-                            }
-                        }
-                        // 1.0.9: hosts are always a single-column list (the grid toggle was removed;
-                        // the legacy persisted «host_grid» flag is still read/written but ignored).
-                        val gid = sub?.id ?: UiLogic.ORPHAN_GROUP
-                        val sg = st.adv.serverGrouping
-                        // 2.0.6 (ABS): «Группировать по странам» — per subscription, with its own override
-                        if (sg.isOn(gid) && g.servers.size > 1) {
-                            val gs = sg.forSub(gid)
-                            net.antibs.client.data.ServerGrouping.group(g.servers, { it.name }, gs.sort, { pings[it.id] }).forEach { (code, list) ->
-                                val open = sg.isOpen(gid, code)
-                                item(key = "cg-$gid-$code") {
-                                    CountryHeader(code, list.size, open, net.antibs.client.data.ServerGrouping.bestPing(list.map { pings[it.id] }), gs.showPing) {
-                                        vm.setAdv { it.copy(serverGrouping = it.serverGrouping.toggle(gid, code)) }
-                                    }
-                                }
-                                if (open) items(list, key = { it.id }) { s ->
-                                    if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name }, onLanSend = { onLanSendServer(s.id) })
-                                    else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name }, onLanSend = { onLanSendServer(s.id) })
-                                }
-                            }
-                        } else
-                        items(g.servers, key = { it.id }) { s ->
-                            if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { tabName = MainTab.Home.name }, onLanSend = { onLanSendServer(s.id) })
-                            else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { tabName = MainTab.Home.name }, onLanSend = { onLanSendServer(s.id) })
+                        LazyColumn(
+                            state = homeList,
+                            modifier = Modifier.weight(0.56f).fillMaxHeight(),
+                            contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            if (st.adv.homeUrlTest) item(key = "home-url") { urlTest() }
+                            item(key = "home-list-head") { listHeader() }
+                            serverItems()
                         }
                     }
                 }
             }
-            }
+        }
         }
         }
         if (!isTv) MainBottomBar(tab, onSelect = { tabName = it.name })
@@ -864,12 +842,15 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     if (showStyle) StyleViewDialog(onDismiss = { showStyle = false })
 }
 
-/** 1.0.42: bottom tabs, left → right. */
-internal enum class MainTab(val title: String) { Shop("Магазин"), Home("Главная"), Servers("Серверы") }
+/** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + «Тест скорости», «Сеть». */
+internal enum class MainTab(val title: String, val key: String) {
+    Shop("Магазин", "tab_shop"), Home("Главная", "tab_home"), Speed("Тест скорости", "tab_speed"), Net("Сеть", "tab_net");
+    val label: String get() = I18n.t(key)
+}
 
 @Composable
 internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
-    // 2.0.30: compact custom bar (~62dp content) — Material3 NavigationBar is fixed at 80dp.
+    // 2.0.32: text-only tabs (no icons); the selected tab sits on the accent pill.
     val pill = if (LocalAppStyle.current == ServerStyle.CLASSIC) AntiBSColors.BlueDeep else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
@@ -881,60 +862,38 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 62.dp).padding(horizontal = 8.dp, vertical = 2.dp),
+            Modifier.fillMaxWidth().heightIn(min = 50.dp).padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             MainTab.entries.forEach { t ->
                 val sel = t == tab
                 val scale by androidx.compose.animation.core.animateFloatAsState(
-                    if (sel) 1.06f else 1f,
+                    if (sel) 1.04f else 1f,
                     androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 450f),
                     label = "tab-scale",
                 )
-                Column(
+                val bgc by androidx.compose.animation.animateColorAsState(if (sel) pill else Color.Transparent, label = "tab-bg")
+                Box(
                     Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable(onClickLabel = t.title) { if (!sel) onSelect(t) }
-                        .padding(top = 6.dp, bottom = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+                        // longer labels («Тест скорости») get a wider slot so they stay on one line
+                        .weight(0.6f + t.label.length.coerceIn(3, 16) * 0.06f)
+                        .heightIn(min = 38.dp)
+                        .graphicsLayer { scaleX = scale; scaleY = scale }
+                        .clip(RoundedCornerShape(19.dp))
+                        .background(bgc)
+                        .clickable(onClickLabel = t.label) { if (!sel) onSelect(t) }
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        Modifier
-                            .size(width = 56.dp, height = 28.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (sel) pill else Color.Transparent),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            when (t) {
-                                MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
-                                MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
-                                MainTab.Servers -> if (sel) Icons.Filled.Dns else Icons.Outlined.Dns
-                            },
-                            contentDescription = when (t) {
-                                MainTab.Shop -> I18n.t("tab_shop")
-                                MainTab.Home -> I18n.t("tab_home")
-                                MainTab.Servers -> I18n.t("tab_servers")
-                            },
-                            tint = if (sel) Color.White else muted,
-                            modifier = Modifier.size(20.dp).graphicsLayer { scaleX = scale; scaleY = scale },
-                        )
-                    }
-                    Spacer(Modifier.height(2.dp))
                     Text(
-                        when (t) {
-                            MainTab.Shop -> I18n.t("tab_shop")
-                            MainTab.Home -> I18n.t("tab_home")
-                            MainTab.Servers -> I18n.t("tab_servers")
-                        },
-                        color = if (sel) AntiBSColors.Blue else muted,
-                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
-                        fontSize = 11.sp,
-                        lineHeight = 13.sp,
-                        maxLines = 1,
-                        softWrap = false,
+                        t.label,
+                        color = if (sel) Color.White else muted,
+                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium,
+                        fontSize = 13.sp,
+                        lineHeight = 14.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -1014,18 +973,22 @@ internal fun ConnectionCard(
     upSpeed: String,
     downTotal: String,
     upTotal: String,
-    directDownSpeed: String,
-    directUpSpeed: String,
-    directDownTotal: String,
-    directUpTotal: String,
+    // 2.0.32: direct (non-VPN) speed / totals / graph removed from the banner; kept only for source compatibility.
+    @Suppress("UNUSED_PARAMETER") directDownSpeed: String = "",
+    @Suppress("UNUSED_PARAMETER") directUpSpeed: String = "",
+    @Suppress("UNUSED_PARAMETER") directDownTotal: String = "",
+    @Suppress("UNUSED_PARAMETER") directUpTotal: String = "",
+    /** ↓ incoming VPN traffic samples (blue). */
     vpnSamples: List<Float>,
-    directSamples: List<Float>,
+    @Suppress("UNUSED_PARAMETER") directSamples: List<Float> = emptyList(),
     sampleSeq: Int,
+    /** 2.0.32: ↑ outgoing VPN traffic samples (red). */
+    upSamples: List<Float> = emptyList(),
     sampleTimes: List<Long> = emptyList(),
     downRate: Long = 0,
     upRate: Long = 0,
-    directDownRate: Long = 0,
-    directUpRate: Long = 0,
+    @Suppress("UNUSED_PARAMETER") directDownRate: Long = 0,
+    @Suppress("UNUSED_PARAMETER") directUpRate: Long = 0,
     onLongPress: () -> Unit = {},
     statsVisible: Boolean = true,
     pingMs: Long? = null,
@@ -1120,31 +1083,19 @@ internal fun ConnectionCard(
             // of the red column follow direct speed only. The VPN total starts right after the VPN speed slot
             // (start-aligned, 2dp gap). The graph is exactly as tall as the two rows (14 + 2 + 14 dp) and top-aligned,
             // so its top is level with the ↓ row and its bottom with the ↑ row.
+            // 2.0.32: VPN only — ↓ incoming blue, ↑ outgoing red; the graph stretches from the totals to the card edge.
             Row(verticalAlignment = Alignment.Top) {
                 Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
-                    AliveArrow(down = true, color = downArrowColor(), rate = downRate, connected = active)
-                    AliveArrow(down = false, color = AntiBSColors.Warn, rate = upRate, connected = active)
+                    AliveArrow(down = true, color = VpnDownColor, rate = downRate, connected = active)
+                    AliveArrow(down = false, color = VpnUpColor, rate = upRate, connected = active)
                 }
                 Spacer(Modifier.width(3.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
-                    RateCell(AntiBSColors.VpnGraph, downSpeed, downTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
-                    RateCell(AntiBSColors.VpnGraph, upSpeed, upTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
+                    RateCell(VpnDownColor, downSpeed, downTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
+                    RateCell(VpnUpColor, upSpeed, upTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
                 }
                 Spacer(Modifier.width(6.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
-                    AliveArrow(down = true, color = downArrowColor(), rate = directDownRate, connected = active)
-                    AliveArrow(down = false, color = AntiBSColors.Warn, rate = directUpRate, connected = active)
-                }
-                // 1.0.17: red column mirrors the VPN one — speed start-aligned right after its arrow, total 2dp after.
-                Spacer(Modifier.width(3.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
-                    RateCell(AntiBSColors.DirectGraph, directDownSpeed, directDownTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
-                    RateCell(AntiBSColors.DirectGraph, directUpSpeed, directUpTotal, speedW, totalW, speedAlign = TextAlign.Start, totalAlign = TextAlign.Start, gap = 2.dp)
-                }
-                Spacer(Modifier.width(8.dp))
-                Box(Modifier.weight(1f), contentAlignment = Alignment.TopEnd) {
-                    Sparkline(vpnSamples, directSamples, sampleTimes, active, Modifier.widthIn(max = 110.dp).fillMaxWidth().height(RowH * 2 + RowGap))
-                }
+                Sparkline(vpnSamples, upSamples, sampleTimes, active, Modifier.weight(1f).height(RowH * 2 + RowGap))
             }
             }
             }
@@ -1192,14 +1143,13 @@ internal fun bannerPingText(ms: Long?): String = when { ms == null -> "—"; ms 
 internal val VpnPingLabel = Color(0xFF3B82F6) // 2.0.20: blue like «vk пинг»
 internal val VkPingLabel = Color(0xFF3B82F6)
 
+/** 2.0.32: banner VPN traffic colours — ↓ incoming blue, ↑ outgoing red (text, arrows and graph). */
+internal val VpnDownColor = AntiBSColors.VpnGraph
+internal val VpnUpColor = AntiBSColors.DirectGraph
+
 /** Speed-card row metrics: two 14dp rows with a 2dp gap; the sparkline spans both. */
 private val RowH = 14.dp
 private val RowGap = 2.dp
-
-/** ↓ arrow: yellow (1.0.13), a deeper amber on light surfaces so it stays readable. */
-@Composable
-private fun downArrowColor(): Color =
-    if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) AntiBSColors.ArrowYellowLight else AntiBSColors.ArrowYellow
 
 /**
  * 1.0.14 header status dot (1.0.19: while connected its colour follows the tunnel ping — CHECKING amber,
@@ -1340,9 +1290,9 @@ private fun RateCell(
 }
 
 @Composable
-private fun Sparkline(vpn: List<Float>, direct: List<Float>, times: List<Long>, active: Boolean, modifier: Modifier) {
-    val vpnColor = AntiBSColors.VpnGraph
-    val directColor = AntiBSColors.DirectGraph
+private fun Sparkline(down: List<Float>, up: List<Float>, times: List<Long>, active: Boolean, modifier: Modifier) {
+    val downColor = VpnDownColor
+    val upColor = VpnUpColor
     val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     // 1.0.24: frame clock — the graph scrolls continuously at a constant speed (one step per sample interval)
     // and the live head slides between the previous and the newest value. Runs only while connected and the
@@ -1352,7 +1302,7 @@ private fun Sparkline(vpn: List<Float>, direct: List<Float>, times: List<Long>, 
         if (!active) return@LaunchedEffect
         while (true) withFrameNanos { clock.longValue = android.os.SystemClock.uptimeMillis() }
     }
-    val scaleTarget = UiLogic.sparkScale(vpn.takeLast(UiLogic.SPARK_HISTORY + 2), direct.takeLast(UiLogic.SPARK_HISTORY + 2))
+    val scaleTarget = UiLogic.sparkScale(down.takeLast(UiLogic.SPARK_HISTORY + 2), up.takeLast(UiLogic.SPARK_HISTORY + 2))
     val scale = animateFloatAsState(scaleTarget, animationSpec = tween(900, easing = FastOutSlowInEasing), label = "sparkScale")
     Canvas(modifier) {
         val w = size.width
@@ -1412,8 +1362,8 @@ private fun Sparkline(vpn: List<Float>, direct: List<Float>, times: List<Long>, 
             drawCircle(Color.White.copy(alpha = 0.85f), dotR * 0.38f, Offset(hx, hy))
         }
         clipRect(left = 0f, top = 0f, right = w, bottom = h) {
-            drawSeries(direct, directColor)
-            drawSeries(vpn, vpnColor)
+            drawSeries(down, downColor)
+            drawSeries(up, upColor)
         }
     }
 }
@@ -2621,16 +2571,13 @@ internal fun MainSideRail(tab: MainTab, onSelect: (MainTab) -> Unit) {
                         when (t) {
                             MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
                             MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
-                            MainTab.Servers -> if (sel) Icons.Filled.Dns else Icons.Outlined.Dns
+                            MainTab.Speed -> Icons.Filled.Speed
+                            MainTab.Net -> Icons.Filled.CellTower
                         },
-                        contentDescription = when (t) {
-                                MainTab.Shop -> I18n.t("tab_shop")
-                                MainTab.Home -> I18n.t("tab_home")
-                                MainTab.Servers -> I18n.t("tab_servers")
-                            },
+                        contentDescription = t.label,
                     )
                 },
-                label = { Text(t.title, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
+                label = { Text(t.label, textAlign = TextAlign.Center, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
                 colors = androidx.compose.material3.NavigationRailItemDefaults.colors(
                     selectedIconColor = Color.White,
                     selectedTextColor = AntiBSColors.Blue,

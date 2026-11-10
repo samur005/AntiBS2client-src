@@ -8,8 +8,8 @@ class AppHapticsTest {
     @Test fun tickOnlyOnRealChange() {
         assertFalse(AppHaptics.shouldTick(null, MainTab.Home, true))       // first show
         assertFalse(AppHaptics.shouldTick(MainTab.Home, MainTab.Home, true)) // same tab (no double)
-        assertTrue(AppHaptics.shouldTick(MainTab.Home, MainTab.Servers, true))
-        assertFalse(AppHaptics.shouldTick(MainTab.Home, MainTab.Servers, false)) // «Вибрация» off
+        assertTrue(AppHaptics.shouldTick(MainTab.Home, MainTab.Speed, true))
+        assertFalse(AppHaptics.shouldTick(MainTab.Home, MainTab.Speed, false)) // «Вибрация» off
     }
     @Test fun kindsAndScale() {
         assertEquals(AppHaptics.Kind.CLICK, AppHaptics.kindOf(HapticFeedbackType.LongPress))

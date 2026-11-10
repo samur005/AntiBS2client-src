@@ -266,8 +266,6 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                     SettingsCard("Главный экран") {
                         SwitchRow("URL Тест", a.homeUrlTest, subtitle = "Google, Telegram, Запретgram, YouTube") { v -> vm.setAdv { it.copy(homeUrlTest = v) } }
                         NavRow("Остаток подписки", if (a.subRemain.show) "Показывать" else "Скрыт", subtitle = "Дни и трафик внизу карточки подключения") { open("SubRemain") }
-                        NavRow("Прозрачность океана на глобусе", "$globePct%", dropdown = true, subtitle = "Также: долгое нажатие на значок глобуса") { dialog = "opGlobe" }
-                        NavRow("Прозрачность океана на карте", "$mapPct%", dropdown = true, subtitle = "Также: долгое нажатие на значок карты") { dialog = "opMap" }
                     }
                     SettingsCard("Список серверов") {
                         SwitchRow("Компактный список серверов", ui.compactServers) { vm.setCompact(it) }
