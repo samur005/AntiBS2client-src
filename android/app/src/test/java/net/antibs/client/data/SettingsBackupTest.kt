@@ -210,4 +210,23 @@ class SettingsBackupTest {
         assertEquals(false, mixed.subscriptions[0].autoDeleteUnreachable)
         assertEquals(true, mixed.subscriptions[1].autoDeleteUnreachable)
     }
+
+    @Test fun oldChipOrderFieldsAreIgnoredOnImportAndOmittedOnExport() {
+        val old = """
+            {"schemaVersion":1,"appVersion":"2.0.37","prefs":{},
+             "styles":{"style":"classic","sort":"added","homeFilterTab":"IPv4",
+                       "tabOrder":["IPv6","IPv4","Антиблок"],
+                       "countryOrder":["DE","NL"]}}
+        """.trimIndent()
+        val parsed = SettingsBackup.parse(old).getOrThrow()
+        assertEquals("IPv4", parsed.styles.homeFilterTab)
+        val out = SettingsBackup.toJson(parsed)
+        assertFalse(out.contains("tabOrder"))
+        assertFalse(out.contains("countryOrder"))
+        val fresh = SettingsBackup.toJson(SettingsBackupIo.fromAppState(
+            AppState(), appVersion = "2.0.38", styles = BackupStyles(), schedule = null, exportedAt = "",
+        ))
+        assertFalse(fresh.contains("tabOrder"))
+        assertFalse(fresh.contains("countryOrder"))
+    }
 }

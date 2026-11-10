@@ -1,6 +1,6 @@
 {
     "schemaVersion": 1,
-    "appVersion": "2.0.37",
+    "appVersion": "2.0.38",
     "exportedAt": "",
     "prefs": {
         "theme": "auto",
@@ -193,9 +193,7 @@
             "material": "all"
         },
         "homeFilterTab": "",
-        "homeFilterCountry": "",
-        "tabOrder": [],
-        "countryOrder": []
+        "homeFilterCountry": ""
     },
     "schedule": {
         "on": false,

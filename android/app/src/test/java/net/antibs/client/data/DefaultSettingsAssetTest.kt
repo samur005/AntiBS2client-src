@@ -35,7 +35,7 @@ class DefaultSettingsAssetTest {
 
         val b = SettingsBackup.parse(text).getOrThrow()
         assertEquals(SettingsBackup.SCHEMA, b.schemaVersion)
-        assertEquals("2.0.37", b.appVersion)
+        assertEquals("2.0.38", b.appVersion)
         assertTrue(b.prefs.autoDeleteUnreachableByUrl.isEmpty())
         assertTrue(b.prefs.adv.routingProfiles.isEmpty())
         assertNull(b.prefs.adv.activeRoutingId)
@@ -43,6 +43,8 @@ class DefaultSettingsAssetTest {
         assertTrue(b.prefs.adv.serverGrouping.subs.isEmpty())
         assertEquals("", b.styles.homeFilterTab)
         assertEquals("", b.styles.homeFilterCountry)
+        assertFalse(text.contains("tabOrder"))
+        assertFalse(text.contains("countryOrder"))
 
         val fresh = AppState()
         assertTrue(fresh.servers.isEmpty())

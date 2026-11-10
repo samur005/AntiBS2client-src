@@ -142,28 +142,6 @@ object HomeFilters {
         else -> "country:"
     }
 
-    /**
-     * Custom chip order: ids in [saved] that still exist keep their place;
-     * new chips not in [saved] are appended in [defaultIds] order.
-     */
-    fun applyOrder(defaultIds: List<String>, saved: List<String>): List<String> {
-        val present = defaultIds.toSet()
-        val head = saved.filter { it in present }.distinct()
-        val tail = defaultIds.filter { it !in head.toSet() }
-        return head + tail
-    }
-
-    fun moveId(ids: List<String>, fromId: String, toIndex: Int): List<String> {
-        val from = ids.indexOf(fromId)
-        if (from < 0 || ids.isEmpty()) return ids
-        val to = toIndex.coerceIn(0, ids.lastIndex)
-        if (from == to) return ids
-        val m = ids.toMutableList()
-        val item = m.removeAt(from)
-        m.add(to, item)
-        return m
-    }
-
     fun tabs(servers: List<ServerEntry>): List<Tab> {
         if (servers.isEmpty()) return emptyList()
         val out = mutableListOf<Tab>()

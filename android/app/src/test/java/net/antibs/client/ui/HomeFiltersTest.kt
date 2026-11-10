@@ -147,18 +147,6 @@ class HomeFiltersTest {
         assertEquals("", HomeFilters.caption("", "", countries))
     }
 
-    @Test fun applyOrderKeepsSavedAndAppendsNewInDefaultOrder() {
-        val def = listOf("IPv4", "IPv6", "Антиблок", "Trojan", "VLESS Reality")
-        assertEquals(def, HomeFilters.applyOrder(def, emptyList()))
-        assertEquals(
-            listOf("Trojan", "IPv4", "IPv6", "Антиблок", "VLESS Reality"),
-            HomeFilters.applyOrder(def, listOf("Trojan", "IPv4", "gone")),
-        )
-        val moved = HomeFilters.moveId(def, "Антиблок", 0)
-        assertEquals(listOf("Антиблок", "IPv4", "IPv6", "Trojan", "VLESS Reality"), moved)
-        assertEquals(def, HomeFilters.moveId(def, "missing", 0))
-    }
-
     @Test fun chipTargetsAreTheChipsOwnSetNotAnIntersection() {
         val de4 = xray("🇩🇪 Франкфурт", server = "8.8.8.8")
         val de6 = xray("🇩🇪 v6", server = "2001:db8::1")

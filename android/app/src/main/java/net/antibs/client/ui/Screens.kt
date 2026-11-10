@@ -499,8 +499,6 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val sFav by sp.favorites.collectAsState()
     val sSort by sp.sort.collectAsState()
     val sSubNew by sp.subNewestFirst.collectAsState()
-    val sTabOrder by sp.tabOrder.collectAsState()
-    val sCountryOrder by sp.countryOrder.collectAsState()
     val opts = sOpts[sStyle] ?: ServerStyleLogic.defaultOptions(sStyle)
     val effLayout = ServerStyleLogic.effectiveLayout(sStyle, opts)
     val bg = ssBackground(sStyle)
@@ -877,10 +875,6 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                 HomeFilters.chipLabel(tab, country, filterCountries),
                             )
                         },
-                        tabOrder = sTabOrder,
-                        onTabOrder = { sp.setTabOrder(it) },
-                        countryOrder = sCountryOrder,
-                        onCountryOrder = { sp.setCountryOrder(it) },
                     )
                 }
             }

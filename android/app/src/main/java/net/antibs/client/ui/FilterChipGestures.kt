@@ -5,25 +5,18 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Pointer handler that feeds [FilterChipGesture]. Does not consume events unless a drag has started,
- * so a pre-arm move still scrolls the parent row.
+ * Pointer handler that feeds [FilterChipGesture]. Does not consume events unless the long-press
+ * has already opened the menu, so a pre-arm move still scrolls the parent row.
  */
 fun Modifier.filterChipGestures(
     key: Any,
-    reorderable: Boolean = true,
     onClick: () -> Unit,
-    onArmed: () -> Unit,
     onOpenMenu: () -> Unit,
-    onDragStart: () -> Unit = {},
-    onDrag: (dx: Float, dy: Float) -> Unit = { _, _ -> },
-    onDragEnd: () -> Unit = {},
-): Modifier = pointerInput(key, reorderable) {
+): Modifier = pointerInput(key) {
     val scrollSlop = viewConfiguration.touchSlop
-    val dragSlop = FilterChipGesture.DRAG_SLOP_DP.dp.toPx()
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         var st = FilterChipGesture.down(down.position.x, down.position.y, down.uptimeMillis)
@@ -32,15 +25,14 @@ fun Modifier.filterChipGestures(
                 val ev = awaitPointerEvent(PointerEventPass.Main)
                 val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull "lost"
                 if (!ch.pressed) return@withTimeoutOrNull "up"
-                val (n, evnt) = FilterChipGesture.move(st, ch.position.x, ch.position.y, scrollSlop, dragSlop, reorderable)
+                val (n, evnt) = FilterChipGesture.move(st, ch.position.x, ch.position.y, scrollSlop)
                 st = n
                 if (evnt == FilterChipGesture.Event.BecomeScroll) return@withTimeoutOrNull "scroll"
             }
         }
         when (first) {
             "up" -> {
-                val ev = FilterChipGesture.up(st).second
-                if (ev == FilterChipGesture.Event.Click) onClick()
+                if (FilterChipGesture.up(st).second == FilterChipGesture.Event.Click) onClick()
                 return@awaitEachGesture
             }
             "scroll", "lost" -> return@awaitEachGesture
@@ -52,41 +44,16 @@ fun Modifier.filterChipGestures(
                 }
                 val (n, evnt) = FilterChipGesture.tick(st, st.downUptimeMs + FilterChipGesture.LONG_PRESS_MS)
                 st = n
-                if (evnt == FilterChipGesture.Event.Armed) onArmed()
+                if (evnt == FilterChipGesture.Event.OpenMenu) onOpenMenu()
             }
         }
-        var tracking = true
+        // Keep tracking until release so the scrollable doesn't steal the already-open menu gesture.
+        var tracking = st.phase == FilterChipGesture.Phase.MENU
         while (tracking) {
             val ev = awaitPointerEvent()
             val ch = ev.changes.firstOrNull { it.id == down.id }
-            if (ch == null) {
-                val evnt = FilterChipGesture.cancel(st).second
-                if (evnt == FilterChipGesture.Event.DragEnd) onDragEnd()
-                tracking = false
-            } else if (!ch.pressed) {
-                val evnt = FilterChipGesture.up(st).second
-                when (evnt) {
-                    FilterChipGesture.Event.OpenMenu -> onOpenMenu()
-                    FilterChipGesture.Event.DragEnd -> onDragEnd()
-                    else -> {}
-                }
-                tracking = false
-            } else {
-                val (n, evnt) = FilterChipGesture.move(st, ch.position.x, ch.position.y, scrollSlop, dragSlop, reorderable)
-                st = n
-                when (evnt) {
-                    FilterChipGesture.Event.DragStart -> {
-                        ch.consume()
-                        onDragStart()
-                        onDrag(n.dx, n.dy)
-                    }
-                    FilterChipGesture.Event.DragMove -> {
-                        ch.consume()
-                        onDrag(n.dx, n.dy)
-                    }
-                    else -> {}
-                }
-            }
+            if (ch == null || !ch.pressed) tracking = false
+            else ch.consume()
         }
     }
 }

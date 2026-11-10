@@ -120,7 +120,4 @@ data class BackupStyles(
     /** 2.0.35: Home filter tab id (IPv4 / Антиблок / protocol) and country code; empty = default / all. */
     val homeFilterTab: String = "",
     val homeFilterCountry: String = "",
-    /** 2.0.37: user-arranged Home filter chip ids; missing ids are appended in default order. */
-    val tabOrder: List<String> = emptyList(),
-    val countryOrder: List<String> = emptyList(),
 )
