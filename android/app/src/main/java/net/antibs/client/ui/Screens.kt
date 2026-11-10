@@ -655,7 +655,6 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     active = connected || vpn.state == ConnState.CONNECTING, connected = connected,
                     vpnFails = vpnFails, directFails = directFails, netValidated = netOk)
                 val healthText = net.antibs.client.engine.NetMonitor.healthText(health)
-                // 2.0.33: connection banner → URL test → power button → status / error
                 run {
                     // 1.0.31: the host line always stays; only the speeds/graphs section shows as soon as the VPN
                     // connects (or is connecting) and hides 5 s after it goes off (reconnect within 5 s cancels).
@@ -714,7 +713,9 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         subStyle = st.adv.subRemain,
                     )
                 }
+                // 2.0.33: banner → URL test (if enabled) → power button → status / error
                 urlTest()
+                if (!isTv && !st.adv.homeUrlTest) Spacer(Modifier.height(BANNER_TRIM))
                 run {
                     Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
                         PowerToggle(state = vpn.state, since = vpn.since, problem = health != net.antibs.client.engine.NetMonitor.Health.OK, onClick = ::toggle)
@@ -773,6 +774,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (captcha != null) {
                     run { CaptchaCard(captcha!!) }
                 }
+            }
             val listHeader: @Composable () -> Unit = {
                 val ids = st.subscriptions.map { it.id }
                 val curSub = if (effLayout == SubLayout.RIBBON) ServerStyleLogic.validRibbon(sRibbon[sStyle] ?: "", ids).let { id -> st.subscriptions.firstOrNull { it.id == id } } else null
@@ -805,7 +807,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
-                        // 2.0.33: banner → URL test → power button (one item), then the list
+                        // 2.0.33: banner → URL test → power live in homeTop, then the list
                         item(key = "home-top") { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { homeTop() } }
                         item(key = "home-list-head") { listHeader() }
                         serverItems()
@@ -839,15 +841,15 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     if (showStyle) StyleViewDialog(onDismiss = { showStyle = false })
 }
 
-/** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + «Тест скорости», «Сеть». 2.0.33: icons back. */
-internal enum class MainTab(val title: String, val i18nKey: String) {
+/** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + «Тест скорости», «Сеть». 2.0.33: icons only, no labels. */
+internal enum class MainTab(val title: String, val key: String) {
     Shop("Магазин", "tab_shop"), Home("Главная", "tab_home"), Speed("Тест скорости", "tab_speed"), Net("Сеть", "tab_net");
-    val label: String get() = I18n.t(this.i18nKey)
+    val label: String get() = I18n.t(key)
 }
 
 @Composable
 internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
-    // 2.0.33: icons only (label = contentDescription); the «Тест скорости» / «Сеть» icons moved here from the home screen.
+    // 2.0.33: icons only (tab name = contentDescription / onClickLabel). Height stays ~62dp as in 2.0.30; selected tab sits on the accent pill.
     val pill = if (LocalAppStyle.current == ServerStyle.CLASSIC) AntiBSColors.BlueDeep else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
@@ -859,7 +861,7 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 6.dp, vertical = 2.dp),
+            Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             MainTab.entries.forEach { t ->
@@ -872,9 +874,9 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                 Column(
                     Modifier
                         .weight(1f)
+                        .fillMaxHeight()
                         .clip(RoundedCornerShape(16.dp))
-                        .clickable(onClickLabel = t.label) { if (!sel) onSelect(t) }
-                        .padding(vertical = 8.dp),
+                        .clickable(onClickLabel = t.label) { if (!sel) onSelect(t) },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
@@ -890,7 +892,7 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                                 MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
                                 MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
                                 MainTab.Speed -> Icons.Filled.Speed
-                            MainTab.Net -> Icons.Filled.CellTower
+                                MainTab.Net -> Icons.Filled.CellTower
                             },
                             contentDescription = t.label,
                             tint = if (sel) Color.White else muted,
@@ -902,6 +904,7 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
         }
     }
 }
+
 
 
 @Composable
