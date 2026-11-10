@@ -131,29 +131,51 @@ private fun CountryChipRow(
     onCountry: (String) -> Unit,
 ) {
     val scroll = rememberScrollState()
+    val xPos = remember { mutableStateMapOf<String, Int>() }
+    val wPos = remember { mutableStateMapOf<String, Int>() }
+    val selKey = selected.ifEmpty { HomeFilters.COUNTRY_ALL }
+    LaunchedEffect(selKey, xPos[selKey], wPos[selKey], scroll.maxValue) {
+        val x = xPos[selKey] ?: return@LaunchedEffect
+        val tw = wPos[selKey] ?: 0
+        val view = scroll.viewportSize
+        val start = scroll.value
+        if (x < start + 24 || x + tw > start + view - 8) {
+            scroll.scrollTo((x - 48).coerceIn(0, scroll.maxValue.coerceAtLeast(0)))
+        }
+    }
     Row(
         Modifier.fillMaxWidth().horizontalScroll(scroll),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MiniCountryChip(
-            label = "Все страны",
-            meta = allCount.toString(),
-            metaColor = null,
-            selected = selected.isEmpty(),
-            onClick = { onCountry(HomeFilters.COUNTRY_ALL) },
-        )
+        Box(Modifier.onGloballyPositioned {
+            xPos[HomeFilters.COUNTRY_ALL] = it.positionInParent().x.toInt()
+            wPos[HomeFilters.COUNTRY_ALL] = it.size.width
+        }) {
+            MiniCountryChip(
+                label = "Все страны",
+                meta = allCount.toString(),
+                metaColor = null,
+                selected = selected.isEmpty(),
+                onClick = { onCountry(HomeFilters.COUNTRY_ALL) },
+            )
+        }
         countries.forEach { c ->
             val ping = c.bestPing
             val meta = if (ping != null) "$ping мс" else c.count.toString()
             val metaColor = if (ping != null) pingColor(ping) else null
-            MiniCountryChip(
-                label = "${c.flag} ${c.name}",
-                meta = meta,
-                metaColor = metaColor,
-                selected = selected == c.code,
-                onClick = { onCountry(if (selected == c.code) HomeFilters.COUNTRY_ALL else c.code) },
-            )
+            Box(Modifier.onGloballyPositioned {
+                xPos[c.code] = it.positionInParent().x.toInt()
+                wPos[c.code] = it.size.width
+            }) {
+                MiniCountryChip(
+                    label = "${c.flag} ${c.name}",
+                    meta = meta,
+                    metaColor = metaColor,
+                    selected = selected == c.code,
+                    onClick = { onCountry(if (selected == c.code) HomeFilters.COUNTRY_ALL else c.code) },
+                )
+            }
         }
     }
 }

@@ -63,6 +63,9 @@ fun ServersHeader(
     var moreOpen by remember { mutableStateOf(ShotHooks.subMenuOpen && subMenu != null) }
     val iconTint = if (style.glow) c.accent else c.onCard.copy(alpha = 0.8f)
     val menuShape = RoundedCornerShape(16.dp)
+    // 2.0.36: Home compact row no longer has filter/ping-all icons; if there is also no holiday
+    // strip and no subscription ⋮, drop the row entirely (no blank gap).
+    if (compact && holiday == null && subMenu == null) return
     @Composable
     fun HeadIcon(icon: ImageVector, desc: String, onClick: () -> Unit) {
         val hf = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -140,26 +143,6 @@ fun ServersHeader(
                 Item(Icons.Filled.Speed, if (testing) "Проверка…" else "Проверить все", enabled = !testing) { sortOpen = false; onTestAll() }
             }
         }
-        if (compact) {
-            Box {
-                var filtOpen by remember { mutableStateOf(false) }
-                val filtIcon = when (filter) {
-                    ServerFilter.FAVORITES -> Icons.Rounded.Star
-                    ServerFilter.FAST -> Icons.Rounded.Bolt
-                    else -> Icons.Filled.FilterList
-                }
-                HeadIcon(filtIcon, "Фильтр") { filtOpen = true }
-                DropdownMenu(filtOpen, { filtOpen = false }, shape = menuShape) {
-                    Item(Icons.Rounded.Star, "Только избранные", checked = filter == ServerFilter.FAVORITES) {
-                        filtOpen = false; onFilter(if (filter == ServerFilter.FAVORITES) ServerFilter.ALL else ServerFilter.FAVORITES)
-                    }
-                    Item(Icons.Rounded.Bolt, "Только быстрые", checked = filter == ServerFilter.FAST) {
-                        filtOpen = false; onFilter(if (filter == ServerFilter.FAST) ServerFilter.ALL else ServerFilter.FAST)
-                    }
-                }
-            }
-            HeadIcon(Icons.Filled.Speed, if (testing) "Проверка…" else "Проверить все") { if (!testing) onTestAll() }
-        }
         if (!compact) HeadIcon(Icons.Filled.Add, "Добавить серверы") { onAdd() }
         if (subMenu != null) Box {
             val sub = subMenu
@@ -214,7 +197,7 @@ internal fun LazyListScope.styledServers(
     val ping: (String) -> Long? = { pings[it] }
     val sel = if (style.fixedLayout != null) ServerStyleLogic.stackSelection(ServerStyleLogic.validRibbon(ribbonSel, ids), ids) else ServerStyleLogic.validRibbon(ribbonSel, ids)
     val shown = if (sel == ServerStyleLogic.RIBBON_ALL) ordered.flatMap { it.servers } else ordered.firstOrNull { it.subscription?.id == sel }?.servers.orEmpty()
-    val scoped = if (homeTab.isBlank()) shown else HomeFilters.apply(shown, homeTab, homeCountry)
+    val scoped = HomeFilters.apply(shown, homeTab, homeCountry)
     val list = ServerStyleLogic.sortServers(ServerStyleLogic.filter(scoped, filter, favorites, ping), sortMode, ping)
     item(key = "ss-top") {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)) {

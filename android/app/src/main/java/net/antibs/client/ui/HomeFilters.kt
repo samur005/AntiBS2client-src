@@ -6,8 +6,9 @@ import net.antibs.client.data.ServerEntry
 import net.antibs.client.data.ServerGrouping
 
 /**
- * 2.0.35: СЕТЬ-style Home filters — IPv6 / IPv4 / Антиблок, then one tab per protocol
+ * 2.0.36: СЕТЬ-style Home filters — IPv4 / IPv6 / Антиблок, then one tab per protocol
  * present in the current list (zero-count tabs are hidden). Country chips combine with the tab (AND).
+ * Empty tab+country = no filter (subscription banners). A selected tab or country shows a flat list.
  */
 object HomeFilters {
     const val TAB_IPV6 = "IPv6"
@@ -124,8 +125,8 @@ object HomeFilters {
             val n = servers.count(pred)
             if (n > 0) out += Tab(id, id, n)
         }
-        addFixed(TAB_IPV6, ::hasIpv6)
         addFixed(TAB_IPV4, ::hasIpv4)
+        addFixed(TAB_IPV6, ::hasIpv6)
         addFixed(TAB_ANTIBLOCK, ::isAntiblock)
         val protoCounts = LinkedHashMap<String, Int>()
         for (s in servers) {
@@ -157,12 +158,19 @@ object HomeFilters {
         }
     }
 
-    /** Keep [selected] when it still exists; otherwise IPv4 if present, else the first tab, else "". */
-    fun resolveTab(selected: String, tabs: List<Tab>): String = when {
-        tabs.any { it.id == selected } -> selected
-        tabs.any { it.id == TAB_IPV4 } -> TAB_IPV4
-        else -> tabs.firstOrNull()?.id.orEmpty()
-    }
+    /** Keep [selected] when it still exists; otherwise no tab (""). Never auto-picks IPv4. */
+    fun resolveTab(selected: String, tabs: List<Tab>): String =
+        if (selected.isNotBlank() && tabs.any { it.id == selected }) selected else ""
+
+    /** Row 1 is single-select and toggleable: the same chip again clears the tab. */
+    fun toggleTab(current: String, tapped: String): String =
+        if (tapped.isBlank() || current == tapped) "" else tapped
+
+    /** «Все страны» or a second tap on the active country clears the country filter. */
+    fun toggleCountry(current: String, tapped: String): String =
+        if (tapped.isBlank() || tapped == COUNTRY_ALL || current == tapped) "" else tapped
+
+    fun filterActive(tab: String, country: String): Boolean = tab.isNotBlank() || country.isNotBlank()
 
     /** Keep [selected] when that country is still present; otherwise «Все страны». */
     fun resolveCountry(selected: String, countries: List<Country>): String =

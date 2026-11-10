@@ -74,7 +74,7 @@ class HomeFiltersTest {
             xray("🇵🇱 Варшава 4G"),
         )
         val tabs = HomeFilters.tabs(servers)
-        assertEquals(listOf("IPv6", "IPv4", "Антиблок", "VLESS Reality", "Trojan", "VLESS"), tabs.map { it.id })
+        assertEquals(listOf("IPv4", "IPv6", "Антиблок", "VLESS Reality", "Trojan", "VLESS"), tabs.map { it.id })
         assertEquals(1, tabs.first { it.id == "IPv6" }.count)
         assertTrue(tabs.first { it.id == "IPv4" }.count >= 4)
         assertEquals(2, tabs.first { it.id == "Антиблок" }.count)
@@ -92,6 +92,8 @@ class HomeFiltersTest {
         assertEquals(listOf("🇩🇪 Франкфурт", "🇩🇪 Гамбург"), de)
         val all = HomeFilters.apply(servers, "Trojan", "").map { it.name }
         assertEquals(3, all.size)
+        assertEquals(4, HomeFilters.apply(servers, "", "").size)
+        assertEquals(3, HomeFilters.apply(servers, "", "DE").size)
     }
 
     @Test fun countriesShowFlagNameAndBestPing() {
@@ -109,8 +111,17 @@ class HomeFiltersTest {
     @Test fun resolveResetsMissingTabAndCountry() {
         val tabs = listOf(HomeFilters.Tab("IPv6", "IPv6", 1), HomeFilters.Tab("IPv4", "IPv4", 4), HomeFilters.Tab("Trojan", "Trojan", 2))
         assertEquals("Trojan", HomeFilters.resolveTab("Trojan", tabs))
-        assertEquals("IPv4", HomeFilters.resolveTab("HY2", tabs))
-        assertEquals("IPv4", HomeFilters.resolveTab("", tabs))
+        assertEquals("", HomeFilters.resolveTab("HY2", tabs))
+        assertEquals("", HomeFilters.resolveTab("", tabs))
+        assertEquals("IPv4", HomeFilters.toggleTab("", "IPv4"))
+        assertEquals("", HomeFilters.toggleTab("IPv4", "IPv4"))
+        assertEquals("IPv6", HomeFilters.toggleTab("IPv4", "IPv6"))
+        assertEquals("DE", HomeFilters.toggleCountry("", "DE"))
+        assertEquals("", HomeFilters.toggleCountry("DE", "DE"))
+        assertEquals("", HomeFilters.toggleCountry("DE", HomeFilters.COUNTRY_ALL))
+        assertFalse(HomeFilters.filterActive("", ""))
+        assertTrue(HomeFilters.filterActive("IPv4", ""))
+        assertTrue(HomeFilters.filterActive("", "DE"))
         val countries = listOf(HomeFilters.Country("DE", "🇩🇪", "Германия", 2, 38), HomeFilters.Country("NL", "🇳🇱", "Нидерланды", 1, 52))
         assertEquals("DE", HomeFilters.resolveCountry("DE", countries))
         assertEquals("", HomeFilters.resolveCountry("US", countries))

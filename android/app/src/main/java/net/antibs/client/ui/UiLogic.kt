@@ -307,6 +307,20 @@ object UiLogic {
         return state == ConnState.CONNECTED && tunnelPing == TunnelPing.FAIL
     }
 
+    /** 2.0.36: segmented «Вкл» fill — orange while connecting, green when connected and healthy, red on problems, else off. */
+    enum class PowerThumb { OFF, ORANGE, GREEN, RED }
+
+    fun powerThumb(
+        state: ConnState,
+        health: NetMonitor.Health = NetMonitor.Health.OK,
+        tunnelPing: TunnelPing = TunnelPing.UNKNOWN,
+    ): PowerThumb = when {
+        powerShowError(state, health, tunnelPing) -> PowerThumb.RED
+        state == ConnState.CONNECTED -> PowerThumb.GREEN
+        state == ConnState.CONNECTING -> PowerThumb.ORANGE
+        else -> PowerThumb.OFF
+    }
+
     const val ORPHAN_GROUP = "__orphans__"
 
     data class HostGroup(

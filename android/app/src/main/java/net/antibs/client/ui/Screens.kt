@@ -78,6 +78,7 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -464,6 +465,9 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     // 1.0.42: bottom navigation «Магазин» · «Главная» · «Серверы» (Главная is the start tab)
     var tabName by rememberSaveable { mutableStateOf(MainTab.Home.name) }
     val tab = MainTab.valueOf(tabName)
+    // 2.0.36: Home filters are session-only (no prefs); empty = subscription banners.
+    var homeTab by remember { mutableStateOf("") }
+    var homeCountry by remember { mutableStateOf("") }
     // 1.0.55: one light tick per actual tab change — navbar tap, back, «Серверы» links, picking a server
     AppHaptics.TickOnChange(tab, st.adv.haptics)
     BackHandler(enabled = tab != MainTab.Home) { tabName = MainTab.Home.name }
@@ -479,8 +483,6 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     val sFav by sp.favorites.collectAsState()
     val sSort by sp.sort.collectAsState()
     val sSubNew by sp.subNewestFirst.collectAsState()
-    val homeTabRaw by sp.homeTab.collectAsState()
-    val homeCountryRaw by sp.homeCountry.collectAsState()
     val opts = sOpts[sStyle] ?: ServerStyleLogic.defaultOptions(sStyle)
     val effLayout = ServerStyleLogic.effectiveLayout(sStyle, opts)
     val bg = ssBackground(sStyle)
@@ -532,29 +534,38 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             val ribbonIds = st.subscriptions.map { it.id }
             val ribbonSel = if (sStyle != ServerStyle.CLASSIC && effLayout == SubLayout.RIBBON)
                 ServerStyleLogic.validRibbon(sRibbon[sStyle] ?: ServerStyleLogic.RIBBON_FIRST, ribbonIds) else null
-            val filterScope = if (ribbonSel != null && ribbonSel != ServerStyleLogic.RIBBON_ALL)
-                st.servers.filter { ServerStyleLogic.inGroup(it, ribbonSel) } else st.servers
-            val filterTabs = HomeFilters.tabs(UiLogic.visibleServers(filterScope))
-            val homeTab = HomeFilters.resolveTab(homeTabRaw, filterTabs)
-            val tabServers = filterScope.filter { HomeFilters.matchesTab(it, homeTab) }
-            val filterCountries = HomeFilters.countries(tabServers, pings)
-            val homeCountry = HomeFilters.resolveCountry(homeCountryRaw, filterCountries)
-            LaunchedEffect(homeTab, homeCountry, homeTabRaw, homeCountryRaw) {
-                if (homeTab != homeTabRaw) sp.setHomeTab(homeTab)
-                if (homeCountry != homeCountryRaw) sp.setHomeCountry(homeCountry)
-            }
+            val allVisible = UiLogic.visibleServers(st.servers)
+            val filterTabs = HomeFilters.tabs(allVisible)
+            val activeTab = HomeFilters.resolveTab(homeTab, filterTabs)
+            val countryScope = if (activeTab.isBlank()) allVisible else allVisible.filter { HomeFilters.matchesTab(it, activeTab) }
+            val filterCountries = HomeFilters.countries(countryScope, pings)
+            val activeCountry = HomeFilters.resolveCountry(homeCountry, filterCountries)
+            val filtersOn = HomeFilters.filterActive(activeTab, activeCountry)
             val serverItems: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
                 run {
                 if (pingBatch.isNotEmpty()) item(key = "ping-counter") { Box(Modifier.animateItem()) { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }, onStop = { vm.stopPingBatch() }, stopped = pingStopped) } }
                 if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
                     item { Text("Нет подписок. Нажмите «+» вверху справа или купите подписку в «Магазине».", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp)) }
                 }
+                if (filtersOn) {
+                    val scoped = HomeFilters.apply(allVisible, activeTab, activeCountry)
+                    val sFilt = sFilter[sStyle] ?: ServerFilter.ALL
+                    val list = ServerStyleLogic.sortServers(ServerStyleLogic.filter(scoped, sFilt, sFav) { pings[it] }, sSort) { pings[it] }
+                    if (list.isEmpty()) item(key = "flat-empty") {
+                        Text("Нет серверов", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+                    }
+                    items(list, key = { "flat-" + it.id }) { s ->
+                        if (sStyle == ServerStyle.CLASSIC) HostServerRow(s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, onSelected = { toTop() }, onLanSend = { onLanSendServer(s.id) })
+                        else StyledHostRow(sStyle, s, st, pings, s.id in pinging, ui.compactServers, vm, ctx, sFav, onSelected = { toTop() }, onLanSend = { onLanSendServer(s.id) })
+                    }
+                    return@run
+                }
                 // styles: ribbon / card stack / Material You pick one subscription at a time
                 if (sStyle != ServerStyle.CLASSIC && effLayout == SubLayout.RIBBON) {
                     styledServers(sStyle, effLayout, opts.bestCard, sRibbon[sStyle] ?: ServerStyleLogic.RIBBON_FIRST, { sp.setRibbon(sStyle, it) },
                         sFilter[sStyle] ?: ServerFilter.ALL, { sp.setFilter(sStyle, it) }, sFav, sSort, sSubNew,
                         st, ui, pings, pinging, vm, ctx, nowSec, onSelected = { toTop() },
-                        onLanSendServer = onLanSendServer, homeTab = homeTab, homeCountry = homeCountry)
+                        onLanSendServer = onLanSendServer, homeTab = activeTab, homeCountry = activeCountry)
                     return@run
                 }
                 if (sStyle != ServerStyle.CLASSIC && opts.bestCard) item(key = "ss-best") {
@@ -570,7 +581,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 val sFilt = sFilter[sStyle] ?: ServerFilter.ALL
                 val shownGroups = ServerStyleLogic.orderSubs(groups, sSubNew)
                 shownGroups.forEach { g0 ->
-                        val scoped = HomeFilters.apply(g0.servers, homeTab, homeCountry)
+                        val scoped = HomeFilters.apply(g0.servers, activeTab, activeCountry)
                         val g = g0.copy(servers = ServerStyleLogic.sortServers(ServerStyleLogic.filter(scoped, sFilt, sFav) { pings[it] }, sSort) { pings[it] })
                         val sub = g.subscription
                         // «Серверы» (manual) is omitted entirely when empty — no blank card/header.
@@ -832,12 +843,12 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     Spacer(Modifier.height(6.dp))
                     HomeFiltersBar(
                         tabs = filterTabs,
-                        selectedTab = homeTab,
-                        onTab = { sp.setHomeTab(it); sp.setHomeCountry(HomeFilters.COUNTRY_ALL) },
+                        selectedTab = activeTab,
+                        onTab = { homeTab = HomeFilters.toggleTab(activeTab, it) },
                         countries = filterCountries,
-                        selectedCountry = homeCountry,
+                        selectedCountry = activeCountry,
                         allCount = filterCountries.size,
-                        onCountry = { sp.setHomeCountry(it) },
+                        onCountry = { homeCountry = HomeFilters.toggleCountry(activeCountry, it) },
                     )
                 }
             }
@@ -1708,7 +1719,8 @@ internal fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
 
 /**
  * 2.0.35: slim segmented «Выкл | Вкл» power card (concept D).
- * The selected segment uses the accent gradient; a problem or [ConnState.ERROR] paints it red.
+ * The selected segment is orange while connecting, green when connected (healthy),
+ * and red on a problem or [ConnState.ERROR] (smooth return to green when the network recovers).
  * Connecting / disconnecting show a pulsing progress shimmer. Tap or a horizontal swipe toggles
  * (disabled while busy). The session timer sits on the right. Same control on phone and TV.
  */
@@ -1733,7 +1745,15 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
         animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
         label = "seg",
     )
-    val errAmt by animateFloatAsState(if (showError) 1f else 0f, animationSpec = tween(420), label = "err")
+    val thumb = when {
+        showError -> UiLogic.PowerThumb.RED
+        connected -> UiLogic.PowerThumb.GREEN
+        state == ConnState.CONNECTING -> UiLogic.PowerThumb.ORANGE
+        else -> UiLogic.PowerThumb.OFF
+    }
+    val errAmt by animateFloatAsState(if (thumb == UiLogic.PowerThumb.RED) 1f else 0f, animationSpec = tween(420), label = "err")
+    val greenAmt by animateFloatAsState(if (thumb == UiLogic.PowerThumb.GREEN) 1f else 0f, animationSpec = tween(420), label = "green")
+    val orangeAmt by animateFloatAsState(if (thumb == UiLogic.PowerThumb.ORANGE) 1f else 0f, animationSpec = tween(420), label = "orange")
     val wave: State<Float> = if (busy) {
         rememberInfiniteTransition(label = "pwr-busy").animateFloat(
             0.55f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "pwr-wave",
@@ -1756,7 +1776,8 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
     val desc = UiLogic.powerContentDescription(state, problem, timer)
     val muted = c.muted
     val onCard = c.onCard
-    val accentBrush = AntiBSColors.fabBrush
+    val greenBrush = Brush.linearGradient(listOf(Color(0xFF3DDC97), Color(0xFF1DBF72)))
+    val orangeBrush = Brush.linearGradient(listOf(Color(0xFFFFC14D), Color(0xFFFF8A00)))
     val redBrush = Brush.linearGradient(listOf(Color(0xFFB4232F), AntiBSColors.Err, Color(0xFFFF6B5E)))
     val offPill = if (c.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.08f)
     val borderColor = androidx.compose.ui.graphics.lerp(c.cardBorder, AntiBSColors.Err, errAmt * 0.85f)
@@ -1777,6 +1798,7 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
                 .background(c.card)
                 .border(1.dp, borderColor, shape)
                 .then(if (isTv) Modifier.focusRequester(tvFocus).onFocusChanged { tvFocused = it.isFocused } else Modifier)
+                .focusable()
                 .pointerInput(on, busy) { detectTapGestures(onTap = { fire() }) }
                 .pointerInput(on, busy) {
                     var drag = 0f
@@ -1811,11 +1833,11 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
                             .fillMaxHeight()
                             .clip(trackShape)
                             .graphicsLayer { alpha = if (busy) 0.72f + 0.28f * wave.value else 1f }
-                            .then(if (on) Modifier.background(accentBrush) else Modifier.background(offPill)),
+                            .background(offPill),
                     ) {
-                        if (errAmt > 0f) {
-                            Box(Modifier.matchParentSize().graphicsLayer { alpha = errAmt }.background(redBrush))
-                        }
+                        if (orangeAmt > 0f) Box(Modifier.matchParentSize().graphicsLayer { alpha = orangeAmt }.background(orangeBrush))
+                        if (greenAmt > 0f) Box(Modifier.matchParentSize().graphicsLayer { alpha = greenAmt }.background(greenBrush))
+                        if (errAmt > 0f) Box(Modifier.matchParentSize().graphicsLayer { alpha = errAmt }.background(redBrush))
                         if (busy) {
                             Canvas(Modifier.fillMaxSize()) {
                                 val sp = shimmer.value

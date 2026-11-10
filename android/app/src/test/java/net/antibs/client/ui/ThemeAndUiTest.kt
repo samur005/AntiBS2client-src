@@ -319,6 +319,15 @@ class ThemeAndUiTest {
         // Recovery: ping and internet come back → accent
         assertEquals(ok, NetMonitor.health(active = true, connected = true, vpnFails = 0, directFails = 0, netValidated = true))
         assertFalse(UiLogic.powerShowError(ConnState.CONNECTED, ok, UiLogic.TunnelPing.OK))
+        // 2.0.36 thumb colours
+        assertEquals(UiLogic.PowerThumb.GREEN, UiLogic.powerThumb(ConnState.CONNECTED, ok, UiLogic.TunnelPing.OK))
+        assertEquals(UiLogic.PowerThumb.ORANGE, UiLogic.powerThumb(ConnState.CONNECTING, ok, UiLogic.TunnelPing.UNKNOWN))
+        assertEquals(UiLogic.PowerThumb.RED, UiLogic.powerThumb(ConnState.CONNECTED, noNet, UiLogic.TunnelPing.OK))
+        assertEquals(UiLogic.PowerThumb.RED, UiLogic.powerThumb(ConnState.CONNECTED, ok, UiLogic.TunnelPing.FAIL))
+        assertEquals(UiLogic.PowerThumb.RED, UiLogic.powerThumb(ConnState.CONNECTED, down, UiLogic.TunnelPing.CHECKING))
+        assertEquals(UiLogic.PowerThumb.RED, UiLogic.powerThumb(ConnState.ERROR, ok, UiLogic.TunnelPing.OK))
+        assertEquals(UiLogic.PowerThumb.OFF, UiLogic.powerThumb(ConnState.DISCONNECTED, ok, UiLogic.TunnelPing.UNKNOWN))
+        assertEquals(UiLogic.PowerThumb.GREEN, UiLogic.powerThumb(ConnState.CONNECTED, ok, UiLogic.TunnelPing.OK))
     }
 
     @Test fun legacyHostGridFlagIsHarmless() {
