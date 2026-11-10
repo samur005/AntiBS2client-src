@@ -17,13 +17,13 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** 2.0.32 home redesign previews (ABS_SHOTS=1): VPN-only banner (↓ blue / ↑ red, wide graph), compact URL test, text-only tabs. */
+/** 2.0.32/2.0.33 home redesign previews (2.0.33: bottom bar icon + label) (ABS_SHOTS=1): VPN-only banner (↓ blue / ↑ red, wide graph), compact URL test, text-only tabs. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w360dp-h800dp-xxhdpi")
 class Home2032ShotsTest {
     @get:Rule val rule = androidx.compose.ui.test.junit4.createAndroidComposeRule<androidx.activity.ComponentActivity>()
-    private val dir = "/workspace/polish_shots/2032"
+    private val dir = "/workspace/polish_shots/2033"
 
     private fun shot(theme: ThemeMode, name: String, content: @Composable () -> Unit) {
         Assume.assumeTrue(System.getenv("ABS_SHOTS") == "1")
@@ -36,7 +36,7 @@ class Home2032ShotsTest {
         File(dir).mkdirs(); File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    @Composable private fun home() = Column(Modifier.fillMaxSize()) {
+    @Composable private fun home(tab: MainTab = MainTab.Home) = Column(Modifier.fillMaxSize()) {
         val t0 = android.os.SystemClock.uptimeMillis() - 20_000
         val down = listOf(20f, 60f, 45f, 120f, 90f, 160f, 140f, 110f, 180f, 150f, 130f, 170f)
         val up = listOf(5f, 12f, 9f, 20f, 15f, 30f, 22f, 18f, 35f, 25f, 20f, 28f)
@@ -51,9 +51,11 @@ class Home2032ShotsTest {
             )
             UrlTestCard(mapOf("google" to 92L, "youtube" to 140L, "telegram" to 210L, "instagram" to -1L), false) {}
         }
-        MainBottomBar(MainTab.Home) { }
+        MainBottomBar(tab) { }
     }
 
     @Test fun homeDark() = shot(ThemeMode.DARK, "home_dark") { home() }
     @Test fun homeLight() = shot(ThemeMode.LIGHT, "home_light") { home() }
+    @Test fun barSpeedDark() = shot(ThemeMode.DARK, "bar_speed_selected_dark") { home(MainTab.Speed) }
+    @Test fun barNetLight() = shot(ThemeMode.LIGHT, "bar_net_selected_light") { home(MainTab.Net) }
 }

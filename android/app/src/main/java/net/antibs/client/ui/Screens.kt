@@ -842,7 +842,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     if (showStyle) StyleViewDialog(onDismiss = { showStyle = false })
 }
 
-/** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + «Тест скорости», «Сеть». */
+/** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + «Тест скорости», «Сеть». 2.0.33: icons back. */
 internal enum class MainTab(val title: String, val key: String) {
     Shop("Магазин", "tab_shop"), Home("Главная", "tab_home"), Speed("Тест скорости", "tab_speed"), Net("Сеть", "tab_net");
     val label: String get() = I18n.t(key)
@@ -850,7 +850,7 @@ internal enum class MainTab(val title: String, val key: String) {
 
 @Composable
 internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
-    // 2.0.32: text-only tabs (no icons); the selected tab sits on the accent pill.
+    // 2.0.33: icon + label per tab (the «Тест скорости» / «Сеть» icons moved here from the home screen).
     val pill = if (LocalAppStyle.current == ServerStyle.CLASSIC) AntiBSColors.BlueDeep else MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
@@ -862,38 +862,55 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 50.dp).padding(horizontal = 6.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().heightIn(min = 62.dp).padding(horizontal = 6.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             MainTab.entries.forEach { t ->
                 val sel = t == tab
                 val scale by androidx.compose.animation.core.animateFloatAsState(
-                    if (sel) 1.04f else 1f,
+                    if (sel) 1.06f else 1f,
                     androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 450f),
                     label = "tab-scale",
                 )
-                val bgc by androidx.compose.animation.animateColorAsState(if (sel) pill else Color.Transparent, label = "tab-bg")
-                Box(
+                Column(
                     Modifier
                         // longer labels («Тест скорости») get a wider slot so they stay on one line
                         .weight(0.6f + t.label.length.coerceIn(3, 16) * 0.06f)
-                        .heightIn(min = 38.dp)
-                        .graphicsLayer { scaleX = scale; scaleY = scale }
-                        .clip(RoundedCornerShape(19.dp))
-                        .background(bgc)
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable(onClickLabel = t.label) { if (!sel) onSelect(t) }
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center,
+                        .padding(top = 6.dp, bottom = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                 ) {
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 28.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (sel) pill else Color.Transparent),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            when (t) {
+                                MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
+                                MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
+                                MainTab.Speed -> Icons.Filled.Speed
+                            MainTab.Net -> Icons.Filled.CellTower
+                            },
+                            contentDescription = t.label,
+                            tint = if (sel) Color.White else muted,
+                            modifier = Modifier.size(20.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         t.label,
-                        color = if (sel) Color.White else muted,
-                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium,
-                        fontSize = 13.sp,
-                        lineHeight = 14.sp,
+                        color = if (sel) AntiBSColors.Blue else muted,
+                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
+                        fontSize = 11.sp,
+                        lineHeight = 13.sp,
                         textAlign = TextAlign.Center,
-                        maxLines = 2,
+                        maxLines = 1,
+                        softWrap = false,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }

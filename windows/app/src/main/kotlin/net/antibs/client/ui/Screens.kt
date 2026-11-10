@@ -543,40 +543,65 @@ internal val VpnUpColor = AntiBSColors.DirectGraph
 
 @Composable
 private fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
-    // 2.0.32: text-only tabs (no icons); the selected tab sits on the accent pill.
+    // 2.0.33: icon + label per tab (the «Тест скорости» / «Сеть» icons moved here from the home screen).
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val pill = AntiBSColors.BlueDeep
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+        modifier = Modifier
+            .fillMaxWidth().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 50.dp).padding(horizontal = 8.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().heightIn(min = 62.dp).padding(horizontal = 6.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             MainTab.entries.forEach { t ->
                 val sel = t == tab
-                val bgc by androidx.compose.animation.animateColorAsState(if (sel) AntiBSColors.BlueDeep else Color.Transparent, label = "tab-bg")
-                Box(
+                val scale by androidx.compose.animation.core.animateFloatAsState(
+                    if (sel) 1.06f else 1f,
+                    androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 450f),
+                    label = "tab-scale",
+                )
+                Column(
                     Modifier
                         // longer labels («Тест скорости») get a wider slot so they stay on one line
                         .weight(0.6f + t.title.length.coerceIn(3, 16) * 0.06f)
-                        .heightIn(min = 38.dp)
-                        .clip(RoundedCornerShape(19.dp))
-                        .background(bgc)
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable(onClickLabel = t.title) { if (!sel) { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onSelect(t) } }
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center,
+                        .padding(top = 6.dp, bottom = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                 ) {
+                    Box(
+                        Modifier
+                            .size(width = 56.dp, height = 28.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (sel) pill else Color.Transparent),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            when (t) {
+                                MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
+                                MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
+                                MainTab.Speed -> Icons.Filled.Speed
+                            },
+                            contentDescription = t.title,
+                            tint = if (sel) Color.White else muted,
+                            modifier = Modifier.size(20.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         t.title,
-                        color = if (sel) Color.White else muted,
-                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium,
-                        fontSize = 13.sp,
+                        color = if (sel) AntiBSColors.Blue else muted,
+                        fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
+                        fontSize = 11.sp,
+                        lineHeight = 13.sp,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
+                        softWrap = false,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
