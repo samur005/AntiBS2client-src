@@ -229,4 +229,57 @@ class HomeFiltersTest {
         assertEquals(listOf("DE", "NL"), cs.map { it.code })
         assertEquals("Германия", cs.first { it.code == "DE" }.name)
     }
+
+    @Test fun tabToggleWorksInAnySequenceIncludingIpv4AfterAnotherChip() {
+        fun run(seq: List<String>, start: String = ""): String {
+            var cur = start
+            for (tapped in seq) cur = HomeFilters.toggleTab(cur, tapped)
+            return cur
+        }
+        assertEquals("IPv4", run(listOf("IPv4", "VLESS Reality", "IPv4")))
+        assertEquals("IPv4", run(listOf("IPv4", "IPv6", "IPv4")))
+        assertEquals("IPv4", run(listOf("VLESS Reality", "IPv4")))
+        assertEquals("", run(listOf("IPv4", "VLESS Reality", "IPv4", "IPv6", "IPv4", "IPv4")))
+        assertEquals("IPv4", run(listOf("IPv4", "VLESS Reality", "IPv4", "IPv6", "IPv4", "IPv4", "IPv4")))
+        assertEquals("", run(listOf("IPv6", HomeFilters.TAB_ALL)))
+        assertEquals("", run(listOf("IPv4", "Все".let { HomeFilters.TAB_ALL })))
+        assertEquals("Мосты", run(listOf("IPv4", "Антиблок", "Мосты")))
+        assertEquals("IPv4", run(listOf("Мосты", "IPv6", "Антиблок", "IPv4")))
+        // «Все» is never a persisted tab; resolveTab never auto-picks IPv4
+        assertEquals("", HomeFilters.resolveTab(HomeFilters.TAB_ALL, listOf(HomeFilters.Tab("IPv4", "IPv4", 1))))
+        assertEquals("", HomeFilters.resolveTab("", listOf(HomeFilters.Tab("IPv4", "IPv4", 1))))
+        assertFalse(HomeFilters.filterActive(HomeFilters.TAB_ALL, ""))
+        assertFalse(HomeFilters.filterActive("", ""))
+        assertTrue(HomeFilters.filterActive("IPv4", ""))
+        assertEquals("Все", HomeFilters.chipLabel(HomeFilters.TAB_ALL, "", emptyList()))
+        assertEquals("Все страны", HomeFilters.chipLabel("", "", emptyList()))
+        val hosts = listOf(xray("🇩🇪 Франкфурт"), xray("🇳🇱 Амстердам"))
+        assertEquals(hosts, HomeFilters.chipTargets(hosts, tab = HomeFilters.TAB_ALL))
+        assertEquals(hosts, HomeFilters.apply(hosts, HomeFilters.TAB_ALL, ""))
+        // a few shuffled sequences all end by selecting IPv4
+        val others = listOf("IPv6", "Антиблок", "Мосты", "VLESS Reality", "Trojan")
+        for (perm in others.indices.map { i -> others.drop(i) + others.take(i) }) {
+            assertEquals("IPv4", run(perm + "IPv4"))
+        }
+    }
+
+    @Test fun countryToggleWorksInAnySequence() {
+        fun run(seq: List<String>, start: String = ""): String {
+            var cur = start
+            for (tapped in seq) cur = HomeFilters.toggleCountry(cur, tapped)
+            return cur
+        }
+        assertEquals("DE", run(listOf("DE", "NL", "DE")))
+        assertEquals("", run(listOf("DE", "DE")))
+        assertEquals("", run(listOf("DE", "NL", HomeFilters.COUNTRY_ALL)))
+        assertEquals("NL", run(listOf("DE", HomeFilters.COUNTRY_ALL, "NL")))
+        assertEquals("DE", run(listOf("NL", "FI", "DE", "NL", "DE")))
+        assertEquals("", run(listOf("DE", "NL", "DE", "DE")))
+        val countries = listOf("DE", "NL", "FI", "US")
+        for (i in countries.indices) {
+            val rot = countries.drop(i) + countries.take(i)
+            val seq = if (rot.last() == "DE") rot + listOf("NL", "DE") else rot + "DE"
+            assertEquals("DE", run(seq))
+        }
+    }
 }

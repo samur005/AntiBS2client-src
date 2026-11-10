@@ -860,11 +860,12 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     HomeFiltersBar(
                         tabs = filterTabs,
                         selectedTab = activeTab,
-                        onTab = { homeTab = HomeFilters.toggleTab(activeTab, it) },
+                        onTab = { homeTab = HomeFilters.toggleTab(homeTab, it) },
                         countries = filterCountries,
                         selectedCountry = activeCountry,
                         allCount = filterCountries.size,
-                        onCountry = { homeCountry = HomeFilters.toggleCountry(activeCountry, it) },
+                        serverCount = allVisible.size,
+                        onCountry = { homeCountry = HomeFilters.toggleCountry(homeCountry, it) },
                         haptics = st.adv.haptics,
                         onPingChip = { tab, country ->
                             vm.pingFiltered(HomeFilters.chipTargets(allVisible, tab, country))

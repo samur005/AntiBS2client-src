@@ -17,7 +17,11 @@ object HomeFilters {
     const val TAB_IPV4 = "IPv4"
     const val TAB_ANTIBLOCK = "Антиблок"
     const val TAB_BRIDGES = "Мосты"
+    /** Sentinel for the «Все» chip (not a real tab filter). Empty string also means no tab. */
+    const val TAB_ALL = "__all__"
     const val COUNTRY_ALL = ""
+
+    fun isAllTab(tab: String): Boolean = tab.isEmpty() || tab == TAB_ALL
 
     data class Tab(val id: String, val label: String, val count: Int)
     data class Country(val code: String, val flag: String, val name: String, val count: Int, val bestPing: Long?)
@@ -165,7 +169,7 @@ object HomeFilters {
         country.isEmpty() || country == COUNTRY_ALL || countryCode(s) == country
 
     fun apply(servers: List<ServerEntry>, tab: String, country: String): List<ServerEntry> =
-        servers.filter { (tab.isBlank() || matchesTab(it, tab)) && matchesCountry(it, country) }
+        servers.filter { (isAllTab(tab) || matchesTab(it, tab)) && matchesCountry(it, country) }
 
     /**
      * 2.0.37: servers one filter chip itself matches, not intersected with the other row.
@@ -173,12 +177,14 @@ object HomeFilters {
      * both blank («Все страны») → [servers] as given (all visible, unscoped).
      */
     fun chipTargets(servers: List<ServerEntry>, tab: String = "", country: String = ""): List<ServerEntry> = when {
-        tab.isNotBlank() -> servers.filter { matchesTab(it, tab) }
+        isAllTab(tab) && (country.isBlank() || country == COUNTRY_ALL) -> servers
+        !isAllTab(tab) && tab.isNotBlank() -> servers.filter { matchesTab(it, tab) }
         country.isNotBlank() && country != COUNTRY_ALL -> servers.filter { matchesCountry(it, country) }
         else -> servers
     }
 
     fun chipLabel(tab: String, country: String, countries: List<Country>): String = when {
+        tab == TAB_ALL -> "Все"
         tab.isNotBlank() -> tab
         country.isNotBlank() && country != COUNTRY_ALL ->
             countries.firstOrNull { it.code == country }?.name ?: country
@@ -186,10 +192,14 @@ object HomeFilters {
     }
 
     fun chipMenuKey(tab: String = "", country: String = ""): String = when {
+        tab == TAB_ALL -> "tab:all"
         tab.isNotBlank() -> "tab:$tab"
         country.isNotBlank() && country != COUNTRY_ALL -> "country:$country"
         else -> "country:"
     }
+
+    fun tabTestTag(id: String): String = "filter-tab:" + if (isAllTab(id)) "all" else id
+    fun countryTestTag(code: String): String = "filter-country:" + if (code.isEmpty() || code == COUNTRY_ALL) "all" else code
 
     fun tabs(servers: List<ServerEntry>): List<Tab> {
         if (servers.isEmpty()) return emptyList()
@@ -237,22 +247,23 @@ object HomeFilters {
 
     /** Keep [selected] when it still exists; otherwise no tab (""). Never auto-picks IPv4. */
     fun resolveTab(selected: String, tabs: List<Tab>): String =
-        if (selected.isNotBlank() && tabs.any { it.id == selected }) selected else ""
+        if (!isAllTab(selected) && selected.isNotBlank() && tabs.any { it.id == selected }) selected else ""
 
-    /** Row 1 is single-select and toggleable: the same chip again clears the tab. */
+    /** Row 1 is single-select and toggleable: the same chip or «Все» clears the tab. */
     fun toggleTab(current: String, tapped: String): String =
-        if (tapped.isBlank() || current == tapped) "" else tapped
+        if (isAllTab(tapped) || current == tapped) "" else tapped
 
     /** «Все страны» or a second tap on the active country clears the country filter. */
     fun toggleCountry(current: String, tapped: String): String =
         if (tapped.isBlank() || tapped == COUNTRY_ALL || current == tapped) "" else tapped
 
-    fun filterActive(tab: String, country: String): Boolean = tab.isNotBlank() || country.isNotBlank()
+    fun filterActive(tab: String, country: String): Boolean = !isAllTab(tab) && tab.isNotBlank() || country.isNotBlank()
 
     /** Title above the flat filtered list, e.g. «IPv4», «Германия», «IPv4 · Германия». */
     fun caption(tab: String, country: String, countries: List<Country>): String {
+        val t = if (isAllTab(tab)) "" else tab
         val ctry = countries.firstOrNull { it.code == country }?.name.orEmpty()
-        return listOf(tab, ctry).filter { it.isNotBlank() }.joinToString(" · ")
+        return listOf(t, ctry).filter { it.isNotBlank() }.joinToString(" · ")
     }
 
     /** Keep [selected] when that country is still present; otherwise «Все страны». */

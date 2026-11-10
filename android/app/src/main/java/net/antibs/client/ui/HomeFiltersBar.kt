@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -67,6 +69,7 @@ fun HomeFiltersBar(
     onCountry: (String) -> Unit,
     modifier: Modifier = Modifier,
     haptics: Boolean = true,
+    serverCount: Int = 0,
     onPingChip: (tab: String, country: String) -> Unit = { _, _ -> },
     onDeleteChip: (tab: String, country: String) -> Unit = { _, _ -> },
 ) {
@@ -78,7 +81,7 @@ fun HomeFiltersBar(
         menuKey = key
     }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        ProtocolChipRow(tabs, selectedTab, onTab, menuKey, { openMenu(it) }, { menuKey = it }, onPingChip, onDeleteChip)
+        ProtocolChipRow(tabs, selectedTab, onTab, serverCount, menuKey, { openMenu(it) }, { menuKey = it }, onPingChip, onDeleteChip)
         CountryChipRow(countries, selectedCountry, allCount, onCountry, menuKey, { openMenu(it) }, { menuKey = it }, onPingChip, onDeleteChip)
     }
 }
@@ -88,6 +91,7 @@ private fun ProtocolChipRow(
     tabs: List<HomeFilters.Tab>,
     selected: String,
     onTab: (String) -> Unit,
+    serverCount: Int,
     menuKey: String?,
     onOpen: (String) -> Unit,
     onMenuKey: (String?) -> Unit,
@@ -97,9 +101,10 @@ private fun ProtocolChipRow(
     val scroll = rememberScrollState()
     val xPos = remember { mutableStateMapOf<String, Int>() }
     val wPos = remember { mutableStateMapOf<String, Int>() }
-    LaunchedEffect(selected, xPos[selected], wPos[selected], scroll.maxValue) {
-        val x = xPos[selected] ?: return@LaunchedEffect
-        val tw = wPos[selected] ?: 0
+    val selKey = if (HomeFilters.isAllTab(selected)) HomeFilters.TAB_ALL else selected
+    LaunchedEffect(selKey, xPos[selKey], wPos[selKey], scroll.maxValue) {
+        val x = xPos[selKey] ?: return@LaunchedEffect
+        val tw = wPos[selKey] ?: 0
         val view = scroll.viewportSize
         val start = scroll.value
         if (x < start + 24 || x + tw > start + view - 8) {
@@ -107,11 +112,36 @@ private fun ProtocolChipRow(
         }
     }
     val accent = MaterialTheme.colorScheme.primary
+    val allKey = HomeFilters.chipMenuKey(tab = HomeFilters.TAB_ALL)
     Row(
         Modifier.fillMaxWidth().horizontalScroll(scroll),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box(
+            Modifier
+                .onGloballyPositioned {
+                    xPos[HomeFilters.TAB_ALL] = it.positionInParent().x.toInt()
+                    wPos[HomeFilters.TAB_ALL] = it.size.width
+                }
+                .testTag(HomeFilters.tabTestTag(HomeFilters.TAB_ALL)),
+        ) {
+            MiniCountryChip(
+                label = "Все",
+                meta = serverCount.toString(),
+                metaColor = null,
+                selected = HomeFilters.isAllTab(selected),
+                gestureKey = allKey,
+                onClick = { onTab(HomeFilters.TAB_ALL) },
+                onOpenMenu = { onOpen(allKey) },
+            )
+            FilterChipMenu(
+                expanded = menuKey == allKey,
+                onDismiss = { onMenuKey(null) },
+                onPing = { onPingChip(HomeFilters.TAB_ALL, "") },
+                onDelete = { onDeleteChip(HomeFilters.TAB_ALL, "") },
+            )
+        }
         tabs.forEach { tab ->
             val on = tab.id == selected
             val border = if (on) accent.copy(alpha = 0.85f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
@@ -119,12 +149,14 @@ private fun ProtocolChipRow(
             val fg = if (on) accent else MaterialTheme.colorScheme.onSurface
             val countFg = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant
             val key = HomeFilters.chipMenuKey(tab = tab.id)
+            key(tab.id) {
             Box(
                 Modifier
                     .onGloballyPositioned {
                         xPos[tab.id] = it.positionInParent().x.toInt()
                         wPos[tab.id] = it.size.width
                     }
+                    .testTag(HomeFilters.tabTestTag(tab.id))
                     .height(28.dp)
                     .clip(FilterChipShape)
                     .background(bg)
@@ -167,6 +199,7 @@ private fun ProtocolChipRow(
                     onDelete = { onDeleteChip(tab.id, "") },
                 )
             }
+            }
         }
     }
 }
@@ -205,7 +238,7 @@ private fun CountryChipRow(
         Box(Modifier.onGloballyPositioned {
             xPos[HomeFilters.COUNTRY_ALL] = it.positionInParent().x.toInt()
             wPos[HomeFilters.COUNTRY_ALL] = it.size.width
-        }) {
+        }.testTag(HomeFilters.countryTestTag(HomeFilters.COUNTRY_ALL))) {
             MiniCountryChip(
                 label = "Все страны",
                 meta = allCount.toString(),
@@ -227,17 +260,18 @@ private fun CountryChipRow(
             val meta = if (ping != null) "$ping мс" else c.count.toString()
             val metaColor = if (ping != null) pingColor(ping) else null
             val key = HomeFilters.chipMenuKey(country = c.code)
+            key(c.code) {
             Box(Modifier.onGloballyPositioned {
                 xPos[c.code] = it.positionInParent().x.toInt()
                 wPos[c.code] = it.size.width
-            }) {
+            }.testTag(HomeFilters.countryTestTag(c.code))) {
                 MiniCountryChip(
                     label = "${c.flag} ${c.name}",
                     meta = meta,
                     metaColor = metaColor,
                     selected = selected == c.code,
                     gestureKey = key,
-                    onClick = { onCountry(if (selected == c.code) HomeFilters.COUNTRY_ALL else c.code) },
+                    onClick = { onCountry(c.code) },
                     onOpenMenu = { onOpen(key) },
                 )
                 FilterChipMenu(
@@ -246,6 +280,7 @@ private fun CountryChipRow(
                     onPing = { onPingChip("", c.code) },
                     onDelete = { onDeleteChip("", c.code) },
                 )
+            }
             }
         }
     }
