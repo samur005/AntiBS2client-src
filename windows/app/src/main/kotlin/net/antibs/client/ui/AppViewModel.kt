@@ -37,6 +37,8 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.channels.Channel
 import net.antibs.client.engine.TunnelProbe
@@ -125,7 +127,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     _tunnelPing.value = UiLogic.TunnelPing.CHECKING
                     val serverId = sessionServerId(s.serverName)
-                    tunnelJob = viewModelScope.launch { tunnelLoop(serverId) }
+                    tunnelJob = viewModelScope.launch { launch { bgListPingLoop() }; tunnelLoop(serverId) }
                 }
             }
         }
@@ -180,6 +182,63 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         return null
+    }
+
+    private val failPrefs by lazy { getApplication<Application>().getSharedPreferences("autodelete_ping", android.content.Context.MODE_PRIVATE) }
+
+    /** ABS BgListPing: while connected, ping the whole list every 30 min (2 at a time) → auto-delete rule. */
+    private suspend fun bgListPingLoop() {
+        delay(net.antibs.client.data.AutoDeletePing.BG_FIRST_DELAY_MS)
+        while (true) {
+            runCatching { bgListPingRound() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+            delay(net.antibs.client.data.AutoDeletePing.BG_PERIOD_MS)
+        }
+    }
+
+    private suspend fun bgListPingRound() {
+        val ap = store.snapshot().adv.autoPing
+        if (!ap.autoDelete || VpnState.status.value.state != ConnState.CONNECTED) return
+        val list = store.servers().filterNot { UiLogic.isAutoSelectEntry(it) }
+        if (list.isEmpty()) return
+        val sem = Semaphore(net.antibs.client.data.AutoDeletePing.BG_PARALLEL)
+        val results = coroutineScope {
+            list.map { s -> async { s.id to sem.withPermit { runCatching { measure(s) }.getOrDefault(-1L) } } }.map { it.await() }.toMap()
+        }
+        _pings.update { it + results.filterValues { v -> v >= -1 } }
+        if (VpnState.status.value.state != ConnState.CONNECTED) return
+        val (protect, name) = connectedProtect()
+        val sessionId = sessionServerId(VpnState.status.value.serverName)
+        val prot: Set<String?> = protect + list.filter { name.isNotBlank() && it.name == name }.map { it.id } + sessionId
+        val res = net.antibs.client.data.AutoDeletePing.decide(
+            results, prot, true,
+            net.antibs.client.data.AutoDeletePing.decode(failPrefs.getString("counts", "")),
+            ap.failsToDelete,
+        ) { directNetOk() }
+        failPrefs.edit().putString("counts", net.antibs.client.data.AutoDeletePing.encode(res.counts)).apply()
+        when (val o = res.outcome) {
+            is net.antibs.client.data.AutoDeletePing.Outcome.Deleted -> {
+                var n = 0
+                o.ids.forEach { id -> if (store.deleteHost(id) != null) { _pings.update { it - id }; n++ } }
+                if (n > 0) {
+                    _toast.value = "Удалено $n (${ap.failsToDelete} неудачных проверок подряд)"
+                    VpnState.log("автоудаление: $n")
+                }
+            }
+            net.antibs.client.data.AutoDeletePing.Outcome.Whitelist ->
+                _toast.value = "Похоже на белые списки — серверы не удалены"
+            else -> {}
+        }
+    }
+
+    /** Direct generate_204 check: false = whitelist / bad network → nothing deleted. */
+    private suspend fun directNetOk(): Boolean = withContext(Dispatchers.IO) {
+        net.antibs.client.data.AutoDeletePing.PROBE_URLS.any { u -> runCatching {
+            val c = java.net.URL(u).openConnection() as java.net.HttpURLConnection
+            try {
+                c.requestMethod = "HEAD"; c.connectTimeout = 2500; c.readTimeout = 2500
+                c.instanceFollowRedirects = false; c.responseCode in 200..399
+            } finally { c.disconnect() }
+        }.getOrDefault(false) }
     }
 
     override fun onCleared() {
