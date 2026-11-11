@@ -1665,7 +1665,7 @@ internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.Im
         has("тем", "оформлен", "стиль", "интерфейс") -> Icons.Filled.Palette
         has("вибрац") -> Icons.Filled.Vibration
         has("тест скорост", "единиц", "скорост") -> Icons.Filled.Speed
-        has("пинг", "url тест") -> Icons.Filled.NetworkCheck
+        has("пинг", "url тест", "автоудал") -> Icons.Filled.NetworkCheck
         has("hwid") -> Icons.Filled.Fingerprint
         has("автообнов", "обновлять подписки", "интервал", "автопроверк", "проверить обновлен") -> Icons.Filled.Update
         has("wi‑fi", "wi-fi", "сканер") -> Icons.Filled.Wifi

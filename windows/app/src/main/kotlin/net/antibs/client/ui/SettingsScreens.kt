@@ -495,13 +495,32 @@ internal fun ExcludedRoutesPage(vm: AppViewModel, st: AppState, onBack: () -> Un
 @Composable
 internal fun PingPage(vm: AppViewModel, st: AppState, onBack: () -> Unit) {
     val a = st.adv
+    val ap = a.autoPing
     var timeout by remember(a.pingTimeoutSec) { mutableFloatStateOf(a.pingTimeoutSec.toFloat()) }
+    var failsDialog by remember { mutableStateOf(false) }
+    if (failsDialog) ChoiceDialog(
+        "Неудач подряд",
+        net.antibs.client.data.AutoDeletePing.FAILS_CHOICES.map { it.toString() to it.toString() },
+        ap.failsToDelete.toString(),
+        { v -> vm.setPingSettings { it.copy(autoPing = it.autoPing.copy(failsToDelete = v.toInt())) }; failsDialog = false },
+        { failsDialog = false },
+    )
     SettingsScaffold("Пинг", onBack) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             SwitchRow("Автопинг серверов", a.autoPingServers, subtitle = "При открытии приложения и после обновления подписок") { v ->
                 vm.setPingSettings { it.copy(autoPingServers = v) }
             }
             HintText("Выключено по умолчанию. Ручной пинг (кнопки «Пинговать все» и на карточках) работает всегда.")
+            SectionLabel("Автоудаление")
+            SwitchRow(
+                "Автоудаление недоступных при проверке пинга",
+                ap.autoDelete,
+                subtitle = "Пока VPN подключён, раз в 30 мин пингуются все серверы. Сервер удаляется после ${ap.failsToDelete} неудачных проверок подряд. Выбранный и подключённый — никогда",
+            ) { v -> vm.setPingSettings { it.copy(autoPing = it.autoPing.copy(autoDelete = v)) } }
+            if (ap.autoDelete) {
+                NavRow("Неудач подряд", ap.failsToDelete.toString(), dropdown = true) { failsDialog = true }
+            }
+            HintText("Не удаляет, если нет интернета, не ответили все или больше половины серверов, или похоже на белые списки. TCP-пинг для UDP-протоколов (Hysteria2, TUIC, WireGuard, AmneziaWG, XHTTP/H3) автоматически заменяется на ICMP.")
             SectionLabel("Тип пинга")
             listOf(
                 "get" to "GET-запрос через прокси", "head" to "HEAD-запрос через прокси",
