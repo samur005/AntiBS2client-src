@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.rounded.Bolt
@@ -260,7 +261,7 @@ fun BestServerCard(
     Column(base.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title.uppercase(), fontSize = 11.sp, letterSpacing = 1.5.sp, color = if (neon) c.accent else Color.White.copy(alpha = 0.85f), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Icon(androidx.compose.material.icons.Icons.Outlined.Speed, contentDescription = null, tint = onBg.copy(alpha = 0.85f),
+            Icon(androidx.compose.material.icons.Icons.Outlined.Public, contentDescription = null, tint = onBg.copy(alpha = 0.85f),
                 modifier = Modifier.clip(CircleShape).clickable { onRetest() }.padding(4.dp).size(18.dp))
         }
         Spacer(Modifier.height(8.dp))
@@ -298,7 +299,7 @@ fun navOutlineIcon(k: NavKind): ImageVector = when (k) {
     NavKind.SHOP -> Icons.Outlined.ShoppingBag
     NavKind.SERVERS -> Icons.Outlined.Dns
     NavKind.HOME -> Icons.Outlined.Home
-    NavKind.SPEED -> Icons.Outlined.Speed
+    NavKind.SPEED -> Icons.Outlined.Public
     NavKind.SETTINGS -> Icons.Outlined.Settings
 }
 

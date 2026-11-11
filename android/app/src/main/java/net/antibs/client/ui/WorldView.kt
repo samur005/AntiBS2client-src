@@ -18,7 +18,6 @@ package net.antibs.client.ui
 
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.filled.CellTower
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -402,10 +401,10 @@ fun HomeWorld(input: WorldInput, modifier: Modifier = Modifier, bleed: androidx.
                 gap()
                 Box(
                     Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
-                        .clickable(onClickLabel = "Тест скорости", onClick = onSpeed).padding(3.dp)
+                        .clickable(onClickLabel = "Сессия", onClick = onSpeed).padding(3.dp)
                         .size(36.dp, 32.dp),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Filled.Speed, "Тест скорости", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+                ) { Icon(Icons.Filled.Public, "Сессия", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
             }
             if (onPing != null) { gap(); PingPill(ping, onPing, Modifier) }
         }

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.SwitchColors
 import androidx.compose.foundation.layout.RowScope
@@ -533,7 +534,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
         ) { shown ->
         when (shown) {
         MainTab.Shop -> TvColumn(isTv) { ShopScreen(vm, onOpenServers = { tabName = MainTab.Home.name }) }
-        // 2.0.32: «Тест скорости» and «Сеть» are bottom-bar tabs (same pages, no back arrow inside the tab)
+        // 2.0.32: «Тест скорости» and «Сеть» became bottom-bar tabs; 2.0.41: speed tab is «Сессия»
         MainTab.Speed -> CompositionLocalProvider(LocalInTabs provides true) { TvColumn(isTv) { SpeedTestPage(vm, onBack = { tabName = MainTab.Home.name }) } }
         MainTab.Net -> CompositionLocalProvider(LocalInTabs provides true) { TvColumn(isTv) { NetToolsPage(vm, onBack = { tabName = MainTab.Home.name }) } }
         MainTab.Home -> {
@@ -926,9 +927,9 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
     if (showStyle) StyleViewDialog(onDismiss = { showStyle = false })
 }
 
-/** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + «Тест скорости», «Сеть». 2.0.33: icons only, no labels. */
+/** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + speed / «Сеть». 2.0.33: icons only. 2.0.41: the speed tab is «Сессия». */
 internal enum class MainTab(val title: String, val key: String) {
-    Shop("Магазин", "tab_shop"), Home("Главная", "tab_home"), Speed("Тест скорости", "tab_speed"), Net("Сеть", "tab_net");
+    Shop("Магазин", "tab_shop"), Home("Главная", "tab_home"), Speed("Сессия", "tab_speed"), Net("Сеть", "tab_net");
     val label: String get() = I18n.t(key)
 }
 
@@ -976,7 +977,7 @@ internal fun MainBottomBar(tab: MainTab, onSelect: (MainTab) -> Unit) {
                             when (t) {
                                 MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
                                 MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
-                                MainTab.Speed -> Icons.Filled.Speed
+                                MainTab.Speed -> if (sel) Icons.Filled.Public else Icons.Outlined.Public
                                 MainTab.Net -> Icons.Filled.CellTower
                             },
                             contentDescription = t.label,
@@ -2195,6 +2196,7 @@ internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.Im
         has("размер шрифта") || (has("размер") && has("шрифт")) -> Icons.Filled.FormatSize
         has("тем", "оформлен", "стиль", "интерфейс") -> Icons.Filled.Palette
         has("вибрац") -> Icons.Filled.Vibration
+        has("сессия", "session") -> Icons.Filled.Public
         has("тест скорост", "единиц", "скорост") -> Icons.Filled.Speed
         has("пинг", "url тест") -> Icons.Filled.NetworkCheck
         has("hwid") -> Icons.Filled.Fingerprint
@@ -2630,7 +2632,7 @@ internal fun MainSideRail(tab: MainTab, onSelect: (MainTab) -> Unit) {
                         when (t) {
                             MainTab.Shop -> if (sel) Icons.Filled.Storefront else Icons.Outlined.Storefront
                             MainTab.Home -> if (sel) Icons.Filled.Home else Icons.Outlined.Home
-                            MainTab.Speed -> Icons.Filled.Speed
+                            MainTab.Speed -> if (sel) Icons.Filled.Public else Icons.Outlined.Public
                             MainTab.Net -> Icons.Filled.CellTower
                         },
                         contentDescription = t.label,

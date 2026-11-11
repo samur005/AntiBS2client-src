@@ -182,7 +182,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         if (a.logging) NavRow("Уровень логов Xray", levelLabel(a.logLevel), dropdown = true) { dialog = "level" }
                     }
                     SettingsCard("Инструменты") {
-                        NavRow("Тест скорости", subtitle = "Скорость и задержка через текущий сервер") { open("SpeedTest") }
+                        NavRow("Сессия", subtitle = "Выход в интернет и тест скорости") { open("SpeedTest") }
                         NavRow("Сканер сети Wi‑Fi", subtitle = "Устройства в локальной сети") { open("NetScan") }
                         NavRow("Сеть: мониторинг и анализ", subtitle = "Сотовая связь, Wi‑Fi анализатор, LAN, ping / DNS") { open("NetTools") }
                         NavRow("Логи", if (a.logging) levelLabel(a.logLevel) else "Логирование Xray выключено") { open("Logs") }

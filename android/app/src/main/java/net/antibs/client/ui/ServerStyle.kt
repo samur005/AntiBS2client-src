@@ -249,6 +249,10 @@ internal object ShotHooks {
     @JvmField var subMenuOpen: Boolean = false
     /** 2.0.37: open a Home filter-chip context menu (chipMenuKey, e.g. "tab:IPv4"). */
     @JvmField var filterMenu: String? = null
+    /** 2.0.41: Session screen screenshot hooks (skip network). */
+    @JvmField var sessionLook: net.antibs.client.engine.SessionLook? = null
+    @JvmField var sessionSpeed: net.antibs.client.engine.SessionSpeedProgress? = null
+    @JvmField var sessionBusy: Boolean = false
 }
 
 /** AntiBS2client: hand-added servers live in the «Серверы» pseudo-subscription. */
