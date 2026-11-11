@@ -53,4 +53,12 @@ class SessionSpeedTest {
         assertEquals("—", SessionSpeed.formatPing(null))
         assertEquals("18", SessionSpeed.formatPing(18))
     }
+
+    @Test fun phaseFillClampsToUnitInterval() {
+        assertEquals(0f, SessionSpeed.phaseFill(0, 8_000), 1e-6f)
+        assertEquals(0.25f, SessionSpeed.phaseFill(2_000, 8_000), 1e-6f)
+        assertEquals(1f, SessionSpeed.phaseFill(8_000, 8_000), 1e-6f)
+        assertEquals(1f, SessionSpeed.phaseFill(12_000, 8_000), 1e-6f)
+        assertEquals(0f, SessionSpeed.phaseFill(100, 0), 1e-6f)
+    }
 }

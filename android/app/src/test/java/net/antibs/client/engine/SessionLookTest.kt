@@ -96,4 +96,29 @@ class SessionLookTest {
         assertNull(look.ipv6)
         assertEquals("🇦🇺 Австралия (AU)", look.country)
     }
+
+    @Test fun providerUrlPrefersHttpsDomain() {
+        assertEquals("https://as400992.net", SessionLooks.providerUrl("as400992.net", "400992", "ZhouyiSat Communications"))
+        assertEquals("https://isp.example.com", SessionLooks.providerUrl("https://isp.example.com/foo", "1", "X"))
+        assertEquals(null, SessionLooks.cleanDomain("localhost"))
+        assertEquals(null, SessionLooks.cleanDomain("not a domain"))
+    }
+
+    @Test fun providerUrlFallsBackToAsnThenSearch() {
+        assertEquals("https://bgp.he.net/AS400992", SessionLooks.providerUrl(null, "400992", "ZhouyiSat Communications"))
+        assertEquals("https://bgp.he.net/AS15169", SessionLooks.providerUrl(null, "AS15169", "Google"))
+        val q = SessionLooks.providerUrl(null, null, "ZhouyiSat Communications")!!
+        assertTrue(q.startsWith("https://www.google.com/search?q="))
+        assertTrue(q.contains("ZhouyiSat"))
+        assertNull(SessionLooks.providerUrl(null, null, null))
+        assertNull(SessionLooks.providerUrl(" ", "0", "  "))
+    }
+
+    @Test fun parseIpWhoKeepsConnectionDomain() {
+        val f = SessionLooks.parseIpWho("""{"ip":"1.2.3.4","success":true,"country":"Canada","country_code":"CA","connection":{"asn":400992,"isp":"ZhouyiSat","domain":"as400992.net"}}""")!!
+        assertEquals("as400992.net", f.domain)
+        val look = SessionLooks.toLook("1.2.3.4", null, f, true)
+        assertEquals("as400992.net", look.domain)
+        assertEquals("https://as400992.net", SessionLooks.providerUrl(look.domain, look.asn, look.provider))
+    }
 }

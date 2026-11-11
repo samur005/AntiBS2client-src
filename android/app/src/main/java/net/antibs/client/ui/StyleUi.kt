@@ -1,5 +1,8 @@
 package net.antibs.client.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -563,14 +566,18 @@ fun ProtoTags(style: ServerStyle, label: String) {
     val c = ssColors(style)
     val parts = label.split(' ', '·', '/').map { it.trim() }.filter { it.isNotEmpty() }.take(3)
     when (style) {
-        ServerStyle.AURORA, ServerStyle.STACK -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 3.dp)) {
+        ServerStyle.AURORA, ServerStyle.STACK -> Row(horizontalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.padding(top = 2.dp)) {
             parts.forEach { p ->
-                Text(p, fontSize = 9.sp, color = c.muted, maxLines = 1,
-                    modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(c.onCard.copy(alpha = 0.08f)).padding(horizontal = 5.dp, vertical = 1.dp))
+                Box(
+                    Modifier.height(16.dp).clip(RoundedCornerShape(4.dp)).background(c.onCard.copy(alpha = 0.08f)).padding(horizontal = 5.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(p, fontSize = 10.sp, lineHeight = 12.sp, color = c.muted, maxLines = 1, softWrap = false)
+                }
             }
         }
         ServerStyle.CYBER -> Text(parts.joinToString(" · ").uppercase(), fontSize = 10.sp, letterSpacing = 1.sp, color = c.muted, maxLines = 1)
-        else -> Text(parts.joinToString(" · "), fontSize = 11.sp, color = c.muted, maxLines = 1)
+        else -> Text(parts.joinToString(" · "), fontSize = 10.sp, color = c.muted, maxLines = 1)
     }
 }
 

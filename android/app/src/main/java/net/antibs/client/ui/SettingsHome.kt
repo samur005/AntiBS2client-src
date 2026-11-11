@@ -321,6 +321,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                     }
                     SettingsCard("Главный экран") {
                         SwitchRow("URL Тест", a.homeUrlTest, subtitle = "Google, Telegram, Запретgram, YouTube") { v -> vm.setAdv { it.copy(homeUrlTest = v) } }
+                        NavRow("Кнопка питания", PowerButtonLogic.colorLabel(a.powerButton.color) + " · " + net.antibs.client.data.PowerButtonStyle.effectLabel(a.powerButton.effect), subtitle = "Цвет, текст, живые эффекты, анимация") { open("PowerButton") }
                         NavRow("Остаток подписки", if (a.subRemain.show) "Показывать" else "Скрыт", subtitle = "Дни и трафик внизу карточки подключения") { open("SubRemain") }
                     }
                     SettingsCard("Список серверов") {

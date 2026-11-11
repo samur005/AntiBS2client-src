@@ -1,6 +1,6 @@
 {
     "schemaVersion": 1,
-    "appVersion": "2.0.41",
+    "appVersion": "2.0.42",
     "exportedAt": "",
     "prefs": {
         "theme": "auto",
@@ -145,7 +145,13 @@
                 "failsToDelete": 5
             },
             "revokeNotify": true,
-            "homeUrlTest": false
+            "homeUrlTest": false,
+            "powerButton": {
+                "color": "auto",
+                "textColor": "auto",
+                "effect": "breath",
+                "anim": true
+            }
         },
         "autoDeleteUnreachableByUrl": {}
     },

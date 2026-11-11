@@ -23,6 +23,58 @@ data class CustomHoliday(
     val endDay: Int = 0,
 )
 
+
+/** 2.0.42: Home power/connect segment (color, label color, living effect, motion). */
+@Serializable
+data class PowerButtonStyle(
+    /** auto = current green when connected; accent = app accent; else an [Accent] preset key. */
+    val color: String = COLOR_AUTO,
+    /** auto = white (or dark text on a light fill); white / black / an Accent preset. */
+    val textColor: String = COLOR_AUTO,
+    /** none | breath | glow | shimmer. Default is a calm breath while connected. */
+    val effect: String = EFFECT_BREATH,
+    /** Thumb slide and colour transitions. Living effects also pause when this is off. */
+    val anim: Boolean = true,
+) {
+    companion object {
+        const val COLOR_AUTO = "auto"
+        const val COLOR_ACCENT = "accent"
+        const val TEXT_WHITE = "white"
+        const val TEXT_BLACK = "black"
+        const val EFFECT_NONE = "none"
+        const val EFFECT_BREATH = "breath"
+        const val EFFECT_GLOW = "glow"
+        const val EFFECT_SHIMMER = "shimmer"
+
+        val effectOptions: List<Pair<String, String>> = listOf(
+            EFFECT_NONE to "Нет",
+            EFFECT_BREATH to "Дыхание",
+            EFFECT_GLOW to "Свечение",
+            EFFECT_SHIMMER to "Переливание",
+        )
+
+        fun normalizeColor(v: String?): String {
+            val s = v?.trim()?.lowercase().orEmpty()
+            if (s == COLOR_AUTO || s == COLOR_ACCENT || s in setOf("blue", "purple", "pink", "red", "orange", "amber", "green", "teal")) return s
+            return COLOR_AUTO
+        }
+
+        fun normalizeText(v: String?): String {
+            val s = v?.trim()?.lowercase().orEmpty()
+            if (s == COLOR_AUTO || s == TEXT_WHITE || s == TEXT_BLACK) return s
+            if (s in setOf("blue", "purple", "pink", "red", "orange", "amber", "green", "teal")) return s
+            return COLOR_AUTO
+        }
+
+        fun normalizeEffect(v: String?): String {
+            val s = v?.trim()?.lowercase().orEmpty()
+            return if (s in setOf(EFFECT_NONE, EFFECT_BREATH, EFFECT_GLOW, EFFECT_SHIMMER)) s else EFFECT_BREATH
+        }
+
+        fun effectLabel(v: String?): String = effectOptions.firstOrNull { it.first == normalizeEffect(v) }?.second ?: "Дыхание"
+    }
+}
+
 @Serializable
 data class AdvancedSettings(
     /** 1.0.55: «Единицы скорости» on the speed card: "bytes" (КБ/с, default, also for old installs) or "bits" (кбит/с). */
@@ -129,6 +181,8 @@ data class AdvancedSettings(
     /** 2.0.8: notification when another VPN app takes over (onRevoke). */
     val revokeNotify: Boolean = true,
     val homeUrlTest: Boolean = true,
+    /** 2.0.42: Home «Выкл / Вкл» power button appearance. */
+    val powerButton: PowerButtonStyle = PowerButtonStyle(),
 ) {
     val perAppSelected: List<String> get() = if (perAppMode == "bypass") perAppBypass else perAppInclude
 

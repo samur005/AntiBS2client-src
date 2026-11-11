@@ -31,6 +31,7 @@ data class SessionLook(
     val region: String? = null,
     val latitude: String? = null,
     val longitude: String? = null,
+    val domain: String? = null,
     val viaTunnel: Boolean = false,
 )
 
@@ -44,6 +45,7 @@ data class SessionFields(
     val region: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
+    val domain: String? = null,
 )
 
 object SessionLooks {
@@ -92,6 +94,7 @@ object SessionLooks {
         val conn = obj["connection"] as? JsonObject
         val asn = conn?.text("asn") ?: obj.text("asn")
         val provider = conn?.text("isp") ?: conn?.text("org") ?: obj.text("isp") ?: obj.text("org")
+        val domain = conn?.text("domain") ?: obj.text("domain")
         return SessionFields(
             ip = obj.text("ip"),
             asn = asn,
@@ -102,6 +105,7 @@ object SessionLooks {
             region = obj.text("region"),
             latitude = obj.num("latitude"),
             longitude = obj.num("longitude"),
+            domain = domain,
         ).takeIf { it.countryCode != null || it.ip != null || it.provider != null }
     }
 
@@ -153,8 +157,32 @@ object SessionLooks {
             region = f?.region?.trim()?.ifEmpty { null },
             latitude = coord(f?.latitude),
             longitude = coord(f?.longitude),
+            domain = cleanDomain(f?.domain),
             viaTunnel = viaTunnel,
         )
+    }
+
+
+    fun cleanDomain(raw: String?): String? {
+        var s = raw?.trim()?.lowercase(Locale.US)?.ifEmpty { null } ?: return null
+        s = s.removePrefix("https://").removePrefix("http://")
+        s = s.substringBefore('/').substringBefore('?').substringBefore('#').trim('.', ' ')
+        if (s.isEmpty() || ' ' in s || '.' !in s) return null
+        if (s == "localhost" || s.endsWith(".local")) return null
+        return s
+    }
+
+    /**
+     * Website to open for the «Провайдер» row: `https://<connection.domain>` when ipwho.is gave a domain,
+     * else Hurricane Electric for the ASN, else a web search for the provider name.
+     */
+    fun providerUrl(domain: String?, asn: String?, provider: String?): String? {
+        cleanDomain(domain)?.let { return "https://$it" }
+        val n = asn?.trim()?.removePrefix("AS")?.removePrefix("as")?.trim()
+        if (!n.isNullOrEmpty() && n.all { it.isDigit() } && n != "0") return "https://bgp.he.net/AS$n"
+        val q = provider?.trim()?.ifEmpty { null } ?: return null
+        val enc = java.net.URLEncoder.encode(q, Charsets.UTF_8.name()).replace("+", "%20")
+        return "https://www.google.com/search?q=$enc"
     }
 
     suspend fun fetch(ctx: Context, connected: Boolean, socksPort: Int): SessionLook = withContext(Dispatchers.IO) {

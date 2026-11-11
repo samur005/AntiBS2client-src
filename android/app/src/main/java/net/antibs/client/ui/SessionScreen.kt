@@ -1,6 +1,14 @@
 package net.antibs.client.ui
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextDecoration
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -172,20 +180,35 @@ internal fun SessionPage(vm: AppViewModel, onBack: () -> Unit) {
                 )
                 Column {
                     rows.forEachIndexed { i, (label, value) ->
+                        val providerUrl = if (label == "Провайдер") SessionLooks.providerUrl(look?.domain, look?.asn, look?.provider) else null
                         Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (providerUrl != null) Modifier.clickable(onClickLabel = "Открыть сайт провайдера") {
+                                        runCatching {
+                                            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(providerUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                        }
+                                    } else Modifier
+                                )
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(label, color = c.muted, fontSize = 13.sp)
                             Spacer(Modifier.width(12.dp))
                             Text(
                                 value?.takeIf { it.isNotBlank() } ?: "—",
-                                color = c.onCard,
+                                color = if (providerUrl != null) c.accent else c.onCard,
                                 fontSize = 13.sp,
                                 fontFamily = FontFamily.Monospace,
                                 textAlign = TextAlign.End,
+                                textDecoration = if (providerUrl != null) TextDecoration.Underline else TextDecoration.None,
                                 modifier = Modifier.weight(1f),
                             )
+                            if (providerUrl != null) {
+                                Spacer(Modifier.width(6.dp))
+                                Icon(Icons.Filled.OpenInNew, "Открыть сайт провайдера", tint = c.accent, modifier = Modifier.size(14.dp))
+                            }
                         }
                         if (i < rows.lastIndex) {
                             HorizontalDivider(thickness = 0.6.dp, color = c.cardBorder)
@@ -225,26 +248,38 @@ internal fun SessionPage(vm: AppViewModel, onBack: () -> Unit) {
                     .border(1.dp, c.cardBorder, shape),
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    val phaseFill = when (speed.phase) {
+                        SessionSpeedPhase.Download -> speed.downProgress ?: 0f
+                        SessionSpeedPhase.Upload -> speed.upProgress ?: 0f
+                        SessionSpeedPhase.Done -> 1f
+                        else -> null
+                    }
                     if (running) {
-                        if (shotLocked) {
+                        if (speed.phase == SessionSpeedPhase.Ping) {
                             LinearProgressIndicator(
-                                progress = { 0.55f },
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
                                 color = c.accent,
                                 trackColor = c.accent.copy(alpha = 0.18f),
                             )
                         } else {
+                            val f = phaseFill ?: 0f
                             LinearProgressIndicator(
+                                progress = { f },
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
                                 color = c.accent,
                                 trackColor = c.accent.copy(alpha = 0.18f),
                             )
                         }
                     }
+                    val pingFill = when {
+                        speed.phase == SessionSpeedPhase.Ping -> null
+                        speed.pingMs != null -> 1f
+                        else -> 0f
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        SpeedCell("Пинг", SessionSpeed.formatPing(speed.pingMs), "мс", c)
-                        SpeedCell("Загрузка", SessionSpeed.dashOrMbps(speed.downMbps), "Мбит/с", c)
-                        SpeedCell("Отдача", SessionSpeed.dashOrMbps(speed.upMbps), "Мбит/с", c)
+                        SpeedCell("Пинг", SessionSpeed.formatPing(speed.pingMs), "мс", c, fill = pingFill, indeterminate = speed.phase == SessionSpeedPhase.Ping)
+                        SpeedCell("Загрузка", SessionSpeed.dashOrMbps(speed.downMbps), "Мбит/с", c, fill = speed.downProgress ?: 0f)
+                        SpeedCell("Отдача", SessionSpeed.dashOrMbps(speed.upMbps), "Мбит/с", c, fill = speed.upProgress ?: 0f)
                     }
                     Spacer(Modifier.height(16.dp))
                     val onBtn = if (c.accent.luminance() > 0.45f) Color(0xFF0F172A) else Color.White
@@ -293,12 +328,20 @@ internal fun SessionPage(vm: AppViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun SpeedCell(title: String, value: String, unit: String, c: SsColors) {
+private fun SpeedCell(title: String, value: String, unit: String, c: SsColors, fill: Float? = 0f, indeterminate: Boolean = false) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(100.dp)) {
         Text(title, color = c.muted, fontSize = 12.sp)
         Spacer(Modifier.height(4.dp))
         Text(value, color = c.onCard, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace, maxLines = 1)
         Text(unit, color = c.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+        Spacer(Modifier.height(8.dp))
+        val barMod = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
+        if (indeterminate) {
+            LinearProgressIndicator(modifier = barMod, color = c.accent, trackColor = c.accent.copy(alpha = 0.18f))
+        } else {
+            val f = fill?.coerceIn(0f, 1f) ?: 0f
+            LinearProgressIndicator(progress = { f }, modifier = barMod, color = c.accent, trackColor = c.accent.copy(alpha = 0.18f))
+        }
     }
 }
 

@@ -70,6 +70,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -223,6 +224,8 @@ private enum class Page {
     SetCores, SetNet, SetSubAuto,
     // 2.0.6 (ABS port)
     Seasonal, SubRemain, Schedule,
+    // 2.0.42: power-button appearance
+    PowerButton,
     // 2.0.12: LAN transfer
     LanSend, LanRecv,
 }
@@ -235,6 +238,7 @@ private fun parentOf(p: Page): Page = when (p) {
     Page.RoutingEdit -> Page.Routing
     Page.Excluded -> Page.Settings
     Page.GeoFiles -> Page.Routing
+    Page.PowerButton -> Page.Interface
     else -> Page.Settings
 }
 
@@ -780,6 +784,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                     problem = UiLogic.powerShowError(vpn.state, health, tunnelPing),
                     onClick = ::toggle,
                     haptics = st.adv.haptics,
+                    prefs = st.adv.powerButton,
                 )
                 val engineDetail by net.antibs.client.engine.VpnState.detail.collectAsState()
                 if (vpn.state != ConnState.ERROR && vpn.state != ConnState.DISCONNECTED) engineDetail?.let { d ->
@@ -1647,6 +1652,29 @@ private fun TrafficBar(label: String, progress: Float) {
     }
 }
 
+/** 2.0.42: compact protocol chip on server-list rows (~17 dp tall, 10 sp, tight padding). */
+@Composable
+internal fun ProtocolBadge(label: String, selected: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .height(17.dp)
+            .clip(RoundedCornerShape(5.dp))
+            .background(if (selected) AntiBSColors.Blue else AntiBSColors.ChipOff)
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            maxLines = 1,
+            softWrap = false,
+        )
+    }
+}
+
 @Composable
 private fun ServerRow(
     flag: String,
@@ -1697,18 +1725,7 @@ private fun ServerRow(
             }
             Column(horizontalAlignment = Alignment.End) {
                 if (badge.isNotEmpty()) {
-                    // Same family as the connection-card protocol chip: rounded, SemiBold, light label.
-                    Text(
-                        badge,
-                        fontSize = 11.sp,
-                        lineHeight = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
-                        maxLines = 1,
-                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) AntiBSColors.Blue else AntiBSColors.ChipOff)
-                            .padding(horizontal = 7.dp, vertical = 2.dp),
-                    )
+                    ProtocolBadge(badge, selected)
                 }
                 if (pingBusy) {
                     Box(Modifier.height(14.dp).padding(top = 2.dp), contentAlignment = Alignment.Center) {
@@ -1753,7 +1770,7 @@ internal fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
  * (disabled while busy). The session timer sits on the right. Same control on phone and TV.
  */
 @Composable
-internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false, onClick: () -> Unit, haptics: Boolean = true) {
+internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false, onClick: () -> Unit, haptics: Boolean = true, prefs: net.antibs.client.data.PowerButtonStyle = net.antibs.client.data.PowerButtonStyle()) {
     val style = LocalAppStyle.current
     val c = ssColors(style)
     val shape = ssShape(style, 16.dp)
@@ -1763,33 +1780,60 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
     val showError = problem || state == ConnState.ERROR
     val isTv = LocalIsTv.current
     val view = androidx.compose.ui.platform.LocalView.current
+    val ctx = LocalContext.current
+    val motionOk = remember(ctx) { PowerButtonLogic.motionOk(ctx) }
+    val animate = PowerButtonLogic.shouldAnimate(prefs, motionOk)
+    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+    var visible by remember { mutableStateOf(true) }
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, _ ->
+            visible = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        }
+        lifecycle.addObserver(obs)
+        visible = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    val live = PowerButtonLogic.shouldLive(connected, showError, prefs, motionOk, visible)
+    val effect = PowerButtonLogic.effectOf(prefs)
+    val accent = AntiBSColors.Blue
+    val fillSolid = PowerButtonLogic.fillColor(prefs.color, accent)
+    val onText = PowerButtonLogic.onTextColor(prefs.textColor, fillSolid)
     val tvFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     var tvFocused by remember { mutableStateOf(false) }
     if (isTv) LaunchedEffect(Unit) { delay(150); runCatching { tvFocus.requestFocus() } }
-    val tvScale by animateFloatAsState(if (tvFocused) 1.06f else 1f, tween(160), label = "tv-power")
+    val tvScale by animateFloatAsState(if (tvFocused) 1.06f else 1f, if (animate) tween(160) else snap(), label = "tv-power")
+    val motion = if (animate) spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow) else snap<Float>()
+    val colorTween = if (animate) tween<Float>(420) else snap<Float>()
 
-    val pos by animateFloatAsState(
-        if (on) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow),
-        label = "seg",
-    )
+    val pos by animateFloatAsState(if (on) 1f else 0f, animationSpec = motion, label = "seg")
     val thumb = when {
         showError -> UiLogic.PowerThumb.RED
         connected -> UiLogic.PowerThumb.GREEN
         state == ConnState.CONNECTING -> UiLogic.PowerThumb.ORANGE
         else -> UiLogic.PowerThumb.OFF
     }
-    val errAmt by animateFloatAsState(if (thumb == UiLogic.PowerThumb.RED) 1f else 0f, animationSpec = tween(420), label = "err")
-    val greenAmt by animateFloatAsState(if (thumb == UiLogic.PowerThumb.GREEN) 1f else 0f, animationSpec = tween(420), label = "green")
-    val orangeAmt by animateFloatAsState(if (thumb == UiLogic.PowerThumb.ORANGE) 1f else 0f, animationSpec = tween(420), label = "orange")
-    val wave: State<Float> = if (busy) {
+    val errAmt by animateFloatAsState(if (thumb == UiLogic.PowerThumb.RED) 1f else 0f, animationSpec = colorTween, label = "err")
+    val greenAmt by animateFloatAsState(if (thumb == UiLogic.PowerThumb.GREEN) 1f else 0f, animationSpec = colorTween, label = "green")
+    val orangeAmt by animateFloatAsState(if (thumb == UiLogic.PowerThumb.ORANGE) 1f else 0f, animationSpec = colorTween, label = "orange")
+    val wave: State<Float> = if (busy && animate) {
         rememberInfiniteTransition(label = "pwr-busy").animateFloat(
             0.55f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "pwr-wave",
         )
     } else remember { mutableFloatStateOf(1f) }
-    val shimmer: State<Float> = if (busy) {
+    val shimmer: State<Float> = if (busy && animate) {
         rememberInfiniteTransition(label = "pwr-shimmer").animateFloat(
             0f, 1f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "pwr-sh",
+        )
+    } else remember { mutableFloatStateOf(0f) }
+    val livePulse: State<Float> = if (live) {
+        val period = if (effect == net.antibs.client.data.PowerButtonStyle.EFFECT_SHIMMER) 2400 else 1800
+        rememberInfiniteTransition(label = "pwr-live").animateFloat(
+            0f, 1f, infiniteRepeatable(tween(period, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "pwr-pulse",
+        )
+    } else remember { mutableFloatStateOf(0.5f) }
+    val liveFlow: State<Float> = if (live && effect == net.antibs.client.data.PowerButtonStyle.EFFECT_SHIMMER) {
+        rememberInfiniteTransition(label = "pwr-flow").animateFloat(
+            0f, 1f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "pwr-flow",
         )
     } else remember { mutableFloatStateOf(0f) }
 
@@ -1804,7 +1848,7 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
     val desc = UiLogic.powerContentDescription(state, problem, timer)
     val muted = c.muted
     val onCard = c.onCard
-    val greenBrush = Brush.linearGradient(listOf(Color(0xFF3DDC97), Color(0xFF1DBF72)))
+    val greenBrush = PowerButtonLogic.fillBrush(prefs.color, accent)
     val orangeBrush = Brush.linearGradient(listOf(Color(0xFFFFC14D), Color(0xFFFF8A00)))
     val redBrush = Brush.linearGradient(listOf(Color(0xFFB4232F), AntiBSColors.Err, Color(0xFFFF6B5E)))
     val offPill = if (c.dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.08f)
@@ -1853,6 +1897,21 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
                 BoxWithConstraints(Modifier.fillMaxSize().padding(3.dp)) {
                     val padPx = 0f
                     val pillW = maxWidth / 2
+                    if (live && (effect == net.antibs.client.data.PowerButtonStyle.EFFECT_BREATH || effect == net.antibs.client.data.PowerButtonStyle.EFFECT_GLOW)) {
+                        val glowA = if (effect == net.antibs.client.data.PowerButtonStyle.EFFECT_GLOW)
+                            0.22f + 0.28f * livePulse.value else 0.12f + 0.16f * livePulse.value
+                        val spread = if (effect == net.antibs.client.data.PowerButtonStyle.EFFECT_GLOW)
+                            1.06f + 0.05f * livePulse.value else 1.02f + 0.03f * livePulse.value
+                        Box(
+                            Modifier
+                                .align(Alignment.CenterStart)
+                                .offset { IntOffset(((pillW.toPx() + padPx) * pos).roundToInt(), 0) }
+                                .width(pillW)
+                                .fillMaxHeight()
+                                .graphicsLayer { alpha = glowA; scaleX = spread; scaleY = spread }
+                                .background(fillSolid.copy(alpha = 0.85f), trackShape),
+                        )
+                    }
                     Box(
                         Modifier
                             .align(Alignment.CenterStart)
@@ -1866,7 +1925,7 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
                         if (orangeAmt > 0f) Box(Modifier.matchParentSize().graphicsLayer { alpha = orangeAmt }.background(orangeBrush))
                         if (greenAmt > 0f) Box(Modifier.matchParentSize().graphicsLayer { alpha = greenAmt }.background(greenBrush))
                         if (errAmt > 0f) Box(Modifier.matchParentSize().graphicsLayer { alpha = errAmt }.background(redBrush))
-                        if (busy) {
+                        if (busy && animate) {
                             Canvas(Modifier.fillMaxSize()) {
                                 val sp = shimmer.value
                                 val cx = -0.3f * size.width + sp * 1.6f * size.width
@@ -1874,6 +1933,19 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
                                 drawRect(
                                     Brush.linearGradient(
                                         listOf(Color.Transparent, Color.White.copy(alpha = 0.35f), Color.Transparent),
+                                        start = androidx.compose.ui.geometry.Offset(cx - bw, 0f),
+                                        end = androidx.compose.ui.geometry.Offset(cx + bw, size.height),
+                                    ),
+                                )
+                            }
+                        } else if (live && effect == net.antibs.client.data.PowerButtonStyle.EFFECT_SHIMMER) {
+                            Canvas(Modifier.fillMaxSize()) {
+                                val sp = liveFlow.value
+                                val cx = -0.35f * size.width + sp * 1.7f * size.width
+                                val bw = size.width * 0.34f
+                                drawRect(
+                                    Brush.linearGradient(
+                                        listOf(Color.Transparent, Color.White.copy(alpha = 0.22f + 0.10f * livePulse.value), Color.Transparent),
                                         start = androidx.compose.ui.geometry.Offset(cx - bw, 0f),
                                         end = androidx.compose.ui.geometry.Offset(cx + bw, size.height),
                                     ),
@@ -1900,7 +1972,11 @@ internal fun PowerToggle(state: ConnState, since: Long, problem: Boolean = false
                     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         Text(
                             "Вкл",
-                            color = if (on) Color.White else muted,
+                            color = when {
+                                on && connected && !showError -> onText
+                                on -> Color.White
+                                else -> muted
+                            },
                             fontWeight = FontWeight.SemiBold,
                             fontSize = fixedSp(14f),
                             maxLines = 1,
@@ -1999,6 +2075,7 @@ private fun SettingsDetail(page: Page, vm: AppViewModel, ui: UiSettings, onBack:
         Page.Schedule -> SchedulePage(onBack)
         Page.Protocols -> ProtocolsPage(onBack)
         Page.Hwid -> HwidPage(vm, st, onBack)
+        Page.PowerButton -> PowerButtonPage(vm, onBack)
         else -> SettingsScaffold("Настройки", onBack) { TextButton(onClick = onBack) { Text("Назад") } }
     }
 }
@@ -2196,6 +2273,7 @@ internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.Im
         has("размер шрифта") || (has("размер") && has("шрифт")) -> Icons.Filled.FormatSize
         has("тем", "оформлен", "стиль", "интерфейс") -> Icons.Filled.Palette
         has("вибрац") -> Icons.Filled.Vibration
+        has("кнопка питан", "живые эффект", "дыхание", "свечение") -> Icons.Filled.Power
         has("сессия", "session") -> Icons.Filled.Public
         has("тест скорост", "единиц", "скорост") -> Icons.Filled.Speed
         has("пинг", "url тест") -> Icons.Filled.NetworkCheck

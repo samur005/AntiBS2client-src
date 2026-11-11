@@ -27,6 +27,10 @@ data class SessionSpeedProgress(
     val downMbps: Double? = null,
     val upMbps: Double? = null,
     val error: String? = null,
+    /** 0–1 fill of the download 8 s window; 1 when that phase is finished. */
+    val downProgress: Float? = null,
+    /** 0–1 fill of the upload 8 s window; 1 when finished. */
+    val upProgress: Float? = null,
 )
 
 /**
@@ -99,6 +103,11 @@ object SessionSpeed {
 
     fun dashOrMbps(v: Double?): String = if (v == null) "—" else formatMbps(v)
 
+    fun phaseFill(elapsedMs: Long, windowMs: Long = PHASE_MS): Float {
+        if (windowMs <= 0L) return 0f
+        return (elapsedMs.toFloat() / windowMs.toFloat()).coerceIn(0f, 1f)
+    }
+
     fun wrapClient(base: OkHttpClient): OkHttpClient = base.newBuilder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -127,23 +136,23 @@ object SessionSpeed {
                 }
                 rtts += ((System.nanoTime() - t0) / 1_000_000L).toInt().coerceAtLeast(0)
             }
-            cur = cur.copy(phase = SessionSpeedPhase.Download, pingMs = rtts.minOrNull() ?: 0)
+            cur = cur.copy(phase = SessionSpeedPhase.Download, pingMs = rtts.minOrNull() ?: 0, downProgress = 0f, upProgress = 0f)
             onUpdate(cur)
 
-            val down = measureRate(http, download = true, cancelled) { mbps ->
-                cur = cur.copy(downMbps = mbps)
+            val down = measureRate(http, download = true, cancelled) { mbps, fill ->
+                cur = cur.copy(downMbps = mbps, downProgress = fill, upProgress = 0f)
                 onUpdate(cur)
             }
             if (down <= 0.0) error("Нет данных загрузки")
-            cur = cur.copy(phase = SessionSpeedPhase.Upload, downMbps = down)
+            cur = cur.copy(phase = SessionSpeedPhase.Upload, downMbps = down, downProgress = 1f, upProgress = 0f)
             onUpdate(cur)
 
-            val up = measureRate(http, download = false, cancelled) { mbps ->
-                cur = cur.copy(upMbps = mbps)
+            val up = measureRate(http, download = false, cancelled) { mbps, fill ->
+                cur = cur.copy(upMbps = mbps, upProgress = fill, downProgress = 1f)
                 onUpdate(cur)
             }
             if (up <= 0.0) error("Нет данных отдачи")
-            cur = cur.copy(phase = SessionSpeedPhase.Done, upMbps = up, error = null)
+            cur = cur.copy(phase = SessionSpeedPhase.Done, upMbps = up, error = null, downProgress = 1f, upProgress = 1f)
             onUpdate(cur)
             cur
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -167,7 +176,7 @@ object SessionSpeed {
         client: OkHttpClient,
         download: Boolean,
         cancelled: () -> Boolean,
-        onRate: (Double) -> Unit,
+        onRate: (Double, Float) -> Unit,
     ): Double {
         val total = AtomicLong(0)
         val start = System.nanoTime()
@@ -182,7 +191,8 @@ object SessionSpeed {
                     val ms = elapsed()
                     window.total = total.get()
                     maybeArmWarmup(window, ms)
-                    maybePushRate(window, ms)?.let { last = it; onRate(it) }
+                    maybePushRate(window, ms)?.let { last = it }
+                    onRate(last, phaseFill(ms))
                 }
             }
             val until = { stop.get() || cancelled() || elapsed() >= PHASE_MS }
@@ -206,7 +216,7 @@ object SessionSpeed {
         last = if (window.base >= 0 && ms > window.baseMs) {
             rateAfterWarmup(window.total, ms, window.base, window.baseMs)
         } else rateMbps(window.total, ms.coerceAtLeast(1))
-        onRate(last)
+        onRate(last, 1f)
         return last
     }
 
