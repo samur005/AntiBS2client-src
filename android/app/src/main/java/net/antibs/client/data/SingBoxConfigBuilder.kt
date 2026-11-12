@@ -170,7 +170,12 @@ object SingBoxConfigBuilder {
      * Full sing-box config. [dnsServer] resolves the proxy servers' domains (the sing-box process is outside
      * the VPN, so the underlying network's DNS works; 1.1.1.1 as fallback).
      */
-    fun fullConfig(slots: List<Slot>, dnsServer: String = "1.1.1.1", ipType: String = "auto", logLevel: String = "warn"): JsonObject = buildJsonObject {
+    fun fullConfig(
+        slots: List<Slot>, dnsServer: String = "1.1.1.1", ipType: String = "auto", logLevel: String = "warn",
+        /** 2.0.43: loopback SOCKS login / password (inbounds + Xray bridge); empty = none. */
+        user: String = "", pass: String = "",
+    ): JsonObject = buildJsonObject {
+        val auth = user.isNotEmpty() && pass.isNotEmpty()
         require(slots.isNotEmpty()) { "нет профилей sing-box" }
         putJsonObject("log") { put("level", logLevel); put("timestamp", false) }
         putJsonObject("dns") {
@@ -184,6 +189,7 @@ object SingBoxConfigBuilder {
                 add(buildJsonObject {
                     put("type", "socks"); put("tag", "in-${s.index}")
                     put("listen", "127.0.0.1"); put("listen_port", s.port)
+                    if (auth) putJsonArray("users") { add(buildJsonObject { put("username", user); put("password", pass) }) }
                 })
             }
         }
@@ -194,6 +200,7 @@ object SingBoxConfigBuilder {
                 if (s.bridgePort != null) add(buildJsonObject {
                     put("type", "socks"); put("tag", "bridge-${s.index}")
                     put("server", "127.0.0.1"); put("server_port", s.bridgePort); put("version", "5")
+                    if (auth) { put("username", user); put("password", pass) }
                 })
             }
             add(buildJsonObject { put("type", "direct"); put("tag", "direct") })
@@ -209,6 +216,6 @@ object SingBoxConfigBuilder {
         }
     }
 
-    fun toJson(slots: List<Slot>, dnsServer: String = "1.1.1.1", ipType: String = "auto"): String =
-        XrayConfigBuilder.toJsonString(fullConfig(slots, dnsServer, ipType), pretty = true)
+    fun toJson(slots: List<Slot>, dnsServer: String = "1.1.1.1", ipType: String = "auto", user: String = "", pass: String = ""): String =
+        XrayConfigBuilder.toJsonString(fullConfig(slots, dnsServer, ipType, user = user, pass = pass), pretty = true)
 }

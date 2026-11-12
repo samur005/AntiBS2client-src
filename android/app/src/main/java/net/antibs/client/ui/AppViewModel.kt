@@ -307,7 +307,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun tunnelCheck(serverId: String?): Long? {
         val st = store.snapshot()
         val a = st.adv
-        val port = a.socksPort.takeIf { it in 1024..65535 } ?: XrayConfigBuilder.SOCKS_PORT
+        val port = net.antibs.client.data.LocalProxy.port(a)
         val url = a.pingUrl.ifBlank { AdvancedSettings.DEFAULT_PING_URL }
         val timeoutMs = a.pingTimeoutSec.coerceIn(2, 15) * 1000
         val method = UiLogic.tunnelPingMethod(a.pingType)
@@ -463,6 +463,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setTrafficPreset(p: String) = setAdvTunnel { it.copy(trafficPreset = p) }
+    /** 2.0.43: «.RU без VPN» target: "" = напрямую, otherwise a server id. */
+    fun setRuVia(id: String) = setAdvTunnel { it.copy(ruVia = id) }
+
+    /** 2.0.43: «Сгенерировать заново» — new SOCKS login, password and a free random port (port check off the main thread). */
+    fun regenerateSocks() {
+        viewModelScope.launch {
+            val fresh = withContext(Dispatchers.IO) { net.antibs.client.data.LocalProxy.regenerate(store.snapshot().adv) }
+            setAdvTunnel { it.copy(socksUser = fresh.socksUser, socksPass = fresh.socksPass, socksPort = fresh.socksPort) }
+            _toast.value = net.antibs.client.data.I18n.t("socks_regen_done")
+        }
+    }
 
     /** Android 13+: system dialog «Добавить кнопку в шторку». */
     fun requestQsTile(activity: android.app.Activity) {
@@ -997,7 +1008,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val p = s.xray ?: return -2L
         val a = st.adv
         if (VpnState.status.value.state == ConnState.CONNECTED && st.selectedServerId == s.id) {
-            val port = a.socksPort.takeIf { it in 1024..65535 } ?: XrayConfigBuilder.SOCKS_PORT
+            val port = net.antibs.client.data.LocalProxy.port(a)
             val r = withContext(Dispatchers.IO) {
                 TunnelProbe.check(port, a.pingUrl.ifBlank { AdvancedSettings.DEFAULT_PING_URL }, UiLogic.tunnelPingMethod(a.pingType), timeoutMs)
             }
@@ -1018,7 +1029,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // Connected through this very host → measure through the running tunnel instead of a second TURN session.
         if (VpnState.status.value.state == ConnState.CONNECTED && st.selectedServerId == s.id) {
             val a = st.adv
-            val port = a.socksPort.takeIf { it in 1024..65535 } ?: XrayConfigBuilder.SOCKS_PORT
+            val port = net.antibs.client.data.LocalProxy.port(a)
             val r = withContext(Dispatchers.IO) {
                 TunnelProbe.check(port, a.pingUrl.ifBlank { AdvancedSettings.DEFAULT_PING_URL }, UiLogic.tunnelPingMethod(a.pingType), timeoutMs)
             }
@@ -1143,7 +1154,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val host = if (vs.state == ConnState.CONNECTED) UiLogic.liveHostTitle(vs.serverName, vs.pickName, true) else ""
         val a = store.snapshot().adv
         val (client, network) = if (mode == "vpn") {
-            val port = a.socksPort.takeIf { it in 1024..65535 } ?: XrayConfigBuilder.SOCKS_PORT
+            val port = net.antibs.client.data.LocalProxy.port(a)
             // Fail fast with a clear message when the core has no local SOCKS inbound (custom JSON configs).
             val reachable = try { Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 1500) }; true } catch (_: Exception) { false }
             if (!reachable) return net.antibs.client.engine.SpeedRecord(ts = System.currentTimeMillis(), mode = mode, host = host,

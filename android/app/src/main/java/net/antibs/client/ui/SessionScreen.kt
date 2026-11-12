@@ -75,7 +75,7 @@ internal fun SessionPage(vm: AppViewModel, onBack: () -> Unit) {
     val st by vm.state.collectAsState()
     val vpn by VpnState.status.collectAsState()
     val connected = vpn.state == ConnState.CONNECTED
-    val socks = st.adv.socksPort.takeIf { it in 1024..65535 } ?: XrayConfigBuilder.SOCKS_PORT
+    val socks = net.antibs.client.data.LocalProxy.port(st.adv)
     val style = LocalAppStyle.current
     val c = ssColors(style)
     val shape = ssShape(style, 16.dp)

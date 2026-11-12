@@ -103,10 +103,13 @@ object XrayConfigBuilder {
     }
 
     /** Xray side of a sing-box profile: a plain socks outbound to its loopback slot. */
-    fun singBoxHop(tag: String, port: Int): JsonObject = buildJsonObject {
+    fun singBoxHop(tag: String, port: Int, user: String = "", pass: String = ""): JsonObject = buildJsonObject {
         put("tag", tag)
         put("protocol", "socks")
-        putJsonObject("settings") { put("address", "127.0.0.1"); put("port", port); put("level", 8) }
+        putJsonObject("settings") {
+            put("address", "127.0.0.1"); put("port", port); put("level", 8)
+            if (user.isNotEmpty() && pass.isNotEmpty()) { put("user", user); put("pass", pass) }
+        }
         putJsonObject("mux") { put("enabled", false); put("concurrency", -1) }
     }
 
@@ -154,7 +157,7 @@ object XrayConfigBuilder {
     ): JsonObject = when (ProtocolSupport.engineOf(p)) {
         ProtocolSupport.ENGINE_OLCRTC -> singBoxHop(tag, (olc ?: currentOlc.get() ?: OlcSlots()).add(p))
         ProtocolSupport.ENGINE_VPNSTACK -> singBoxHop(tag, (currentVpn.get() ?: OlcSlots(VPN_BASE_PORT)).add(p))
-        ProtocolSupport.ENGINE_SINGBOX -> singBoxHop(tag, (sb ?: SingBoxSlots()).add(p, bridgePort))
+        ProtocolSupport.ENGINE_SINGBOX -> singBoxHop(tag, (sb ?: SingBoxSlots()).add(p, bridgePort), opt.socksUser, opt.socksPass)
         ProtocolSupport.ENGINE_MIERU -> singBoxHop(tag, (mieru ?: MieruSlots()).add(p))
         ProtocolSupport.ENGINE_MIHOMO -> singBoxHop(tag, (mhx ?: MihomoSlots()).add(p))
         else -> xrayOutbound(p, tag, opt)
@@ -529,7 +532,25 @@ object XrayConfigBuilder {
         val apiPort: Int = 0,
         /** 1.0.34: host ids left out of the app's own auto-select balancer («Исключить из автовыбора»). */
         val autoExclude: Set<String> = emptySet(),
-    )
+        /** 2.0.43: SOCKS / HTTP inbound login + password (both set → auth "password"; empty → noauth as before). */
+        val socksUser: String = "",
+        val socksPass: String = "",
+        /** 2.0.43: outbound tagged [RU_VIA_TAG] for «.RU без VPN» traffic (null = direct). */
+        val ruViaOutbound: JsonObject? = null,
+    ) {
+        val socksAuth: Boolean get() = socksUser.isNotEmpty() && socksPass.isNotEmpty()
+    }
+
+    const val RU_VIA_TAG = "ru-via"
+
+    /** Xray socks inbound settings: RFC 1929 account when [Options.socksAuth], else noauth. */
+    fun socksInboundSettings(opt: Options, udp: Boolean): JsonObject = buildJsonObject {
+        if (opt.socksAuth) {
+            put("auth", "password")
+            putJsonArray("accounts") { add(buildJsonObject { put("user", opt.socksUser); put("pass", opt.socksPass) }) }
+        } else put("auth", "noauth")
+        put("udp", udp); put("userLevel", 8)
+    }
 
     const val ROUTING_PROXY_TAG = "rp-proxy"
 
@@ -666,12 +687,15 @@ object XrayConfigBuilder {
         putJsonArray("inbounds") {
             add(buildJsonObject {
                 put("tag", "socks"); put("listen", if (opt.allowLan) "0.0.0.0" else "127.0.0.1"); put("port", opt.socksPort); put("protocol", "socks")
-                putJsonObject("settings") { put("auth", "noauth"); put("udp", true); put("userLevel", 8) }
+                put("settings", socksInboundSettings(opt, udp = true))
                 put("sniffing", sniff)
             })
             if (opt.adv.httpInbound) add(buildJsonObject {
                 put("tag", "http"); put("listen", if (opt.allowLan) "0.0.0.0" else "127.0.0.1"); put("port", opt.adv.httpPort); put("protocol", "http")
-                putJsonObject("settings") { put("userLevel", 8) }
+                putJsonObject("settings") {
+                    if (opt.socksAuth) putJsonArray("accounts") { add(buildJsonObject { put("user", opt.socksUser); put("pass", opt.socksPass) }) }
+                    put("userLevel", 8)
+                }
                 put("sniffing", sniff)
             })
             if (opt.xrayTun) add(buildJsonObject {
@@ -689,6 +713,7 @@ object XrayConfigBuilder {
             add(proxyOutbound)
             extraOutbounds.forEach { add(it) }
             opt.routingProxyOutbound?.let { add(it) }
+            opt.ruViaOutbound?.let { add(it) }
             val freedomIp = when (opt.ipType) { "ipv6" -> "UseIPv6"; "ipv4" -> "UseIPv4"; else -> "UseIP" }
             add(buildJsonObject { put("tag", "direct"); put("protocol", "freedom"); putJsonObject("settings") { put("domainStrategy", freedomIp) } })
             add(buildJsonObject { put("tag", "block"); put("protocol", "blackhole"); putJsonObject("settings") { putJsonObject("response") { put("type", "http") } } })
@@ -717,8 +742,10 @@ object XrayConfigBuilder {
                     put("type", "field"); putJsonArray("ip") { privateCidrs.forEach { add(it) } }; put("outboundTag", "direct")
                 })
                 // 1.0.40: «Правила трафика» preset (replaces the routing profile, see plan())
-                TrafficPresets.ruDnsRule(opt.adv, "direct")?.let { add(it) }
-                TrafficPresets.rules(opt.adv, userInb, mainTarget, "direct", opt.geoExtra, opt.geoBundled).forEach { add(it) }
+                // 2.0.43: «.RU без VPN» via a chosen server → its outbound [RU_VIA_TAG] instead of freedom
+                val ruVia = if (opt.ruViaOutbound != null) "outboundTag" to RU_VIA_TAG else null
+                TrafficPresets.ruDnsRule(opt.adv, if (ruVia != null) RU_VIA_TAG else "direct")?.let { add(it) }
+                TrafficPresets.rules(opt.adv, userInb, mainTarget, "direct", opt.geoExtra, opt.geoBundled, ruVia).forEach { add(it) }
                 opt.routing?.let { r ->
                     val target = when {
                         opt.routingProxyOutbound != null -> "outboundTag" to ROUTING_PROXY_TAG
@@ -802,13 +829,19 @@ object XrayConfigBuilder {
             val target = rp.proxyServerIds.firstNotNullOfOrNull { id -> all.firstOrNull { it.id == id && it.id != entry.id }?.let { leaf(it) } }
             if (target != null) opt = opt.copy(routingProxyOutbound = outbound(target, ROUTING_PROXY_TAG, opt, sb, mieru = mieru, mhx = mhx))
         }
+        // 2.0.43: «.RU без VPN» through a chosen server (e.g. a node in Russia) instead of directly from the phone
+        if (opt.adv.trafficPreset == TrafficPresets.RU && opt.adv.ruVia.isNotBlank()) {
+            val via = all.firstOrNull { it.id == opt.adv.ruVia }?.let { leaf(it) }
+            if (via != null) opt = opt.copy(ruViaOutbound = outbound(via, RU_VIA_TAG, opt, sb, mieru = mieru, mhx = mhx))
+        }
         val xray = when (p.protocol) {
             "custom" -> customConfig(p.customJson ?: throw IllegalArgumentException("пустой JSON"), opt, p.remarks)
             "chain" -> chainConfig(p, all, opt, sb, mieru, mhx)
             "balancer" -> balancerConfig(p, all, opt, sb, mieru, mhx)
             else -> toJsonString(fullConfig(outbound(p, opt = opt, sb = sb, mieru = mieru, mhx = mhx), opt, p.remarks), pretty = true)
         }
-        val sbJson = if (sb.slots.isEmpty()) null else SingBoxConfigBuilder.toJson(sb.slots, singBoxDns, opt.ipType)
+        val sbJson = if (sb.slots.isEmpty()) null else SingBoxConfigBuilder.toJson(sb.slots, singBoxDns, opt.ipType,
+            if (opt.socksAuth) opt.socksUser else "", if (opt.socksAuth) opt.socksPass else "")
         val mieruInstances = mieru.slots.map { (prof, port) -> MieruConfigBuilder.clientJson(prof, port) to port }
         val mhxJson = if (mhx.slots.isEmpty()) null else MihomoConfigBuilder.toJson(mhx.slots)
         return Plan(xray, sbJson, sb.slots.toList(), mieruInstances, mhxJson, mhx.slots.map { it.port }, olc.slots.toList(), vpn.slots.toList())
@@ -850,7 +883,7 @@ object XrayConfigBuilder {
                     val bridge = SingBoxConfigBuilder.XRAY_BRIDGE_BASE + i
                     inbounds += buildJsonObject {
                         put("tag", "sb-bridge-$i"); put("listen", "127.0.0.1"); put("port", bridge); put("protocol", "socks")
-                        putJsonObject("settings") { put("auth", "noauth"); put("udp", true); put("userLevel", 8) }
+                        put("settings", socksInboundSettings(opt, udp = true))
                     }
                     rules += buildJsonObject {
                         put("type", "field"); putJsonArray("inboundTag") { add("sb-bridge-$i") }; put("outboundTag", tags[i - 1])
@@ -960,7 +993,12 @@ object XrayConfigBuilder {
             putJsonArray("services") { add("RoutingService"); add("ObservatoryService"); add("StatsService") }
         }))
         // 1.0.39: the only routing change to a panel / custom config — the ad / tracker block rule on top
-        return AdBlock.patch(out, opt.adv, opt.geoExtra, opt.geoBundled)
+        val via = opt.ruViaOutbound
+        if (via != null && TrafficPresets.active(opt.adv)) {
+            val outs = (out["outbounds"] as? JsonArray).orEmpty().filterNot { (it as? JsonObject)?.get("tag")?.let { t -> (t as? JsonPrimitive)?.contentOrNull } == RU_VIA_TAG }
+            out = JsonObject(out + ("outbounds" to JsonArray(outs + via)))
+        }
+        return AdBlock.patch(out, opt.adv, opt.geoExtra, opt.geoBundled, ruVia = if (via != null) RU_VIA_TAG else null)
     }
 
     /**

@@ -166,6 +166,8 @@ object AdBlock {
     fun patch(
         cfg: JsonObject, a: AdvancedSettings,
         geoExtra: Map<String, Set<String>> = emptyMap(), bundled: Map<String, Set<String>>? = null,
+        /** 2.0.43: outbound tag that carries «.RU без VPN» traffic instead of freedom (already in the config). */
+        ruVia: String? = null,
     ): JsonObject {
         val preset = TrafficPresets.active(a)
         if (!enabled(a) && !preset) return cfg
@@ -192,7 +194,7 @@ object AdBlock {
             val freedom = outs.firstOrNull { str(it, "tag") == "direct" && str(it, "protocol")?.lowercase() == "freedom" }
                 ?: outs.firstOrNull { str(it, "protocol")?.lowercase() == "freedom" && str(it, "tag") != null }
             directTag = str(freedom, "tag") ?: if (outs.any { str(it, "tag") == "direct" }) DIRECT_FALLBACK_TAG else "direct"
-            TrafficPresets.rules(a, inTags, proxy, directTag, geoExtra, bundled)
+            TrafficPresets.rules(a, inTags, proxy, directTag, geoExtra, bundled, ruVia?.let { "outboundTag" to it })
         }
         val added = lead + presetRules
         if (added.isEmpty()) return cfg

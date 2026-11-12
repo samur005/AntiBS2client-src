@@ -94,16 +94,25 @@ class AppStore(context: Context) {
     private val _state: MutableStateFlow<AppState> = synchronized(LOCK) { shared ?: MutableStateFlow(load()).also { shared = it } }
     val state: StateFlow<AppState> get() = _state
 
-    private fun load(): AppState = try {
-        val raw = prefs.getString("state", null)?.let { json.decodeFromString<AppState>(it) } ?: AppState()
-        UiLogic.normalizeSelection(pruneManualGroup(raw))
-    } catch (_: Exception) { AppState() }
+    private fun load(): AppState {
+        val st = try {
+            val raw = prefs.getString("state", null)?.let { json.decodeFromString<AppState>(it) } ?: AppState()
+            UiLogic.normalizeSelection(pruneManualGroup(raw))
+        } catch (_: Exception) { AppState() }
+        // 2.0.43: one-time leak hardening (bind block, SOCKS login/password, random port), persisted right away so the
+        // VPN service, the UI and the DataStore mirror all see the same generated credentials.
+        val hardened = hardened(st)
+        if (hardened !== st) prefs.edit().putString("state", json.encodeToString(hardened)).apply()
+        net.antibs.client.data.LocalProxy.install(hardened.adv)
+        return hardened
+    }
 
     private fun save(p: AppState) = synchronized(LOCK) {
         // 1.0.32: never persist sendHwid=false
         // 1.0.38: the update source is fixed (samur005/AntiBS2client-releases) — any saved override is dropped
-        val next = UiLogic.normalizeSelection(pruneManualGroup(p.copy(sendHwid = true, updateUrl = "")))
+        val next = UiLogic.normalizeSelection(pruneManualGroup(hardened(p).copy(sendHwid = true, updateUrl = "")))
         prefs.edit().putString("state", json.encodeToString(next)).apply()
+        net.antibs.client.data.LocalProxy.install(next.adv)
         _state.value = next
     }
 
@@ -127,6 +136,15 @@ class AppStore(context: Context) {
         /** Pure part of [ensureSeeded]: never adds or removes subscriptions. */
         fun initialised(cur: AppState, newHwid: () -> String): AppState =
             cur.copy(seeded = true, hwid = cur.hwid.ifEmpty { newHwid() })
+
+        /**
+         * 2.0.43: [net.antibs.client.data.LocalProxy.migrate] on the settings (also for an older DataStore copy or an
+         * imported backup without the marker). Bumps [AppState.rev] so this copy wins over the DataStore mirror.
+         */
+        fun hardened(cur: AppState): AppState {
+            if (cur.adv.hardening >= net.antibs.client.data.LocalProxy.HARDENING_VERSION) return cur
+            return cur.copy(adv = net.antibs.client.data.LocalProxy.migrate(cur.adv), rev = cur.rev + 1)
+        }
     }
 
     private fun newHwid(): String = java.util.UUID.randomUUID().toString().replace("-", "")

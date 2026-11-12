@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -176,6 +177,27 @@ internal fun LazyListScope.trafficPresetItems(vm: AppViewModel, st: AppState, rf
             SettingField("DNS для .RU без VPN", a.ruDns, { v -> vm.setAdvTunnel { it.copy(ruDns = v.trim()) } },
                 valid = { it.isBlank() || Regex("""^(udp://|tcp://|https://)?[A-Za-z0-9.:\-\[\]/]+$""").matches(it.trim()) },
                 hint = "Только для .ru/.su/.рф, по умолчанию ${TrafficPresets.DEFAULT_RU_DNS} (Яндекс)")
+        }
+        // 2.0.43: where «.RU» traffic goes — straight from the phone (default) or through a chosen server
+        item {
+            val candidates = st.servers.filter { TrafficPresets.ruViaCandidate(it) }
+            val chosen = st.servers.firstOrNull { it.id == a.ruVia }
+            val value = when {
+                a.ruVia.isBlank() -> I18n.t("ru_via_direct")
+                chosen == null -> I18n.t("ru_via_missing")
+                else -> chosen.name
+            }
+            var viaMenu by remember { mutableStateOf(false) }
+            androidx.compose.foundation.layout.Box {
+                NavRow(I18n.t("ru_via"), value, dropdown = true, subtitle = I18n.t("ru_via_sub")) { viaMenu = true }
+                androidx.compose.material3.DropdownMenu(expanded = viaMenu, onDismissRequest = { viaMenu = false },
+                    modifier = Modifier.heightIn(max = 420.dp)) {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text(I18n.t("ru_via_direct")) }, onClick = { viaMenu = false; vm.setRuVia("") })
+                    candidates.forEach { e ->
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(e.name, maxLines = 1) }, onClick = { viaMenu = false; vm.setRuVia(e.id) })
+                    }
+                }
+            }
         }
         if (!rfReady) item {
             HintText("Скачайте «Файлы георесурсов» — тогда заблокированные в РФ сайты (в т.ч. на .ru) останутся в VPN, а сервисы, доступные только из России, пойдут напрямую.")

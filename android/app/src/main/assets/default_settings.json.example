@@ -44,7 +44,7 @@
             "httpInbound": false,
             "httpPort": 10809,
             "tunMtu": 1500,
-            "tunnelBindBlock": false,
+            "tunnelBindBlock": true,
             "localDns": false,
             "localDnsPort": 10853,
             "dnsFromJson": false,

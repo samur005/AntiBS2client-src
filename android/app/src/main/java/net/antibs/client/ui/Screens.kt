@@ -691,7 +691,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
             val urlTest: @Composable () -> Unit = {
                 HomeMonitorSection(
                     connected = connected,
-                    socksPort = st.adv.socksPort.takeIf { it in 1024..65535 } ?: net.antibs.client.data.XrayConfigBuilder.SOCKS_PORT,
+                    socksPort = net.antibs.client.data.LocalProxy.port(st.adv),
                     showUrl = st.adv.homeUrlTest,
                     haptics = st.adv.haptics,
                 )

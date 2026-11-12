@@ -40,6 +40,13 @@ object TrafficPresets {
 
     fun active(a: AdvancedSettings) = a.trafficPreset in setOf(RU, AI, SOCIAL)
 
+    /** 2.0.43: servers offered for «.RU» traffic — single runnable Xray-family leaves (no chain / balancer / JSON / auto stub). */
+    fun ruViaCandidate(e: ServerEntry): Boolean {
+        val p = e.xray ?: return false
+        return p.unsupportedReason.isNullOrBlank() && p.protocol !in setOf("chain", "balancer", "custom") &&
+            ProtocolSupport.isRunnable(p.protocol) && !AutoSelect.isSubscriptionAuto(e) && !AutoSelect.isJsonAuto(e)
+    }
+
     /** Russian services outside .ru/.su/.рф (from Etonify's curated list + domain-list-community). */
     val RU_SERVICES = listOf("2gis.com", "2gis.kz", "2gis.by", "5post.market", "avito.st", "boosty.to", "donationalerts.com", "giga.chat", "jivo.chat", "jivosite.com", "megamarket.tech", "mradx.net", "okko.tv", "okko.sport", "ozon.com", "ozon.kz", "ozon.by", "ozonusercontent.com", "paywb.com", "perekrestok.com", "sber.pro", "sberbank.com", "tbank-online.com", "tinkoff-group.com", "tamtam.chat", "x5.com", "x5static.net", "youla.io", "zvuk.com", "static-storage.net", "clstorage.net", "turbopages.org", "ya.cc", "yandex.cloud", "yandexgo.com", "yango.com", "mycdn.me", "userapi.com", "sourcecraft.dev", "shedevrum.ai", "emias.info", "naydex.net", "yastat.net", "yandexwebcache.net", "vk.com", "vk.me", "vkuser.net", "vkuservideo.net", "mail.ru", "ok.ru", "max.ru", "oneme.ru")
     val RU_SUFFIXES = listOf("domain:ru", "domain:su", "domain:xn--p1ai")
@@ -63,6 +70,8 @@ object TrafficPresets {
     fun rules(
         a: AdvancedSettings, inb: List<String>, proxy: Pair<String, String>, direct: String,
         extra: Map<String, Set<String>> = emptyMap(), bundled: Map<String, Set<String>>? = null,
+        /** 2.0.43: «.RU без VPN» via a chosen server (route key to tag) instead of [direct]; private ranges stay direct. */
+        ruVia: Pair<String, String>? = null,
     ): List<JsonObject> {
         if (!active(a) || inb.isEmpty()) return emptyList()
         val d = "outboundTag" to direct
@@ -76,12 +85,19 @@ object TrafficPresets {
             RU -> {
                 if ("RU-BLOCKED" in site) out += rule(inb, "domain", listOf("ext:$RF_SITE:ru-blocked"), proxy)
                 if ("RU-BLOCKED" in ip) out += rule(inb, "ip", listOf("ext:$RF_IP:ru-blocked"), proxy)
-                val dom = RU_SUFFIXES + listOf("geosite:category-ru", "geosite:category-gov-ru", "geosite:private").filter(::known) +
+                val ruT = ruVia ?: d
+                if (ruVia != null) {
+                    // LAN / private stays on the phone's own network; only Russian destinations go via the chosen server
+                    listOf("geosite:private").filter(::known).takeIf { it.isNotEmpty() }?.let { out += rule(inb, "domain", it, d) }
+                    out += rule(inb, "ip", listOf("geoip:private").filter(::known), d)
+                }
+                val dom = RU_SUFFIXES + listOf("geosite:category-ru", "geosite:category-gov-ru").filter(::known) +
+                    (if (ruVia == null) listOf("geosite:private").filter(::known) else emptyList()) +
                     (if ("RU-AVAILABLE-ONLY-INSIDE" in site) listOf("ext:$RF_SITE:ru-available-only-inside") else emptyList()) +
                     RU_SERVICES.map { "domain:$it" }
-                out += rule(inb, "domain", dom, d)
-                out += rule(inb, "ip", listOf("geoip:private", "geoip:ru").filter(::known) +
-                    (if ("RU-WHITELIST" in ip) listOf("ext:$RF_IP:ru-whitelist") else emptyList()), d)
+                out += rule(inb, "domain", dom, ruT)
+                out += rule(inb, "ip", ((if (ruVia == null) listOf("geoip:private", "geoip:ru") else listOf("geoip:ru")).filter(::known) +
+                    (if ("RU-WHITELIST" in ip) listOf("ext:$RF_IP:ru-whitelist") else emptyList())), ruT)
             }
             AI, SOCIAL -> {
                 val dom = (if (a.trafficPreset == AI) AI_SITES else SOCIAL_SITES).filter(::known)

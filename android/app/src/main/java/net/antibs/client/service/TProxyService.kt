@@ -11,19 +11,8 @@ class TProxyService {
 
         init { System.loadLibrary("hev-socks5-tunnel") }
 
-        fun buildConfig(socksPort: Int, mtu: Int, ipv4: String, ipv6: String?): String = buildString {
-            appendLine("tunnel:")
-            appendLine("  mtu: $mtu")
-            appendLine("  ipv4: $ipv4")
-            if (ipv6 != null) appendLine("  ipv6: '$ipv6'")
-            appendLine("socks5:")
-            appendLine("  port: $socksPort")
-            appendLine("  address: 127.0.0.1")
-            appendLine("  udp: 'udp'")
-            appendLine("misc:")
-            appendLine("  tcp-read-write-timeout: 300000")
-            appendLine("  udp-read-write-timeout: 60000")
-            appendLine("  log-level: warn")
-        }
+        /** 2.0.43: pure builder in [net.antibs.client.data.HevConfig] (unit-tested without the native library). */
+        fun buildConfig(socksPort: Int, mtu: Int, ipv4: String, ipv6: String?, user: String = "", pass: String = ""): String =
+            net.antibs.client.data.HevConfig.build(socksPort, mtu, ipv4, ipv6, user, pass)
     }
 }

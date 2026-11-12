@@ -190,6 +190,7 @@ internal object SettingsSearchCatalog {
         add("Обход локальной сети", "$n → Локальная сеть", "SetNet", "Локальная сеть", "bypass lan")
         add("Разрешить подключения из LAN", "$n → Локальная сеть", "SetNet", "Локальная сеть", "allow lan proxy")
         add("Inbounds (локальные прокси)", "$n → Локальная сеть", "Inbounds", null, "socks http inbound")
+        add("Логин и пароль SOCKS", "$n → Inbounds", "Inbounds", null, "socks логин пароль login password порт port сгенерировать")
         add("MTU туннеля", "$n → Локальная сеть", "SetNet", "Локальная сеть", "mtu")
         add("Исключённые маршруты", "$n → Маршруты", "Excluded", null, "excluded routes")
         add("Файлы георесурсов", "$n → Маршруты", "GeoFiles", null, "geoip geosite")

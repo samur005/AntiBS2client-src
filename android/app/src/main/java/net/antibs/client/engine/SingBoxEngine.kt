@@ -90,6 +90,18 @@ class SingBoxEngine(private val ctx: Context, private val config: String, privat
         @Volatile var current: SingBoxEngine? = null
 
         /** DNS of the physical network (sing-box is outside the VPN); falls back to 1.1.1.1. */
+        /** 2.0.43: all DNS servers of the active non-VPN network (empty when unknown). */
+        fun underlyingDnsServers(ctx: Context): List<String> = try {
+            val cm = ctx.getSystemService(ConnectivityManager::class.java)
+            val nets = cm.allNetworks.filter { n ->
+                val caps = cm.getNetworkCapabilities(n)
+                caps != null && !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) &&
+                    caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            }
+            val active = cm.activeNetwork?.takeIf { it in nets } ?: nets.firstOrNull()
+            active?.let { cm.getLinkProperties(it)?.dnsServers }.orEmpty().mapNotNull { it.hostAddress }
+        } catch (_: Exception) { emptyList() }
+
         fun underlyingDns(ctx: Context): String = try {
             val cm = ctx.getSystemService(ConnectivityManager::class.java)
             val nets = cm.allNetworks.filter { n ->
