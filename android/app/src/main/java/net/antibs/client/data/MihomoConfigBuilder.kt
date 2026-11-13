@@ -47,13 +47,22 @@ object MihomoConfigBuilder {
                 "snell" -> {
                     val v = p.protoVersion ?: 1
                     put("type", "snell")
-                    put("psk", p.password?.ifBlank { null } ?: throw IllegalStateException("Snell: не указан PSK"))
+                    val psk = p.password?.ifBlank { null } ?: throw IllegalStateException("Snell: не указан PSK")
+                    put("psk", psk)
                     put("version", v)
                     put("udp", v >= 3)
-                    val mode = p.headerType?.lowercase()
-                    if (mode == "http" || mode == "tls") putJsonObject("obfs-opts") {
-                        put("mode", mode)
-                        p.host?.ifBlank { null }?.let { put("host", it) }
+                    if (v >= 6) {
+                        // 2.0.45 (mihomo 1.19.34): v6 has no simple-obfs (PSK-derived shaping instead); PSK 12–255 bytes
+                        if (!ProtocolSupport.snellV6PskOk(psk)) throw IllegalStateException("Snell v6: PSK должен быть от 12 до 255 байт")
+                        p.snellMode?.lowercase()?.takeIf { it in ProtocolSupport.SNELL_V6_MODES && it != "default" }?.let { put("mode", it) }
+                        if (p.snellReuse) put("reuse", true)
+                    } else {
+                        if (v == 4 && p.snellReuse) put("reuse", true)
+                        val mode = p.headerType?.lowercase()
+                        if (mode == "http" || mode == "tls") putJsonObject("obfs-opts") {
+                            put("mode", mode)
+                            p.host?.ifBlank { null }?.let { put("host", it) }
+                        }
                     }
                 }
                 "trusttunnel" -> {

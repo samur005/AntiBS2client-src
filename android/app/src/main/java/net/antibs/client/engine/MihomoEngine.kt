@@ -9,7 +9,7 @@ import kotlin.concurrent.thread
 
 /**
  * Third helper engine: libmhx.so (native/mihomo-lite, mihomo v1.19.34 outbounds + quic-go HTTP/3 CONNECT).
- * Serves ShadowsocksR, Snell v1–v3, TrustTunnel, ShadowQUIC and HTTP/3 proxies on loopback SOCKS slots (11100+);
+ * Serves ShadowsocksR, Snell v1–v3 + v6, TrustTunnel, ShadowQUIC and HTTP/3 proxies on loopback SOCKS slots (11100+);
  * Xray dials them through plain socks outbounds, exactly like sing-box / mieru.
  */
 class MihomoEngine(private val ctx: Context, private val config: String, private val ports: List<Int>) {

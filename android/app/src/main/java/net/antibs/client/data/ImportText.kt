@@ -26,6 +26,11 @@ object ImportText {
             return if (one != null) ImportOutcome.Servers(listOf(one))
             else ImportOutcome.Failed("Не удалось разобрать JSON")
         }
+        // 2.0.45: pasted Clash / mihomo YAML — Snell entries (incl. v6)
+        if (SnellFormats.looksLikeClash(text)) {
+            val q = SubscriptionParser.parse(text, subscriptionId)
+            if (q != null && q.servers.isNotEmpty()) return ImportOutcome.Servers(q.servers)
+        }
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
         if (lines.size == 1 && isSubscriptionUrl(lines[0])) return ImportOutcome.SubscriptionUrl(lines[0])
         val direct = lines.mapNotNull { LinkParser.parse(it, subscriptionId) }

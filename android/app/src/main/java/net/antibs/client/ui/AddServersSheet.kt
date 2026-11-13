@@ -426,6 +426,8 @@ private fun ManualFormDialog(
     var congestion by remember { mutableStateOf("bbr") }
     var udpRelay by remember { mutableStateOf("native") }
     var snellVer by remember { mutableStateOf("4") }
+    var snellMode by remember { mutableStateOf("default") }
+    var snellReuse by remember { mutableStateOf(false) }
     var privateKeyText by remember { mutableStateOf("") }
     var mieruTransport by remember { mutableStateOf("TCP") }
     var ssrProto by remember { mutableStateOf("origin") }
@@ -487,7 +489,7 @@ private fun ManualFormDialog(
                     Text(reason, color = AntiBSColors.Warn, fontSize = 13.sp)
                     Text("Можно сохранить карточку, но подключение будет отклонено.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else if (protocol == "snell") {
-                    Text("v4/v6 — sing-box, v1–v3 — mihomo.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("v4/v5 — sing-box; v1–v3 и v6 — mihomo.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else if (ProtocolSupport.isSingBox(protocol)) {
                     Text("Через sing-box (второй движок).", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else if (ProtocolSupport.isMihomo(protocol)) {
@@ -633,9 +635,18 @@ private fun ManualFormDialog(
                         if (protocol == "snell") {
                             Text("Версия", fontSize = 13.sp)
                             OptionRow(listOf("1", "2", "3", "4", "5", "6"), snellVer) { snellVer = it }
-                            Text("obfs", fontSize = 13.sp)
-                            OptionRow(listOf("" to "нет", "http" to "http", "tls" to "tls"), method) { method = it }
-                            if (method.isNotBlank()) OutlinedTextField(host, { host = it }, label = { Text("obfs-host") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            if ((snellVer.toIntOrNull() ?: 4) >= 6) {
+                                // 2.0.45: Snell v6 (mihomo) — no simple-obfs; traffic mode instead, PSK 12–255 bytes
+                                Text("Режим v6", fontSize = 13.sp)
+                                OptionRow(ProtocolSupport.SNELL_V6_MODES.map { it to it }, snellMode) { snellMode = it }
+                                if (password.isNotEmpty() && !ProtocolSupport.snellV6PskOk(password))
+                                    Text("Для v6 PSK должен быть от 12 до 255 байт", color = AntiBSColors.Warn, fontSize = 12.sp)
+                            } else {
+                                Text("obfs", fontSize = 13.sp)
+                                OptionRow(listOf("" to "нет", "http" to "http", "tls" to "tls"), method) { method = it }
+                                if (method.isNotBlank()) OutlinedTextField(host, { host = it }, label = { Text("obfs-host") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            }
+                            if ((snellVer.toIntOrNull() ?: 4) in setOf(4, 6)) SwitchRow("Повторно использовать соединения (reuse)", snellReuse) { snellReuse = it }
                         }
                         if (protocol == "https") {
                             OutlinedTextField(sni, { sni = it }, label = { Text("SNI") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -760,7 +771,8 @@ private fun ManualFormDialog(
                     "snell" -> {
                         val v = snellVer.toIntOrNull() ?: 4
                         XrayProfile(name, "snell", server, portNum, password = password, network = "tcp",
-                            headerType = method.ifBlank { null }, host = host.ifBlank { null }, protoVersion = v)
+                            headerType = if (v >= 6) null else method.ifBlank { null }, host = if (v >= 6) null else host.ifBlank { null }, protoVersion = v,
+                            snellMode = snellMode.takeIf { v >= 6 && it != "default" }, snellReuse = snellReuse && v in setOf(4, 6))
                     }
                     "naive" -> XrayProfile(name, "naive", server, portNum, username = username.ifBlank { null },
                         password = password.ifBlank { null }, network = "tcp", security = "tls", sni = sni.ifBlank { null })

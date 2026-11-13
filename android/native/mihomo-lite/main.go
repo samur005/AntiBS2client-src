@@ -5,7 +5,7 @@
 //	libmhx.so version
 //
 // Each slot is a loopback SOCKS5 server (TCP CONNECT + UDP ASSOCIATE) that dials one profile:
-//   - "mihomo": a mihomo (Clash.Meta) outbound — ssr, snell (v1–v5), trusttunnel, shadowquic
+//   - "mihomo": a mihomo (Clash.Meta) outbound — ssr, snell (v1–v6), trusttunnel, shadowquic
 //   - "h3":     HTTP/3 CONNECT proxy client (quic-go http3, same approach as Exclave's http3 outbound)
 //
 // Xray dials these slots as plain socks outbounds, so routing/DNS/stats stay in Xray.

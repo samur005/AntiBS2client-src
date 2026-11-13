@@ -26,7 +26,7 @@ object ProtocolSupport {
         "chain", "balancer", "custom",
     )
 
-    /** Protocols dialed by the bundled sing-box 1.14 (libsbx.so) behind a local SOCKS inbound. Snell v4/v6 only. */
+    /** Protocols dialed by the bundled sing-box 1.14 (libsbx.so) behind a local SOCKS inbound. Snell v4/v5 only (v1–v3, v6 → mihomo). */
     val SINGBOX_WORKING = setOf("hysteria1", "tuic", "anytls", "ssh", "snell", "naive", "socks4")
 
     /**
@@ -36,7 +36,7 @@ object ProtocolSupport {
     val MIERU_WORKING = emptySet<String>()
 
     /**
-     * Protocols dialed by libmhx.so (native/mihomo-lite): mihomo 1.19.34 outbounds (ShadowsocksR, Snell v1–v3,
+     * Protocols dialed by libmhx.so (native/mihomo-lite): mihomo 1.19.34 outbounds (ShadowsocksR, Snell v1–v3 + v6,
      * TrustTunnel, ShadowQUIC) and an HTTP/3 CONNECT client (quic-go http3, as in Exclave).
      */
     val MIHOMO_WORKING = setOf("ssr", "trusttunnel", "shadowquic", "http3", "amneziawg", "mieru")
@@ -60,11 +60,14 @@ object ProtocolSupport {
     @Deprecated("Snell v1–v3 runs on mihomo since 1.0.6")
     const val SNELL_OLD_REASON = "Snell v1–v3 не поддерживается (sing-box умеет v4/v5/v6)."
 
-    /** Engine for a concrete profile (Snell splits by version: v1–v3 mihomo, v4+ sing-box). */
+    /**
+     * Engine for a concrete profile. Snell splits by version: v1–v3 and (2.0.45) v6 → mihomo 1.19.34 (v6 with its
+     * traffic modes and PSK-derived shaping), v4/v5 → sing-box.
+     */
     fun engineOf(p: XrayProfile): String {
         val proto = p.protocol.lowercase()
         if (needsPlaintextHelper(p)) return ENGINE_MIHOMO
-        if (proto == "snell") return if ((p.protoVersion ?: 4) in 1..3) ENGINE_MIHOMO else ENGINE_SINGBOX
+        if (proto == "snell") return if (snellOnMihomo(p.protoVersion ?: 4)) ENGINE_MIHOMO else ENGINE_SINGBOX
         return engineFor(proto)
     }
 
@@ -89,6 +92,14 @@ object ProtocolSupport {
         val (a, b) = v4[0] to v4[1]
         return a == 10 || a == 127 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || (a == 100 && b in 64..127) || (a == 169 && b == 254)
     }
+
+    /** 2.0.45: Snell versions dialed by mihomo (v1–v3 and v6); v4/v5 stay on sing-box. */
+    fun snellOnMihomo(version: Int): Boolean = version in 1..3 || version >= 6
+
+    /** 2.0.45: Snell v6 PSK length accepted by mihomo (12–255 bytes). */
+    fun snellV6PskOk(psk: String?): Boolean = psk != null && psk.toByteArray(Charsets.UTF_8).size in 12..255
+
+    val SNELL_V6_MODES = listOf("default", "unshaped", "unsafe-raw")
 
     fun isSingBox(protocol: String): Boolean = protocol.lowercase() in SINGBOX_WORKING
     fun isMieru(protocol: String): Boolean = protocol.lowercase() in MIERU_WORKING
@@ -146,7 +157,8 @@ object ProtocolSupport {
         ProtocolRow("TUIC v5", ENGINE_SINGBOX),
         ProtocolRow("AnyTLS", ENGINE_SINGBOX),
         ProtocolRow("SSH", ENGINE_SINGBOX, "без UDP"),
-        ProtocolRow("Snell v4 / v6", ENGINE_SINGBOX),
+        ProtocolRow("Snell v4 / v5", ENGINE_SINGBOX),
+        ProtocolRow("Snell v6", ENGINE_MIHOMO, "режимы default / unshaped / unsafe-raw"),
         ProtocolRow("NaiveProxy (HTTP/2, QUIC)", ENGINE_SINGBOX, "cronet"),
         ProtocolRow("SOCKS4 / SOCKS4A", ENGINE_SINGBOX, "без UDP"),
         ProtocolRow("Mieru (TCP/UDP)", ENGINE_MIHOMO),
@@ -206,6 +218,10 @@ data class XrayProfile(
     val privateKeyPassphrase: String? = null,
     val hostKey: String? = null,             // ssh, comma separated
     val protoVersion: Int? = null,           // snell version
+    /** 2.0.45: Snell v6 traffic mode for mihomo — default | unshaped | unsafe-raw (null = default). */
+    val snellMode: String? = null,
+    /** 2.0.45: Snell v4/v6 connection reuse (mihomo `reuse`). */
+    val snellReuse: Boolean = false,
     val mieruTransport: String? = null,     // mieru: TCP | UDP
     val mieruMultiplexing: String? = null,  // MULTIPLEXING_* optional
     val mieruHandshake: String? = null,     // HANDSHAKE_* optional (mieru v3)
