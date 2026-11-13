@@ -74,7 +74,7 @@ object SubTrafficLive {
         val total = snap.total
         return base.copy(
             traffic = SubLineData.pair(used, total),
-            trafficFrac = if (total > 0) (used.toFloat() / total).coerceIn(0f, 1f) else base.trafficFrac,
+            trafficFrac = if (total > 0) SubLineData.remainingFrac(used, total) else base.trafficFrac,
         )
     }
 }

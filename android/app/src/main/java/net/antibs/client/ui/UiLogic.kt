@@ -11,6 +11,25 @@ import net.antibs.client.engine.NetMonitor
 import net.antibs.client.engine.themeModeOf
 
 object UiLogic {
+    /**
+     * 2.0.44: centre x of a vertical stem in a glyph's per-column ink counts: the first run of columns at least 60 %
+     * as tall as the tallest column (left leg of «П»), or with [longest] the run that contains the tallest column
+     * (shaft of «↓»). Null for an empty glyph.
+     */
+    fun stemCenter(cols: IntArray, longest: Boolean): Float? {
+        val max = cols.maxOrNull() ?: return null
+        if (max <= 0) return null
+        val thr = if (longest) max else maxOf(1, (max * 0.6f).toInt())
+        val start = cols.indexOfFirst { it >= thr }
+        if (start < 0) return null
+        var end = start
+        val runThr = maxOf(1, (max * 0.6f).toInt())
+        var s0 = start
+        while (s0 > 0 && cols[s0 - 1] >= runThr && longest) s0--
+        while (end + 1 < cols.size && cols[end + 1] >= runThr) end++
+        return (s0 + end + 1) / 2f
+    }
+
     fun protocolGroup(s: ServerEntry): String = if (net.antibs.client.data.AutoSelect.isAnyAuto(s)) net.antibs.client.data.AutoSelect.LABEL else when (s.engine) {
         EngineKind.QWDTT -> "qWDTT"
         EngineKind.XRAY -> {
@@ -134,25 +153,29 @@ object UiLogic {
     fun trafficProgress(used: Double, limit: Double): Float =
         if (limit <= 0.0) 0f else (used / limit).toFloat().coerceIn(0f, 1f)
 
+    /** 2.0.44: fill of the subscription traffic bar = what is left (shrinks with use); unlimited = full. */
+    fun trafficRemaining(used: Double, limit: Double): Float =
+        if (limit <= 0.0) 1f else ((limit - used) / limit).toFloat().coerceIn(0f, 1f)
+
     data class Traffic(val usedMb: Double, val limitMb: Double, val fromBytes: Boolean)
 
-    /** Compact size for the traffic bar: "12.4GB", "150GB", "512MB" (Latin units, no spaces). */
+    /** Size for the traffic bar / cards: "12.4 ГБ", "150 ГБ", "512 МБ" (2.0.44: readable units with a space). */
     fun compactSize(bytes: Double): String {
-        if (bytes <= 0.0) return "0GB"
-        val units = listOf("B", "KB", "MB", "GB", "TB")
+        if (bytes <= 0.0) return "0 МБ"
+        val units = listOf("Б", "КБ", "МБ", "ГБ", "ТБ")
         var v = bytes
         var i = 0
         while (v >= 1024.0 && i < units.lastIndex) { v /= 1024.0; i++ }
         val num = if (v >= 100.0 || i == 0) Math.round(v).toString()
         else String.format(java.util.Locale.US, "%.1f", v).removeSuffix(".0")
-        return num + units[i]
+        return num + " " + units[i]
     }
 
     /** Text drawn on the subscription traffic bar: "used/total", "used/∞" when unlimited. */
     fun trafficBarLabel(t: Traffic): String {
         val used = compactSize(t.usedMb * 1048576.0)
         val total = if (t.limitMb > 0) compactSize(t.limitMb * 1048576.0) else "∞"
-        return "$used/$total"
+        return "$used / $total"
     }
 
 

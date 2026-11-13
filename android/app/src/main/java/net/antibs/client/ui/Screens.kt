@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.text.withStyle
 import androidx.compose.runtime.DisposableEffect
@@ -1180,7 +1181,20 @@ internal fun ConnectionCard(
             // so its top is level with the ↓ row and its bottom with the ↑ row.
             // 2.0.32: VPN only — ↓ incoming blue, ↑ outgoing red; the graph stretches from the totals to the card edge.
             // 2.0.35: start = 16.dp matches «Подключено» (StatusDot 8.dp + Spacer 8.dp) so ↓/↑ sit under «П».
-            Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(start = 16.dp)) {
+            // 2.0.44: the arrow glyph is centred in a 10 dp slot and «П» has its own side bearing, so 16 dp left the
+            // arrows ~4 dp to the right. Now the arrow's stem is placed exactly under the left leg of «П», measured
+            // from the real glyphs (font, weight and size of both texts) — works for any system font / scale.
+            val statusStyle = LocalTextStyle.current.merge(TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium))
+            val legX = rememberStemX(status.take(1).ifEmpty { "П" }, statusStyle, longest = false)
+            val arrowStemX = rememberStemX("↓", ArrowStyle, longest = true)
+            val arrowGlyphW = remember(density) { measurer.measure("↓", ArrowStyle).size.width.toFloat() }
+            val arrowStart = with(density) {
+                val slot = ArrowSlotW.toPx()
+                val inSlot = (slot - arrowGlyphW) / 2f + (arrowStemX ?: arrowGlyphW / 2f)
+                val leg = legX ?: (inSlot)
+                (16.dp.toPx() + leg - inSlot).coerceAtLeast(0f).toDp()
+            }
+            Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(start = arrowStart)) {
                 Column(verticalArrangement = Arrangement.spacedBy(RowGap)) {
                     AliveArrow(down = true, color = VpnDownColor, rate = downRate, connected = active)
                     AliveArrow(down = false, color = VpnUpColor, rate = upRate, connected = active)
@@ -1336,7 +1350,7 @@ private fun AliveArrow(down: Boolean, color: Color, rate: Long, connected: Boole
     }
     val measurer = rememberTextMeasurer()
     val glyph = remember(down) { measurer.measure(if (down) "↓" else "↑", ArrowStyle) }
-    Canvas(Modifier.size(width = 10.dp, height = RowH).semantics { contentDescription = if (down) "Загрузка" else "Отдача" }) {
+    Canvas(Modifier.size(width = ArrowSlotW, height = RowH).semantics { contentDescription = if (down) "Загрузка" else "Отдача" }) {
         val gw = glyph.size.width.toFloat()
         val gh = glyph.size.height.toFloat()
         val x = (size.width - gw) / 2f
@@ -1363,6 +1377,37 @@ private fun AliveArrow(down: Boolean, color: Color, rate: Long, connected: Boole
 }
 
 private val ArrowStyle = TextStyle(fontSize = 13.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold)
+private val ArrowSlotW = 10.dp
+
+/**
+ * 2.0.44: x (px from the text origin) of a vertical stem of [text]'s first glyph drawn with [style]: the first stem
+ * (left leg of «П») or, with [longest], the tallest one (the shaft of «↓»). Rendered once into a small bitmap with
+ * the same typeface the Text uses; null if the font can't be resolved.
+ */
+@Composable
+private fun rememberStemX(text: String, style: TextStyle, longest: Boolean): Float? {
+    val density = LocalDensity.current
+    val resolver = androidx.compose.ui.platform.LocalFontFamilyResolver.current
+    return remember(text, style, density, longest) {
+        try {
+            val tf = resolver.resolve(style.fontFamily, style.fontWeight ?: FontWeight.Normal).value as? android.graphics.Typeface
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                typeface = tf ?: android.graphics.Typeface.DEFAULT
+                textSize = with(density) { style.fontSize.toPx() }
+            }
+            val pad = 4
+            val w = kotlin.math.ceil(paint.measureText(text)).toInt() + pad * 2
+            val h = kotlin.math.ceil(paint.textSize * 2f).toInt()
+            if (w <= pad * 2 || h <= 0) return@remember null
+            val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ALPHA_8)
+            android.graphics.Canvas(bmp).drawText(text, pad.toFloat(), paint.textSize * 1.4f, paint)
+            val px = IntArray(w * h).also { bmp.getPixels(it, 0, w, 0, 0, w, h) }
+            bmp.recycle()
+            val cols = IntArray(w) { x -> (0 until h).count { y -> (px[y * w + x] ushr 24) >= 128 } }
+            UiLogic.stemCenter(cols, longest)?.minus(pad)
+        } catch (_: Throwable) { null }
+    }
+}
 
 @Composable
 private fun ArrowLabel(arrow: String, color: Color) {
@@ -1587,7 +1632,7 @@ internal fun SubCard(
             }
             if (sub.lastError.isNotEmpty()) Text(sub.lastError, fontSize = 12.sp, color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
             // No «Трафик» label: "used/total" is drawn on the (thicker) bar itself.
-            TrafficBar(UiLogic.trafficBarLabel(traffic), UiLogic.trafficProgress(traffic.usedMb, traffic.limitMb))
+            TrafficBar(UiLogic.trafficBarLabel(traffic), UiLogic.trafficRemaining(traffic.usedMb, traffic.limitMb)) // 2.0.44: shows what is left
             // One compact line under the traffic bar: real hosts (no auto-select/balancer rows) · expiry date.
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -1608,12 +1653,13 @@ internal fun SubCard(
 }
 
 @Composable
-private fun TrafficBar(label: String, progress: Float) {
+internal fun TrafficBar(label: String, progress: Float) {
     val p = progress.coerceIn(0f, 1f)
     val animated by animateFloatAsState(targetValue = p, label = "traffic")
     val fillBrush = when {
-        p >= 0.9f -> Brush.horizontalGradient(listOf(AntiBSColors.Warn, AntiBSColors.Err))
-        p >= 0.7f -> Brush.horizontalGradient(listOf(AntiBSColors.Blue, AntiBSColors.Warn))
+        // 2.0.44: [progress] is the share LEFT — warn when ≤ 30 % remain, red when ≤ 10 %
+        p <= 0.1f -> Brush.horizontalGradient(listOf(AntiBSColors.Warn, AntiBSColors.Err))
+        p <= 0.3f -> Brush.horizontalGradient(listOf(AntiBSColors.Blue, AntiBSColors.Warn))
         else -> Brush.horizontalGradient(listOf(AntiBSColors.Blue, AntiBSColors.Purple))
     }
     val barShape = RoundedCornerShape(99.dp)

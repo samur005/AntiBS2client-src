@@ -476,7 +476,8 @@ fun SubCardStack(items: List<RibbonItem>, selected: String, serversLabel: (Int) 
                 Text(it.traffic, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, maxLines = 1)
                 Spacer(Modifier.height(6.dp))
                 Box(Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.25f))) {
-                    Box(Modifier.fillMaxWidth(ServerStyleLogic.usedFraction(it.used, it.total) ?: 0f).fillMaxHeight().clip(RoundedCornerShape(3.dp)).background(Color.White))
+                    Box(Modifier.fillMaxWidth(ServerStyleLogic.remainingFraction(it.used, it.total) ?: 1f) // 2.0.44: left, full = unlimited
+                        .fillMaxHeight().clip(RoundedCornerShape(3.dp)).background(Color.White))
                 }
                 if (it.subtitle.isNotEmpty()) Text(it.subtitle, color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp), maxLines = 1)
             }
@@ -534,8 +535,8 @@ fun MaterialTrafficCard(
             Text(" $unitLabel", color = on.copy(alpha = 0.85f), fontSize = 13.sp, modifier = Modifier.padding(bottom = 5.dp))
         }
         cur?.let {
-            val f = ServerStyleLogic.usedFraction(it.used, it.total)
-            if (f != null) {
+            val f = ServerStyleLogic.remainingFraction(it.used, it.total) ?: 1f // 2.0.44: bar = what is left; unlimited = full
+            run {
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(on.copy(alpha = 0.15f))) {
                     Box(Modifier.fillMaxWidth(f).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(c.accent))

@@ -17,7 +17,7 @@ class AbsFeaturesTest {
         val sub115 = sub.copy(expireEpoch = now / 1000 + 115 * 86400 + 100)
         assertEquals("дней 115", SubLineData.of(sub115, now)!!.days)
         assertTrue(Regex("""до \d{2}\.\d{2}\.\d{4}""").matches(SubLineData.of(sub115, now)!!.until!!))
-        assertEquals("1,4 / 150 ГБ", d.traffic)
+        assertEquals("1,4 ГБ / 150 ГБ", d.traffic)
         assertTrue(d.until!!.startsWith("до "))
         assertTrue("until should include year: ${d.until}", Regex("""до \d{2}\.\d{2}\.\d{4}""").matches(d.until!!))
         assertEquals("05.03.2027".length, "05.03.2027".length) // format sanity
