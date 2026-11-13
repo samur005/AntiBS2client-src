@@ -182,16 +182,16 @@ class ThemeAndUiTest {
 
 
     @Test fun trafficBarLabelUsedSlashTotal() {
-        assertEquals("10GB/90GB", UiLogic.trafficBarLabel(UiLogic.Traffic(10 * 1024.0, 90 * 1024.0, false)))
-        assertEquals("12.4GB/150GB", UiLogic.trafficBarLabel(UiLogic.Traffic(12.4 * 1024.0, 150 * 1024.0, true)))
-        assertEquals("263MB/50GB", UiLogic.trafficBarLabel(UiLogic.Traffic(263.0, 50 * 1024.0, true)))
-        assertEquals("1.5GB/∞", UiLogic.trafficBarLabel(UiLogic.Traffic(1536.0, 0.0, false)))
-        assertEquals("0GB/∞", UiLogic.trafficBarLabel(UiLogic.Traffic(0.0, 0.0, true)))
+        assertEquals("10 ГБ / 90 ГБ", UiLogic.trafficBarLabel(UiLogic.Traffic(10 * 1024.0, 90 * 1024.0, false)))
+        assertEquals("12.4 ГБ / 150 ГБ", UiLogic.trafficBarLabel(UiLogic.Traffic(12.4 * 1024.0, 150 * 1024.0, true)))
+        assertEquals("263 МБ / 50 ГБ", UiLogic.trafficBarLabel(UiLogic.Traffic(263.0, 50 * 1024.0, true)))
+        assertEquals("1.5 ГБ / ∞", UiLogic.trafficBarLabel(UiLogic.Traffic(1536.0, 0.0, false)))
+        assertEquals("0 МБ / ∞", UiLogic.trafficBarLabel(UiLogic.Traffic(0.0, 0.0, true)))
     }
 
     @Test fun trafficFromSubscriptionBytes() {
         val sub = Subscription(id = "x", url = "u", upload = 1L shl 30, download = 9L shl 30, total = 90L shl 30)
-        assertEquals("10GB/90GB", UiLogic.trafficBarLabel(UiLogic.traffic(sub)))
+        assertEquals("10 ГБ / 90 ГБ", UiLogic.trafficBarLabel(UiLogic.traffic(sub)))
     }
 
     @Test fun hostOrderIsFixedSubscriptionOrder() {

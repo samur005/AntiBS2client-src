@@ -176,8 +176,8 @@ internal fun PingCounterPill(
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                 .background(cs.surfaceVariant.copy(alpha = 0.6f))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+                .padding(horizontal = 12.dp, vertical = 5.dp), // 2.0.44: lower card (was 8 dp / 6 dp gaps)
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             // Line 1: status + stop; line 2: available / unavailable — never one cramped row.
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -187,24 +187,30 @@ internal fun PingCounterPill(
                         stopped -> "Проверка остановлена"
                         else -> "Проверено $total"
                     },
-                    color = cs.onSurface, fontSize = 13.sp, maxLines = 1, softWrap = false,
+                    color = cs.onSurface, fontSize = 13.sp, lineHeight = 16.sp, maxLines = 1, softWrap = false,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 if (running) {
-                    IconButton(onClick = onStop, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Filled.Stop, contentDescription = "Остановить проверку", tint = cs.error, modifier = Modifier.size(20.dp))
+                    // 2.0.44: a plain clickable icon — IconButton's 48 dp minimum touch size made this row 48 dp tall.
+                    Box(
+                        Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                            .clickable(onClickLabel = "Остановить проверку", role = androidx.compose.ui.semantics.Role.Button, onClick = onStop),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.Stop, contentDescription = "Остановить проверку", tint = cs.error, modifier = Modifier.size(18.dp))
                     }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("доступны $ok", color = cs.primary, fontSize = 13.sp, maxLines = 1, softWrap = false)
-                Text("недоступны $failed", color = cs.error, fontSize = 13.sp, maxLines = 1, softWrap = false)
+                Text("доступны $ok", color = cs.primary, fontSize = 13.sp, lineHeight = 16.sp, maxLines = 1, softWrap = false)
+                Text("недоступны $failed", color = cs.error, fontSize = 13.sp, lineHeight = 16.sp, maxLines = 1, softWrap = false)
             }
-            // accent → lighter accent gradient, ~7 dp, rounded ends
+            // accent → lighter accent gradient, 5 dp (2.0.44, was 7), rounded ends
+            Spacer(Modifier.height(2.dp))
             val accent = cs.primary
             val light = androidx.compose.ui.graphics.lerp(accent, Color.White, 0.45f)
-            Box(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(50)).background(cs.onSurface.copy(alpha = 0.12f))) {
+            Box(Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(50)).background(cs.onSurface.copy(alpha = 0.12f))) {
                 Box(
                     Modifier.fillMaxWidth(frac.coerceIn(0f, 1f)).fillMaxHeight().clip(RoundedCornerShape(50))
                         .background(Brush.horizontalGradient(listOf(accent, light))),

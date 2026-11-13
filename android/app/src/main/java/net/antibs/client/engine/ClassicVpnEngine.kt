@@ -56,7 +56,7 @@ object SecretBox {
 }
 
 /**
- * 1.0.41: OpenVPN 2.6.15 / OpenConnect 9.12 behind libvpnstack.so (management client / script-tun → gVisor netstack →
+ * 1.0.41 (2.0.44: OpenVPN 2.6.23 / OpenConnect 9.21, OpenSSL 3.5.9): OpenVPN / OpenConnect behind libvpnstack.so (management client / script-tun → gVisor netstack →
  * loopback SOCKS5 [port] that Xray dials). Our app (and so these children) is outside our own VPN.
  */
 class ClassicVpnEngine(private val ctx: Context, private val profile: XrayProfile, private val port: Int) {

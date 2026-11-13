@@ -25,7 +25,7 @@ import (
 	mlog "github.com/metacubex/mihomo/log"
 )
 
-const version = "mhx 1.0.7 (mihomo v1.19.32, quic-go http3, vless, wireguard/amneziawg)"
+const version = "mhx 1.0.8 (mihomo v1.19.34, quic-go http3, vless, wireguard/amneziawg)"
 
 type Slot struct {
 	Port   int            `json:"port"`

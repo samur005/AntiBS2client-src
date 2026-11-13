@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds native/mihomo-lite (libmhx.so): mihomo v1.19.32 outbounds (ssr, snell v1–v5, trusttunnel, shadowquic)
+# Builds native/mihomo-lite (libmhx.so): mihomo v1.19.34 outbounds (ssr, snell v1–v5, trusttunnel, shadowquic)
 # + an HTTP/3 CONNECT client (quic-go http3, Exclave-style), each behind a loopback SOCKS5 slot.
 # PIE executable named lib*.so so Android extracts it to nativeLibraryDir. Also builds tools/mhx (linux) for tests.
 set -euo pipefail

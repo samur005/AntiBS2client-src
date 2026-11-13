@@ -316,7 +316,7 @@ internal fun SubRemainPage(vm: AppViewModel, st: net.antibs.client.engine.AppSta
     SettingsScaffold("Остаток подписки", onBack) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Box(Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
-                SubRemainRow(SubLineData("дней 115", "до 05.03.2027", 1f, "1,4 / 150 ГБ", 0.01f), s.copy(show = true))
+                SubRemainRow(SubLineData("дней 115", "до 05.03.2027", 1f, "1,4 ГБ / 150 ГБ", 0.99f), s.copy(show = true))
             }
             SettingsCard("Остаток подписки") {
                 SwitchRow("Показывать", s.show, subtitle = "Дни и трафик внизу карточки подключения") { v -> set { it.copy(show = v) } }

@@ -36,7 +36,7 @@ object ProtocolSupport {
     val MIERU_WORKING = emptySet<String>()
 
     /**
-     * Protocols dialed by libmhx.so (native/mihomo-lite): mihomo 1.19.32 outbounds (ShadowsocksR, Snell v1–v3,
+     * Protocols dialed by libmhx.so (native/mihomo-lite): mihomo 1.19.34 outbounds (ShadowsocksR, Snell v1–v3,
      * TrustTunnel, ShadowQUIC) and an HTTP/3 CONNECT client (quic-go http3, as in Exclave).
      */
     val MIHOMO_WORKING = setOf("ssr", "trusttunnel", "shadowquic", "http3", "amneziawg", "mieru")

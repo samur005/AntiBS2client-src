@@ -28,7 +28,7 @@ data class SubRemainStyle(
         const val ALIGN_START = 0; const val ALIGN_CENTER = 1; const val ALIGN_END = 2 }
 }
 
-/** «дней 115 • до 05.03.2027 ▬   1,4 / 150 ГБ ▬» */
+/** «дней 115 • до 05.03.2027 ▬   1,4 ГБ / 150 ГБ ▬» — 2.0.44: the traffic bar shows what is LEFT (full when unlimited). */
 data class SubLineData(val days: String, val until: String?, val dayFrac: Float?, val traffic: String, val trafficFrac: Float?) {
     companion object {
         const val MONTH_DAYS = 30
@@ -49,7 +49,7 @@ data class SubLineData(val days: String, val until: String?, val dayFrac: Float?
             val until = if (sub.expireEpoch > 0) I18n.t("until", ddMMyyyy(sub.expireEpoch)) else null
             val dayFrac = d?.let { (it.toFloat() / MONTH_DAYS).coerceIn(0f, 1f) }
             val traffic = if (total > 0) pair(used, total) else amount(used) + " · безлимит"
-            val tf = if (total > 0) (used.toFloat() / total).coerceIn(0f, 1f) else null
+            val tf = remainingFrac(used, total)
             return SubLineData(days, until, dayFrac, traffic, tf)
         }
 
@@ -84,12 +84,12 @@ data class SubLineData(val days: String, val until: String?, val dayFrac: Float?
             val s = if (v >= 10 || v == Math.floor(v)) "%.0f".format(java.util.Locale.ROOT, v) else "%.1f".format(java.util.Locale.ROOT, v)
             return s.replace('.', ',')
         }
-        /** «114 / 150 ГБ»: both in the unit of the total; a much smaller used value keeps its own unit (never raw bytes). */
-        fun pair(used: Long, total: Long): String {
-            val u = unitOf(total)
-            if (unitOf(used) != u && used > 0) return amount(used) + " / " + amount(total)
-            return "${num(used, u)} / ${num(total, u)} ${UNITS[u]}"
-        }
+        /** 2.0.44: «114 ГБ / 150 ГБ», «195 МБ / 150 ГБ» — the used amount always carries its own unit. */
+        fun pair(used: Long, total: Long): String = amount(used.coerceAtLeast(0)) + " / " + amount(total)
+
+        /** 2.0.44: share of the quota still left (bar shrinks as traffic is used); 1 = unlimited (full bar). */
+        fun remainingFrac(used: Long, total: Long): Float =
+            if (total <= 0) 1f else ((total - used).coerceAtLeast(0).toDouble() / total).toFloat().coerceIn(0f, 1f)
         fun amount(b: Long): String { val u = unitOf(b); return num(b, u) + " " + UNITS[u] }
     }
 }

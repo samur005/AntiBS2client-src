@@ -7,7 +7,7 @@ import java.net.Socket
 import kotlin.concurrent.thread
 
 /**
- * Bundled mieru 1.15.1 client (native/mieru-lite → libmieru.so). Foreground `run` with
+ * Bundled mieru client (2.0.44: v3.39.0; was 1.15.1) (native/mieru-lite → libmieru.so). Foreground `run` with
  * MIERU_CONFIG_JSON_FILE and rpcPort=0 (mobile mode). Xray dials its loopback SOCKS.
  */
 class MieruEngine(private val ctx: Context, private val configJson: String, private val socksPort: Int) {
