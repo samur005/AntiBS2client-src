@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 1.0.41: libvpnstack.so (native/vpnstack-lite: OpenVPN management client / OpenConnect script-tun → gVisor netstack → SOCKS5)
-# plus the prebuilt OpenVPN 2.6.15 (TARGET_ANDROID, OpenSSL 3.5.4) and OpenConnect 9.12 (OpenSSL, libxml2) executables
+# plus the prebuilt OpenVPN 2.6.23 (TARGET_ANDROID, OpenSSL 3.5.9) and OpenConnect 9.21 (OpenSSL, libxml2) executables
 # from /workspace/ref/ovpn and /workspace/ref/oc (see notes in scripts/README-vpn-natives.txt).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

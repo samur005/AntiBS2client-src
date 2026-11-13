@@ -9,7 +9,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * JSON client config for bundled mieru 1.15.1 (libmieru.so).
+ * JSON client config for the bundled mieru client (libmieru.so; 2.0.44: v3.39.0, was 1.15.1). Not used by plans since 1.0.19 (mieru runs on libmhx).
  * rpcPort=0 → mobile mode (no gRPC lifecycle daemon); socks5 on 127.0.0.1:[port].
  * Official mieru:// protobuf shares are kept in [XrayProfile.customJson] and handed to the binary
  * via a generated JSON (we don't depend on protobuf at runtime).

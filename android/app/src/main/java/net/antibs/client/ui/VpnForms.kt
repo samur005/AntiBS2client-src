@@ -177,7 +177,7 @@ internal fun VpnProtoFormDialog(proto: String, vm: AppViewModel, onDismiss: () -
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     if (proto == "openvpn") "OpenVPN 2.6 (OpenSSL 3): tls-crypt / tls-auth, сертификаты, логин/пароль. Трафик идёт через Xray, поэтому маршрутизация, блокировка рекламы и «Приложения» работают как обычно."
-                    else "OpenConnect 9.12: Cisco AnyConnect / ocserv, GlobalProtect, Pulse, Juniper, F5, Fortinet, Array. Трафик идёт через Xray (маршрутизация и блокировка рекламы работают).",
+                    else "OpenConnect 9.21: Cisco AnyConnect / ocserv, GlobalProtect, Pulse, Juniper, F5, Fortinet, Array. Трафик идёт через Xray (маршрутизация и блокировка рекламы работают).",
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(name, { name = it }, label = { Text("Имя") }, singleLine = true, modifier = Modifier.fillMaxWidth())
