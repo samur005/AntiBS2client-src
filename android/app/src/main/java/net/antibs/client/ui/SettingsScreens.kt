@@ -250,6 +250,7 @@ internal fun InboundsPage(vm: AppViewModel, st: AppState, onBack: () -> Unit) {
             CredField(I18n.t("socks_user"), a.socksUser, secret = false) { v -> vm.setAdvTunnel { it.copy(socksUser = v) } }
             CredField(I18n.t("socks_pass"), a.socksPass, secret = true) { v -> vm.setAdvTunnel { it.copy(socksPass = v) } }
             SettingField(I18n.t("socks_port"), a.socksPort.toString(), { v -> v.toIntOrNull()?.let { n -> vm.setAdvTunnel { it.copy(socksPort = n) } } }, numeric = true, valid = ::portOk, hint = "1024–65535")
+            SwitchRow(I18n.t("socks_lock"), a.socksLocked, subtitle = I18n.t(if (a.socksLocked) "socks_lock_on" else "socks_lock_off")) { v -> vm.setAdvTunnel { it.copy(socksLocked = v) } }
             OutlinedButton(onClick = { vm.regenerateSocks() }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Text(I18n.t("socks_regen"))
             }

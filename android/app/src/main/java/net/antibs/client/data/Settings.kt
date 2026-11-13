@@ -102,6 +102,11 @@ data class AdvancedSettings(
     /** 2.0.43: SOCKS5/HTTP inbound login + password (RFC 1929). Generated once by [LocalProxy.migrate], editable. */
     val socksUser: String = "",
     val socksPass: String = "",
+    /**
+     * 2.0.43: «Зафиксировать логин, пароль и порт» (default on): the app never changes them by itself — a busy port at
+     * connect is an error. Off: a busy port is replaced by a random free one (saved and reported).
+     */
+    val socksLocked: Boolean = true,
     val httpInbound: Boolean = false,
     val httpPort: Int = 10809,
     // TUN

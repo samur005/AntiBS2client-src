@@ -216,18 +216,31 @@ class AntiBSVpnService : VpnService() {
     }
 
     /**
-     * 2.0.43: the SOCKS port is chosen once and stored; if another app holds it now, pick a new free one, save it
-     * (Settings → Inbounds shows it) and tell the user which port was taken.
+     * 2.0.43: the SOCKS port is chosen once and stored. If another app holds it now:
+     *  - «Зафиксировать логин, пароль и порт» on (default) → the connection fails with a clear message, nothing changes;
+     *  - off → a new free port is picked, saved (Settings → Inbounds shows it) and reported.
+     * Login and password are never changed here.
      */
     private fun ensureSocksPort(store: AppStore) {
-        val port = net.antibs.client.data.LocalProxy.port(store.snapshot().adv)
-        if (net.antibs.client.data.LocalProxy.isPortFree(port)) return
-        Thread.sleep(500) // our own previous core may still be releasing it
-        if (net.antibs.client.data.LocalProxy.isPortFree(port)) return
-        val next = net.antibs.client.data.LocalProxy.newPort()
-        store.update { it.copy(adv = it.adv.copy(socksPort = next)) }
-        VpnState.log("SOCKS-порт $port занят другим приложением — выбран $next")
-        VpnState.notice("SOCKS-порт $port занят — выбран $next")
+        val lp = net.antibs.client.data.LocalProxy
+        var first = true
+        val isFree: (Int) -> Boolean = { p ->
+            lp.isPortFree(p) || (first && run { first = false; Thread.sleep(500); lp.isPortFree(p) }) // our previous core may still be releasing it
+        }
+        when (val r = lp.resolvePort(store.snapshot().adv, isFree = isFree)) {
+            is net.antibs.client.data.LocalProxy.PortCheck.Ok -> Unit
+            is net.antibs.client.data.LocalProxy.PortCheck.BusyLocked -> {
+                val msg = net.antibs.client.data.I18n.t("socks_port_busy_locked", r.port)
+                VpnState.log("SOCKS-порт ${r.port} занят другим приложением — порт зафиксирован, подключение отменено")
+                VpnState.notice(msg)
+                throw IllegalStateException(msg)
+            }
+            is net.antibs.client.data.LocalProxy.PortCheck.Reassigned -> {
+                store.update { it.copy(adv = it.adv.copy(socksPort = r.port)) }
+                VpnState.log("SOCKS-порт ${r.old} занят другим приложением — выбран ${r.port}")
+                VpnState.notice(net.antibs.client.data.I18n.t("socks_port_reassigned", r.old, r.port))
+            }
+        }
     }
 
     private fun activeRouting(s: net.antibs.client.engine.AppState) =

@@ -46,7 +46,29 @@ object LocalProxy {
         ServerSocket(port, 1, InetAddress.getByName("127.0.0.1")).use { true }
     } catch (_: Exception) { false }
 
-    /** «Сгенерировать заново»: new login, password and port. */
+    /** Outcome of [resolvePort] at connect time. */
+    sealed class PortCheck {
+        /** The stored port is free — use it. */
+        data class Ok(val port: Int) : PortCheck()
+        /** «Зафиксировать» is on and the stored port is busy — fail the connection, change nothing. */
+        data class BusyLocked(val port: Int) : PortCheck()
+        /** «Зафиксировать» is off and the stored port is busy — [settings] carries the new free port to save. */
+        data class Reassigned(val old: Int, val port: Int, val settings: AdvancedSettings) : PortCheck()
+    }
+
+    /**
+     * 2.0.43: what to do with the stored SOCKS port before a connection. Login and password are never touched here;
+     * the port changes only when [AdvancedSettings.socksLocked] is off.
+     */
+    fun resolvePort(a: AdvancedSettings, rnd: Random = SecureRandom(), isFree: (Int) -> Boolean = ::isPortFree): PortCheck {
+        val p = port(a)
+        if (isFree(p)) return PortCheck.Ok(p)
+        if (a.socksLocked) return PortCheck.BusyLocked(p)
+        val next = newPort(rnd) { it != p && isFree(it) }
+        return PortCheck.Reassigned(p, next, a.copy(socksPort = next))
+    }
+
+    /** «Сгенерировать заново»: new login, password and port (the only path that replaces existing credentials). */
     fun regenerate(a: AdvancedSettings, rnd: Random = SecureRandom(), isFree: (Int) -> Boolean = ::isPortFree): AdvancedSettings =
         a.copy(socksUser = newUser(rnd), socksPass = newPass(rnd), socksPort = newPort(rnd, isFree))
 
@@ -56,6 +78,7 @@ object LocalProxy {
      *  - «Блокировать обход туннеля» on (no VpnService.Builder.allowBypass);
      *  - SOCKS login + password generated when missing;
      *  - the well-known port 10808 replaced by a random free high port (a port the user set themselves stays).
+     * Existing login / password are never replaced; after the marker is set this is a no-op on every start/restore.
      */
     fun migrate(a: AdvancedSettings, rnd: Random = SecureRandom(), isFree: (Int) -> Boolean = ::isPortFree): AdvancedSettings {
         if (a.hardening >= HARDENING_VERSION) return a
