@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds libv2ray.aar (Xray-core v26.10.31 via AndroidLibXrayLite) for arm64 + x86_64
+# Builds libv2ray.aar (Xray-core v26.11.9 via AndroidLibXrayLite) for arm64 + x86_64
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "${ENVFILE:-$ROOT/scripts/env.sh}"

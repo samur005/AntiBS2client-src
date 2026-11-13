@@ -32,7 +32,7 @@ android {
         versionName = "2.0.43"
         ndk { abiFilters += targetAbis }
         vectorDrawables { useSupportLibrary = true }
-        buildConfigField("String", "XRAY_VERSION", "\"26.10.31\"")
+        buildConfigField("String", "XRAY_VERSION", "\"26.11.9\"")
         buildConfigField("String", "SINGBOX_VERSION", "\"1.14.4\"")
         buildConfigField("String", "MIHOMO_VERSION", "\"1.19.32\"")
     }
