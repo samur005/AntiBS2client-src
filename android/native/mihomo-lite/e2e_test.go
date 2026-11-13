@@ -137,3 +137,59 @@ func TestHTTP3Connect(t *testing.T) {
 	roundtrip(t, d, echo.Addr().String())
 	roundtrip(t, d, echo.Addr().String()) // reused QUIC conn
 }
+
+// 2.0.45: Snell v6 (mihomo 1.19.34) — every traffic mode against a loopback v6 server.
+func TestSnellV6Modes(t *testing.T) {
+	echo := echoServer(t)
+	defer echo.Close()
+	psk := "psk-test-v6-123456"
+	for _, mode := range []string{"default", "unshaped", "unsafe-raw"} {
+		m, err := snell.ParseV6Mode(mode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ln, _ := net.Listen("tcp", "127.0.0.1:0")
+		go func() {
+			for {
+				c, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				go func() {
+					defer c.Close()
+					s := snell.ServerStreamConnV6(c, []byte(psk), m)
+					h := make([]byte, 4)
+					if _, err := io.ReadFull(s, h); err != nil {
+						return
+					}
+					host := make([]byte, int(h[3]))
+					io.ReadFull(s, host)
+					p := make([]byte, 2)
+					io.ReadFull(s, p)
+					up, err := net.Dial("tcp", net.JoinHostPort(string(host), itoa(int(binary.BigEndian.Uint16(p)))))
+					if err != nil {
+						return
+					}
+					s.Write([]byte{0})
+					go io.Copy(up, s)
+					io.Copy(s, up)
+				}()
+			}
+		}()
+		_, sp, _ := net.SplitHostPort(ln.Addr().String())
+		d, err := newMihomoDialer(map[string]any{"type": "snell", "name": "t", "server": "127.0.0.1", "port": sp, "psk": psk, "version": 6, "mode": mode})
+		if err != nil {
+			t.Fatal(mode, err)
+		}
+		roundtrip(t, d, echo.Addr().String())
+		ln.Close()
+	}
+	// v6 rejects simple-obfs and short PSKs
+	if _, err := newMihomoDialer(map[string]any{"type": "snell", "name": "t", "server": "127.0.0.1", "port": "1", "psk": psk, "version": 6,
+		"obfs-opts": map[string]any{"mode": "http"}}); err == nil {
+		t.Fatal("v6 + obfs http accepted")
+	}
+	if _, err := newMihomoDialer(map[string]any{"type": "snell", "name": "t", "server": "127.0.0.1", "port": "1", "psk": "short", "version": 6}); err == nil {
+		t.Fatal("v6 short psk accepted")
+	}
+}

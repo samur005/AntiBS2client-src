@@ -182,7 +182,11 @@ object SubscriptionParser {
                 trafficUsedMb = 0.0, trafficLimitMb = 0.0, servers = uniqueIds(xs), routing = xr.orEmpty(),
             )
         }
-        val servers = uniqueIds(text.lines().mapNotNull { LinkParser.parse(it, subscriptionId) })
+        // 2.0.45: Clash / mihomo YAML — Snell entries (`type: snell`, incl. version 6) become hosts
+        val clash = if (SnellFormats.looksLikeClash(text)) SnellFormats.clashYaml(text).map { p ->
+            ServerEntry(LinkParser.stableId("x", (subscriptionId ?: "") + "clash:" + p.remarks + p.server + p.port), EngineKind.XRAY, p.remarks, subscriptionId, xray = p)
+        } else emptyList()
+        val servers = uniqueIds(clash + text.lines().mapNotNull { LinkParser.parse(it, subscriptionId) })
         if (servers.isEmpty()) return null
         val kind = if (servers.all { it.engine == EngineKind.QWDTT }) "qwdtt" else "remnawave"
         return RemoteSubscription(

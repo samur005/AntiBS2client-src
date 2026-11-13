@@ -67,6 +67,10 @@ object Format {
 
     fun flag(name: String): String = LinkParser.flagOf(name) ?: "🌐"
 
+    /** 2.0.45: protocol chip with the Snell version («Snell v6»). */
+    fun protocolLabel(p: net.antibs.client.data.XrayProfile): String =
+        if (p.protocol == "snell" && p.protoVersion != null) "Snell v${p.protoVersion}" else protocolLabel(p.protocol)
+
     fun protocolLabel(p: String): String = when (p) {
         "vless" -> "VLESS"; "vmess" -> "VMess"; "shadowsocks" -> "Shadowsocks"; "trojan" -> "Trojan"
         "wireguard" -> "WireGuard"; "hysteria" -> "Hysteria2"; "hysteria1" -> "Hysteria"

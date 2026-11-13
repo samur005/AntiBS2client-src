@@ -41,7 +41,7 @@ object UiLogic {
                 p.protocol == "shadowsocks" -> "Shadowsocks"
                 p.protocol == "hysteria" -> "Hysteria2"
                 !p.unsupportedReason.isNullOrBlank() -> Format.protocolLabel(p.protocol)
-                else -> Format.protocolLabel(p.protocol)
+                else -> Format.protocolLabel(p)
             }
         }
     }

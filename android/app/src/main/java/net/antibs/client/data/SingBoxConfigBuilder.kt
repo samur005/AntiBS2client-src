@@ -107,7 +107,7 @@ object SingBoxConfigBuilder {
             }
             "snell" -> {
                 val v = p.protoVersion ?: 4
-                if (v in 1..3) throw IllegalStateException("Snell v$v идёт через mihomo, не sing-box")
+                if (ProtocolSupport.snellOnMihomo(v)) throw IllegalStateException("Snell v$v идёт через mihomo, не sing-box")
                 put("type", "snell")
                 put("tag", tag)
                 server(p)

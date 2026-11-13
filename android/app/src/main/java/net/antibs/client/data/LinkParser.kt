@@ -158,6 +158,7 @@ object LinkParser {
             lower.startsWith("anytls://") -> parseAnyTls(link)
             lower.startsWith("ssh://") -> parseSsh(link)
             lower.startsWith("snell://") -> parseSnell(link)
+            SnellFormats.isSurgeLine(link) -> SnellFormats.surgeLine(link)
             lower.startsWith("naive+https://") || lower.startsWith("naive+quic://") || lower.startsWith("naive://") -> parseNaive(link)
             lower.startsWith("mieru://") -> parseMieru(link)
             // 1.0.19: mieru's own simple share link (mierus://user:pass@host?port=…&protocol=…&profile=…)
@@ -660,7 +661,7 @@ object LinkParser {
         )
     }
 
-    /** snell://psk@host:port?version=4&obfs=http&obfs-host=bing.com (userinfo may be base64 "method:psk"). */
+    /** snell://psk@host:port?version=4&obfs=http&obfs-host=bing.com (userinfo may be base64 "method:psk"); v6: &mode=unshaped&reuse=true. */
     fun parseSnell(link: String): XrayProfile? {
         val p = split(link) ?: return null
         if (p.host.isEmpty() || p.port <= 0) return null
@@ -678,8 +679,12 @@ object LinkParser {
         return XrayProfile(
             remarks = p.fragment.ifEmpty { p.host }, protocol = "snell", server = p.host, port = p.port,
             password = psk, network = "tcp",
-            headerType = obfs, host = q(p, "obfs-host", "obfs_host", "host") ?: plugin["obfs-host"],
+            // 2.0.45: Snell v6 has no simple-obfs (PSK-derived shaping); `mode` / `reuse` go to mihomo
+            headerType = if (ver >= 6) null else obfs,
+            host = if (ver >= 6) null else q(p, "obfs-host", "obfs_host", "host") ?: plugin["obfs-host"],
             protoVersion = ver,
+            snellMode = q(p, "mode")?.lowercase()?.takeIf { ver >= 6 && it in ProtocolSupport.SNELL_V6_MODES && it != "default" },
+            snellReuse = q(p, "reuse").let { it.equals("true", true) || it == "1" },
         )
     }
 
