@@ -193,6 +193,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import net.antibs.client.BuildConfig
 import net.antibs.client.data.Subscription
@@ -1652,6 +1653,8 @@ internal fun SubCard(
     }
 }
 
+internal val TRAFFIC_BAR_H = 14.dp
+
 @Composable
 internal fun TrafficBar(label: String, progress: Float) {
     val p = progress.coerceIn(0f, 1f)
@@ -1663,11 +1666,13 @@ internal fun TrafficBar(label: String, progress: Float) {
         else -> Brush.horizontalGradient(listOf(AntiBSColors.Blue, AntiBSColors.Purple))
     }
     val barShape = RoundedCornerShape(99.dp)
-    val labelStyle = TabularNums.copy(fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.SemiBold)
+    // 2.2.0: lower bar (18 → 14 dp) with a slightly smaller label
+    val labelStyle = TabularNums.copy(fontSize = 9.5.sp, lineHeight = 10.sp, fontWeight = FontWeight.SemiBold,
+        lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center, androidx.compose.ui.text.style.LineHeightStyle.Trim.Both))
     Box(
         Modifier
             .fillMaxWidth()
-            .height(18.dp)
+            .height(TRAFFIC_BAR_H)
             .clip(barShape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)),
         contentAlignment = Alignment.CenterStart,
@@ -1678,7 +1683,7 @@ internal fun TrafficBar(label: String, progress: Float) {
             Box(
                 Modifier
                     .fillMaxWidth(animated.coerceIn(0.03f, 1f))
-                    .height(18.dp)
+                    .height(TRAFFIC_BAR_H)
                     .clip(barShape)
                     .background(fillBrush),
             )
@@ -1698,21 +1703,25 @@ internal fun TrafficBar(label: String, progress: Float) {
     }
 }
 
-/** 2.0.42: compact protocol chip on server-list rows (~17 dp tall, 10 sp, tight padding). */
+/** 2.2.0: smaller protocol chip on server-list rows (17 → 14 dp tall, 10 → 8.5 sp, 6 → 4 dp padding). */
+internal val PROTOCOL_BADGE_H = 14.dp
+
 @Composable
 internal fun ProtocolBadge(label: String, selected: Boolean, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .height(17.dp)
-            .clip(RoundedCornerShape(5.dp))
+            .height(PROTOCOL_BADGE_H)
+            .clip(RoundedCornerShape(4.dp))
             .background(if (selected) AntiBSColors.Blue else AntiBSColors.ChipOff)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
-            fontSize = 10.sp,
-            lineHeight = 12.sp,
+            fontSize = 8.5.sp,
+            lineHeight = 9.sp,
+            style = LocalTextStyle.current.copy(lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center, androidx.compose.ui.text.style.LineHeightStyle.Trim.Both)),
             fontWeight = FontWeight.SemiBold,
             color = Color.White,
             maxLines = 1,
@@ -1722,7 +1731,7 @@ internal fun ProtocolBadge(label: String, selected: Boolean, modifier: Modifier 
 }
 
 @Composable
-private fun ServerRow(
+internal fun ServerRow(
     flag: String,
     title: String,
     subtitle: String,
@@ -2189,9 +2198,14 @@ internal fun SettingsScaffold(title: String, onBack: () -> Unit, actions: @Compo
                 modifier = Modifier.weight(1f).padding(vertical = if (inTabs) 12.dp else 0.dp))
             actions()
         }
-        content()
+        // 2.2.0: tighter lines in settings hints / descriptions. Text that only sets fontSize kept the theme's
+        // bodyLarge lineHeight (24 sp), so 12–13 sp hints got ~2× line spacing; a relative lineHeight follows the font size.
+        CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(lineHeight = SETTINGS_LINE_HEIGHT)) { content() }
     }
 }
+
+/** 2.2.0: line height of settings texts that don't set their own (relative, ≈ 16 sp for a 13 sp hint). */
+internal val SETTINGS_LINE_HEIGHT = 1.25.em
 
 /** Legacy (bottom navigation removed in 1.0.8): always false, every settings page has a back arrow. */
 internal val LocalInTabs = androidx.compose.runtime.staticCompositionLocalOf { false }
@@ -2285,7 +2299,7 @@ private fun RowTexts(title: String, subtitle: String?, modifier: Modifier) {
     val c = ssColors(LocalAppStyle.current)
     Column(modifier) {
         Text(title, color = c.onCard, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        if (!subtitle.isNullOrBlank()) Text(subtitle, color = c.muted, fontSize = 12.sp, lineHeight = 15.sp,
+        if (!subtitle.isNullOrBlank()) Text(subtitle, color = c.muted, fontSize = 12.sp, lineHeight = 14.sp, // 2.2.0: was 15 sp
             maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 0.dp))
     }
 }

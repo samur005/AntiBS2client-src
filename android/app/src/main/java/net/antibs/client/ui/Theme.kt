@@ -1,5 +1,6 @@
 package net.antibs.client.ui
 
+import androidx.compose.ui.unit.em
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
@@ -193,7 +194,13 @@ fun AntiBSTheme(
     // Material3 does not set LocalContentColor, so it stays Color.Black and body text
     // disappears on the dark canvas. Force onBackground for both themes.
     MaterialTheme(colorScheme = scheme, typography = typography, shapes = StyleTheme.shapes(style)) {
-        CompositionLocalProvider(LocalContentColor provides scheme.onBackground, LocalAppStyle provides style) {
+        // 2.2.0: a relative line height for every Text that sets only fontSize. MaterialTheme's default text style is
+        // bodyLarge (16 sp / 24 sp), so a 12 sp hint kept 24 sp lines — almost double spacing on every screen.
+        // Texts with their own lineHeight or a typography style (buttons, chips, dialogs' titles) are unaffected.
+        CompositionLocalProvider(
+            LocalContentColor provides scheme.onBackground, LocalAppStyle provides style,
+            androidx.compose.material3.LocalTextStyle provides androidx.compose.material3.LocalTextStyle.current.copy(lineHeight = APP_LINE_HEIGHT),
+        ) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             val tv = remember(ctx) { TvMode.isTv(ctx) } || TvMode.isTvConfig(androidx.compose.ui.platform.LocalConfiguration.current)
             CompositionLocalProvider(LocalIsTv provides tv) {
@@ -204,6 +211,9 @@ fun AntiBSTheme(
         }
     }
 }
+
+/** 2.2.0: default line height of plain Text (relative to its font size: 12 sp → 15.6 sp, 16 sp → 20.8 sp). */
+val APP_LINE_HEIGHT = 1.3.em
 
 @Composable
 fun isDark(mode: ThemeMode): Boolean = ThemeResolver.isDark(mode, isSystemInDarkTheme())
