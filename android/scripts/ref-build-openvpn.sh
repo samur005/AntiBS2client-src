@@ -13,7 +13,7 @@ for abi in arm64-v8a x86_64; do
     ./Configure $OT -D__ANDROID_API__=26 no-shared no-tests no-docs no-apps no-engine no-legacy no-quic --prefix=$P --libdir=lib >/dev/null
     make -j${JOBS:-8} build_libs >$B/ssl-$abi.log 2>&1; make install_dev >/dev/null
   fi
-  rm -rf $B/ovpn-$abi; cp -r $B/openvpn-2.6.23 $B/ovpn-$abi; cd $B/ovpn-$abi
+  rm -rf $B/ovpn-$abi; cp -a $B/openvpn-2.6.23 $B/ovpn-$abi; cd $B/ovpn-$abi
   CC=$TC/bin/${HOST}26-clang ./configure --host=$HOST --disable-lzo --disable-lz4 --disable-plugins --disable-dco --disable-plugin-auth-pam --disable-plugin-down-root \
      --enable-iproute2=no --with-crypto-library=openssl OPENSSL_CFLAGS="-I$P/include" OPENSSL_LIBS="-L$P/lib -lssl -lcrypto" \
      CFLAGS="-O2 -fPIE" LDFLAGS="-pie" >/dev/null
