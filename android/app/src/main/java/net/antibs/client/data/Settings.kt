@@ -99,12 +99,22 @@ data class AdvancedSettings(
     val muxXudpQuic: String = "reject",
     // Inbounds
     val socksPort: Int = 10808,
+    /** 2.0.43: SOCKS5/HTTP inbound login + password (RFC 1929). Generated once by [LocalProxy.migrate], editable. */
+    val socksUser: String = "",
+    val socksPass: String = "",
+    /**
+     * 2.0.43: «Зафиксировать логин, пароль и порт» (default on): the app never changes them by itself — a busy port at
+     * connect is an error. Off: a busy port is replaced by a random free one (saved and reported).
+     */
+    val socksLocked: Boolean = true,
     val httpInbound: Boolean = false,
     val httpPort: Int = 10809,
     // TUN
     val tunMtu: Int = 1500,
     /** "Блок привязки к туннелю": true = apps can't bind around the VPN (no allowBypass). */
-    val tunnelBindBlock: Boolean = false,
+    val tunnelBindBlock: Boolean = true,
+    /** 2.0.43: one-time leak hardening applied ([LocalProxy.HARDENING_VERSION]); later user choices are kept. */
+    val hardening: Int = 0,
     // VPN
     val localDns: Boolean = false,
     val localDnsPort: Int = 10853,
@@ -155,6 +165,8 @@ data class AdvancedSettings(
     /** off | ru | ai | social */
     val trafficPreset: String = "off",
     val ruDns: String = "77.88.8.8",
+    /** 2.0.43: «.RU без VPN» target — "" = напрямую (default), otherwise a server id whose outbound carries RU traffic. */
+    val ruVia: String = "",
     // 1.0.40: «Настройки интерфейса» → «Общее»
     val accent: String = "blue",
     /** 2.0.31: UI typeface id ([AppFonts] / «Системный»). */

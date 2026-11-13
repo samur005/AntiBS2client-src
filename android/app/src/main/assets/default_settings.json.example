@@ -1,7 +1,7 @@
 {
     "_comment": "First-run defaults baked in as default_settings.json. Applied only when the app has no seeded prefs yet (fresh install). Subscriptions, servers, secrets, subscription-URL hashes, and subscription-tied routing / grouping ids are never stored here.",
     "schemaVersion": 1,
-    "appVersion": "2.0.42",
+    "appVersion": "2.0.43",
     "exportedAt": "",
     "prefs": {
         "theme": "auto",
@@ -44,7 +44,7 @@
             "httpInbound": false,
             "httpPort": 10809,
             "tunMtu": 1500,
-            "tunnelBindBlock": false,
+            "tunnelBindBlock": true,
             "localDns": false,
             "localDnsPort": 10853,
             "dnsFromJson": false,

@@ -78,12 +78,19 @@ class AutoPin(val members: List<String>) {
          * Adds what pinning needs to a running config, leaving everything else as-is: one loopback SOCKS inbound
          * per member routed straight to that outbound (to ping exactly that server) and the Xray API.
          */
-        fun withProbes(config: String, apiPort: Int, probes: Map<String, Int>): String {
+        fun withProbes(config: String, apiPort: Int, probes: Map<String, Int>, user: String = "", pass: String = ""): String {
             val cfg = json.parseToJsonElement(config) as JsonObject
             val inb = (cfg["inbounds"] as? JsonArray).orEmpty() + probes.map { (tag, port) ->
                 buildJsonObject {
                     put("tag", "probe-$tag"); put("listen", "127.0.0.1"); put("port", port); put("protocol", "socks")
-                    putJsonObject("settings") { put("auth", "noauth"); put("udp", false) }
+                    putJsonObject("settings") {
+                        // 2.0.43: same login / password as the main inbound (XrayApi.probe authenticates via LocalProxy)
+                        if (user.isNotEmpty() && pass.isNotEmpty()) {
+                            put("auth", "password")
+                            putJsonArray("accounts") { add(buildJsonObject { put("user", user); put("pass", pass) }) }
+                        } else put("auth", "noauth")
+                        put("udp", false)
+                    }
                 }
             }
             val routing = (cfg["routing"] as? JsonObject).orEmpty()

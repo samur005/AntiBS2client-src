@@ -165,6 +165,7 @@ class AntiBSVpnService : VpnService() {
                         all = all.map { resolveEntry(it) }
                         target = all.firstOrNull { it.id == entry.id } ?: resolveEntry(entry)
                     }
+                    ensureSocksPort(store)
                     var o = opts(store)
                     val panelAuto = net.antibs.client.data.AutoSelect.isJsonAuto(target)
                     val ownAuto = net.antibs.client.data.AutoSelect.isSubscriptionAuto(target)
@@ -181,7 +182,7 @@ class AntiBSVpnService : VpnService() {
                         if (balTag != null && tags.isNotEmpty()) {
                             val api = o.apiPort.takeIf { it > 0 } ?: net.antibs.client.engine.XrayApi.freePort()
                             val probes = tags.associateWith { net.antibs.client.engine.XrayApi.freePort() }.filterValues { it > 0 }
-                            xrayCfg = net.antibs.client.engine.AutoPin.withProbes(xrayCfg, api, probes)
+                            xrayCfg = net.antibs.client.engine.AutoPin.withProbes(xrayCfg, api, probes, o.socksUser, o.socksPass)
                             val names: Map<String, String> = if (panelAuto) net.antibs.client.data.AutoSelect.liveNames(target, all) else {
                                 val m = XrayConfigBuilder.balancerMembers(target, all, o.autoExclude)
                                 tags.mapNotNull { t -> net.antibs.client.engine.BalancerPick.indexOf(t)?.let { i -> m.getOrNull(i)?.let { t to it.name } } }.toMap()
@@ -211,6 +212,34 @@ class AntiBSVpnService : VpnService() {
             VpnState.set(VpnStatus(ConnState.ERROR, serverName = entry.name, message = e.message ?: "ошибка"))
             stopAll()
             stopSelf()
+        }
+    }
+
+    /**
+     * 2.0.43: the SOCKS port is chosen once and stored. If another app holds it now:
+     *  - «Зафиксировать логин, пароль и порт» on (default) → the connection fails with a clear message, nothing changes;
+     *  - off → a new free port is picked, saved (Settings → Inbounds shows it) and reported.
+     * Login and password are never changed here.
+     */
+    private fun ensureSocksPort(store: AppStore) {
+        val lp = net.antibs.client.data.LocalProxy
+        var first = true
+        val isFree: (Int) -> Boolean = { p ->
+            lp.isPortFree(p) || (first && run { first = false; Thread.sleep(500); lp.isPortFree(p) }) // our previous core may still be releasing it
+        }
+        when (val r = lp.resolvePort(store.snapshot().adv, isFree = isFree)) {
+            is net.antibs.client.data.LocalProxy.PortCheck.Ok -> Unit
+            is net.antibs.client.data.LocalProxy.PortCheck.BusyLocked -> {
+                val msg = net.antibs.client.data.I18n.t("socks_port_busy_locked", r.port)
+                VpnState.log("SOCKS-порт ${r.port} занят другим приложением — порт зафиксирован, подключение отменено")
+                VpnState.notice(msg)
+                throw IllegalStateException(msg)
+            }
+            is net.antibs.client.data.LocalProxy.PortCheck.Reassigned -> {
+                store.update { it.copy(adv = it.adv.copy(socksPort = r.port)) }
+                VpnState.log("SOCKS-порт ${r.old} занят другим приложением — выбран ${r.port}")
+                VpnState.notice(net.antibs.client.data.I18n.t("socks_port_reassigned", r.old, r.port))
+            }
         }
     }
 
@@ -247,7 +276,9 @@ class AntiBSVpnService : VpnService() {
         }
         val logDir = File(filesDir, "logs").apply { mkdirs() }
         return XrayConfigBuilder.Options(
-            socksPort = a.socksPort.takeIf { it in 1024..65535 } ?: XrayConfigBuilder.SOCKS_PORT,
+            socksPort = net.antibs.client.data.LocalProxy.port(a),
+            socksUser = if (net.antibs.client.data.LocalProxy.hasAuth(a)) a.socksUser else "",
+            socksPass = if (net.antibs.client.data.LocalProxy.hasAuth(a)) a.socksPass else "",
             bypassLan = s.bypassLan,
             mux = s.mux,
             fragmentation = s.fragmentation,
@@ -505,8 +536,10 @@ class AntiBSVpnService : VpnService() {
             }
             tun = pfd
             val cfg = File(filesDir, "hev-socks5-tunnel.yaml")
-            val port = a.socksPort.takeIf { it in 1024..65535 } ?: XrayConfigBuilder.SOCKS_PORT
-            cfg.writeText(TProxyService.buildConfig(port, a.tunMtu.coerceIn(1280, 9000), "10.10.14.1", "fc00::10:10:14:1"))
+            val port = net.antibs.client.data.LocalProxy.port(a)
+            val auth = net.antibs.client.data.LocalProxy.hasAuth(a)
+            cfg.writeText(TProxyService.buildConfig(port, a.tunMtu.coerceIn(1280, 9000), "10.10.14.1", "fc00::10:10:14:1",
+                if (auth) a.socksUser else "", if (auth) a.socksPass else ""))
             if (!TProxyService.TProxyStartService(cfg.absolutePath, pfd.fd)) throw IllegalStateException("hev-socks5-tunnel не запустился")
         }
         val stale = synchronized(sessionGate) {
@@ -530,8 +563,11 @@ class AntiBSVpnService : VpnService() {
             .setMtu(mtu)
             .addAddress("10.10.14.1", 30)
             .addAddress("fc00::10:10:14:1", 126)
-            .addDnsServer("1.1.1.1")
-            .addDnsServer("8.8.8.8")
+        // 2.0.43: announce the underlying network's resolvers (not 1.1.1.1/8.8.8.8, a VPN tell); queries still go
+        // into the tunnel and Xray's port-53 rule answers them through its own DNS.
+        val tunDns = net.antibs.client.data.TunDns.forTun(SingBoxEngine.underlyingDnsServers(this))
+        tunDns.forEach { d -> try { b.addDnsServer(d) } catch (e: Exception) { VpnState.log("DNS туннеля $d пропущен: ${e.message}") } }
+        VpnState.log("DNS туннеля: ${tunDns.joinToString()}")
         // «Исключённые маршруты»
         val excluded = a.excludedRoutes.mapNotNull { it.trim().ifEmpty { null } }
         val v4Excluded = excluded.mapNotNull { Cidr.parseV4(it) }

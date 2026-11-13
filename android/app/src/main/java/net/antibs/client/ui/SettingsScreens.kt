@@ -35,6 +35,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -88,6 +91,7 @@ import kotlinx.coroutines.withContext
 import net.antibs.client.BuildConfig
 import net.antibs.client.data.AdvancedSettings
 import net.antibs.client.data.Cidr
+import net.antibs.client.data.I18n
 import net.antibs.client.data.ProtocolSupport
 import net.antibs.client.data.RoutingImport
 import net.antibs.client.data.RoutingProfile
@@ -240,16 +244,61 @@ internal fun InboundsPage(vm: AppViewModel, st: AppState, onBack: () -> Unit) {
     SettingsScaffold("Inbounds", onBack) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             HintText("Локальные входы Xray. SOCKS нужен туннелю hev-socks5 и режиму «Прокси»; HTTP — для приложений, которые умеют только HTTP-прокси.")
+            // 2.0.43: login / password / port of the local inbounds (generated once, editable, copyable)
+            SettingsCard(I18n.t("socks_auth_title")) {
+            Spacer(Modifier.height(6.dp))
+            CredField(I18n.t("socks_user"), a.socksUser, secret = false) { v -> vm.setAdvTunnel { it.copy(socksUser = v) } }
+            CredField(I18n.t("socks_pass"), a.socksPass, secret = true) { v -> vm.setAdvTunnel { it.copy(socksPass = v) } }
+            SettingField(I18n.t("socks_port"), a.socksPort.toString(), { v -> v.toIntOrNull()?.let { n -> vm.setAdvTunnel { it.copy(socksPort = n) } } }, numeric = true, valid = ::portOk, hint = "1024–65535")
+            SwitchRow(I18n.t("socks_lock"), a.socksLocked, subtitle = I18n.t(if (a.socksLocked) "socks_lock_on" else "socks_lock_off")) { v -> vm.setAdvTunnel { it.copy(socksLocked = v) } }
+            OutlinedButton(onClick = { vm.regenerateSocks() }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Text(I18n.t("socks_regen"))
+            }
+            }
+            HintText(I18n.t("socks_auth_hint"))
             SettingsCard("Порты") {
             Spacer(Modifier.height(6.dp))
-            SettingField("Порт SOCKS5", a.socksPort.toString(), { v -> v.toIntOrNull()?.let { n -> vm.setAdvTunnel { it.copy(socksPort = n) } } }, numeric = true, valid = ::portOk, hint = "1024–65535, по умолчанию 10808")
             SwitchRow("HTTP-прокси", a.httpInbound) { v -> vm.setAdvTunnel { it.copy(httpInbound = v) } }
             if (a.httpInbound) SettingField("Порт HTTP", a.httpPort.toString(), { v -> v.toIntOrNull()?.let { n -> vm.setAdvTunnel { it.copy(httpPort = n) } } }, numeric = true, valid = ::portOk)
             SwitchRow("Разрешить подключения из LAN", st.allowLan) { vm.setAllowLan(it) }
             }
-            HintText("Адрес: ${if (st.allowLan) "0.0.0.0" else "127.0.0.1"}:${a.socksPort}${if (a.httpInbound) " (SOCKS), :${a.httpPort} (HTTP)" else ""}. Без пароля — LAN включайте только в доверенной сети.")
+            HintText("Адрес: ${if (st.allowLan) "0.0.0.0" else "127.0.0.1"}:${a.socksPort}${if (a.httpInbound) " (SOCKS), :${a.httpPort} (HTTP)" else ""}. " + I18n.t("socks_lan_hint"))
         }
     }
+}
+
+/** 2.0.43: login / password field with show-hide (for [secret]) and copy; empty or invalid values are not saved. */
+@Composable
+internal fun CredField(label: String, value: String, secret: Boolean, onCommit: (String) -> Unit) {
+    var text by remember(value) { mutableStateOf(value) }
+    var shown by remember { mutableStateOf(!secret) }
+    val ok = net.antibs.client.data.LocalProxy.validCred(text)
+    val ctx = LocalContext.current
+    OutlinedTextField(
+        value = text,
+        onValueChange = { v -> text = v; if (net.antibs.client.data.LocalProxy.validCred(v)) onCommit(v) },
+        label = { Text(label) },
+        singleLine = true,
+        isError = !ok,
+        supportingText = if (!ok) ({ Text(I18n.t("socks_cred_invalid"), color = AntiBSColors.Err) }) else null,
+        visualTransformation = if (shown) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = if (secret) KeyboardType.Password else KeyboardType.Ascii),
+        textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace),
+        trailingIcon = {
+            Row {
+                if (secret) IconButton(onClick = { shown = !shown }) {
+                    Icon(if (shown) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        I18n.t(if (shown) "socks_hide" else "socks_show"))
+                }
+                IconButton(onClick = {
+                    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText(label, value))
+                    android.widget.Toast.makeText(ctx, I18n.t("socks_copied"), android.widget.Toast.LENGTH_SHORT).show()
+                }) { Icon(Icons.Filled.ContentCopy, I18n.t("socks_copy")) }
+            }
+        },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+    )
 }
 
 @Composable
