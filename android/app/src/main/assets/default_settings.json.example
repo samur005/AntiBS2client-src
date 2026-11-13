@@ -1,7 +1,7 @@
 {
     "_comment": "First-run defaults baked in as default_settings.json. Applied only when the app has no seeded prefs yet (fresh install). Subscriptions, servers, secrets, subscription-URL hashes, and subscription-tied routing / grouping ids are never stored here.",
     "schemaVersion": 1,
-    "appVersion": "2.0.45",
+    "appVersion": "2.2.0",
     "exportedAt": "",
     "prefs": {
         "theme": "auto",

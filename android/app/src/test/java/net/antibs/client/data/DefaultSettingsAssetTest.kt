@@ -35,7 +35,7 @@ class DefaultSettingsAssetTest {
 
         val b = SettingsBackup.parse(text).getOrThrow()
         assertEquals(SettingsBackup.SCHEMA, b.schemaVersion)
-        assertEquals("2.0.45", b.appVersion)
+        assertEquals("2.2.0", b.appVersion)
         assertTrue(b.prefs.autoDeleteUnreachableByUrl.isEmpty())
         assertTrue(b.prefs.adv.routingProfiles.isEmpty())
         assertNull(b.prefs.adv.activeRoutingId)

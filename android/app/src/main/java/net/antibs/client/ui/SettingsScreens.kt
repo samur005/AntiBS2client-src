@@ -104,7 +104,8 @@ import net.antibs.client.engine.VpnState
 
 @Composable
 internal fun HintText(text: String) {
-    Text(text, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    // 2.2.0: tighter hint (line height 24 → 16 sp, vertical padding 8 → 5 dp)
+    Text(text, fontSize = 13.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp))
 }
 
 /** Switch with a tappable title that opens a details page (title/subtitle + «>» opens, switch toggles). */
