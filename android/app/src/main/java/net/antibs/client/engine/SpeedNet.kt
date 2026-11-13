@@ -14,6 +14,7 @@ import android.net.NetworkCapabilities
  *    entry point hev-socks5-tunnel / Xray-TUN feed every other app's traffic into (same routing rules).
  *  - «Напрямую»: sockets are created by the physical (non-VPN) [Network]'s socketFactory and DNS is resolved on
  *    that network (Network.getAllByName), so they are bound to Wi‑Fi / mobile even while the VPN is up.
+ *    2.2.0: only while OUR VPN is up — otherwise the system default route is used (it may be another VPN app).
  */
 object SpeedNet {
     data class Direct(val client: okhttp3.OkHttpClient, val label: String)
@@ -24,6 +25,17 @@ object SpeedNet {
      */
     fun direct(ctx: Context): Direct {
         val cm = ctx.getSystemService(ConnectivityManager::class.java)
+        // 2.2.0: binding to the physical network is only needed to step around OUR tunnel. With our VPN off the OS
+        // default route already is «direct» — or another VPN app's tunnel. Binding to Wi‑Fi / mobile then bypasses
+        // that foreign VPN, which a non-bypassable / «always-on + block without VPN» VPN forbids (EPERM / timeouts):
+        // the Session screen showed «Не удалось определить IP» and the speed test failed.
+        val activeCaps = cm?.let { m -> runCatching { m.activeNetwork?.let { m.getNetworkCapabilities(it) } }.getOrNull() }
+        val activeVpn = activeCaps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+        when (path(ownVpnUp(), activeVpn)) {
+            Path.FOREIGN_VPN -> return Direct(SpeedTest.direct(), FOREIGN_VPN_LABEL)
+            Path.SYSTEM_DEFAULT -> return Direct(SpeedTest.direct(), label(activeCaps))
+            Path.BOUND_PHYSICAL -> Unit
+        }
         val net = cm?.let { physicalNetwork(it) } ?: return Direct(SpeedTest.direct(), "сеть по умолчанию")
         val label = label(cm.getNetworkCapabilities(net))
         val client = SpeedTest.baseClient()
@@ -38,6 +50,31 @@ object SpeedNet {
             .build()
         return Direct(client, label)
     }
+
+    /** 2.2.0: how a «direct» request leaves the phone. */
+    enum class Path { BOUND_PHYSICAL, SYSTEM_DEFAULT, FOREIGN_VPN }
+
+    const val FOREIGN_VPN_LABEL = "сторонний VPN"
+
+    /**
+     * Our VPN up → bind to the physical network (this app is excluded from its own tunnel anyway, the binding keeps
+     * the «direct» path off it explicitly). Our VPN off → plain system default route; when that route is a VPN it
+     * belongs to another app (we never route ourselves into our own TUN), so requests go through it.
+     */
+    fun path(ownVpnUp: Boolean, activeIsVpn: Boolean): Path = when {
+        ownVpnUp -> Path.BOUND_PHYSICAL
+        activeIsVpn -> Path.FOREIGN_VPN
+        else -> Path.SYSTEM_DEFAULT
+    }
+
+    /** Our tunnel is up or being brought up / down (its TUN may already own the default route). */
+    fun ownVpnUp(): Boolean = VpnState.status.value.state.let { it == ConnState.CONNECTED || it == ConnState.CONNECTING || it == ConnState.DISCONNECTING }
+
+    /** Another VPN app's tunnel is the default route while ours is off. */
+    fun foreignVpnActive(ctx: Context): Boolean = try {
+        val cm = ctx.getSystemService(ConnectivityManager::class.java)
+        !ownVpnUp() && cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+    } catch (_: Throwable) { false }
 
     /** The best non-VPN network with internet: the default one if it isn't a VPN, else a validated one. */
     @Suppress("DEPRECATION")

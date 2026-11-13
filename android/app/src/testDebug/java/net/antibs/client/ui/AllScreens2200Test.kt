@@ -58,6 +58,16 @@ class AllScreens2200Test {
         val vm = AppViewModel(rule.activity.application)
         shot("speed_test_dark") { SpeedTestPage(vm) {} }
     }
+    @Test fun sessionForeignVpn() {
+        net.antibs.client.engine.VpnState.set(net.antibs.client.engine.VpnStatus(state = net.antibs.client.engine.ConnState.DISCONNECTED))
+        ShotHooks.sessionLook = net.antibs.client.engine.SessionLook(ipv4 = "185.219.7.163", asn = "212238", provider = "Datacamp Limited",
+            country = "🇳🇱 Нидерланды (NL)", countryCode = "NL", city = "Амстердам", region = "Северная Голландия", latitude = "52.37", longitude = "4.89")
+        ShotHooks.sessionSpeed = net.antibs.client.engine.SessionSpeedProgress()
+        ShotHooks.sessionForeignVpn = true
+        val vm = AppViewModel(rule.activity.application)
+        try { shot("session_foreign_vpn_dark") { SessionPage(vm) {} } }
+        finally { ShotHooks.sessionLook = null; ShotHooks.sessionSpeed = null; ShotHooks.sessionForeignVpn = null }
+    }
     @Test fun shop() {
         val vm = AppViewModel(rule.activity.application)
         shot("shop_light", ThemeMode.LIGHT) { ShopScreen(vm) {} }

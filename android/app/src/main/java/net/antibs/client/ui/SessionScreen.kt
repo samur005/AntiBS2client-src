@@ -88,6 +88,8 @@ internal fun SessionPage(vm: AppViewModel, onBack: () -> Unit) {
     var loading by remember { mutableStateOf(if (shotLocked) ShotHooks.sessionBusy else true) }
     var error by remember { mutableStateOf<String?>(null) }
     var refreshTick by remember { mutableIntStateOf(0) }
+    // 2.2.0: our VPN is off but another VPN app owns the default route → requests go through that VPN
+    val foreignVpn = remember(refreshTick, vpn.state) { ShotHooks.sessionForeignVpn ?: SpeedNet.foreignVpnActive(ctx) }
     var speed by remember { mutableStateOf(shotSpeed ?: SessionSpeedProgress()) }
     val scope = rememberCoroutineScope()
     var speedJob by remember { mutableStateOf<Job?>(null) }
@@ -218,7 +220,8 @@ internal fun SessionPage(vm: AppViewModel, onBack: () -> Unit) {
             }
 
             val caption = buildString {
-                if (!connected) append("VPN не подключён: сведения получены напрямую, не через туннель. ")
+                if (!connected && foreignVpn) append("AntiBS2client не подключён: сведения получены через сторонний VPN. ")
+                else if (!connected) append("VPN не подключён: сведения получены напрямую, не через туннель. ")
                 else append("Сведения получены через текущий VPN-туннель. ")
                 append("Запрос выполняется только при открытии этого экрана или по кнопке обновления — в фоне данные не собираются.")
             }
@@ -314,7 +317,8 @@ internal fun SessionPage(vm: AppViewModel, onBack: () -> Unit) {
                     }
                     if (!connected && !running) {
                         Text(
-                            "VPN не подключён: тест пойдёт напрямую, минуя туннель.",
+                            if (foreignVpn) "AntiBS2client не подключён: тест пойдёт через сторонний VPN."
+                            else "VPN не подключён: тест пойдёт напрямую, минуя туннель.",
                             color = c.muted,
                             fontSize = 12.sp,
                             textAlign = TextAlign.Center,
