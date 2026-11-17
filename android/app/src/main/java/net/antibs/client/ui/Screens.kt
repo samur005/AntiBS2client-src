@@ -1,5 +1,7 @@
 package net.antibs.client.ui
 
+import net.antibs.client.data.TrafficBarStyle
+
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.ui.focus.onFocusChanged
@@ -119,6 +121,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Storefront
@@ -228,6 +231,8 @@ private enum class Page {
     Seasonal, SubRemain, Schedule,
     // 2.0.42: power-button appearance
     PowerButton,
+    // 2.2.1: subscription traffic bar appearance
+    TrafficBar,
     // 2.0.12: LAN transfer
     LanSend, LanRecv,
 }
@@ -240,7 +245,7 @@ private fun parentOf(p: Page): Page = when (p) {
     Page.RoutingEdit -> Page.Routing
     Page.Excluded -> Page.Settings
     Page.GeoFiles -> Page.Routing
-    Page.PowerButton -> Page.Interface
+    Page.PowerButton, Page.TrafficBar -> Page.Interface
     else -> Page.Settings
 }
 
@@ -620,6 +625,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                 }) {
                                 SubCard(
                                     sub = sub,
+                                    barStyle = st.adv.trafficBar,
                                     realServers = UiLogic.realServerCount(st.servers, sub.id),
                                     refreshing = sub.id in refreshing,
                                     pinging = UiLogic.subPinging(st.servers, sub.id, pinging),
@@ -893,33 +899,56 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 onRefresh = { vm.refreshAll() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (!isTv) {
-                    LazyColumn(
-                        state = homeList,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                    ) {
-                        // 2.0.33: banner → URL test → power live in homeTop, then the list
-                        item(key = "home-top") { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { homeTop() } }
-                        item(key = "home-list-head") { listHeader() }
-                        serverItems()
-                    }
-                } else {
-                    // TV: left = banner + URL test + power, right = subscriptions/servers list
-                    Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 2.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Column(Modifier.weight(0.44f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Spacer(Modifier.height(6.dp))
-                            homeTop()
+                // 2.2.1: only the subscriptions/servers list scrolls. The connection banner, URL test
+                // (it sits between banner and power), power button, status/error, holiday strip and
+                // filter chips stay pinned. On a short screen the pinned block can scroll internally
+                // so the list still has room. Seasonal strip stays pinned because it sits between
+                // the power button and the chips.
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val viewportH = maxHeight
+                    val tight = viewportH < 560.dp
+                    val listMin = 160.dp
+                    val maxPinned = (viewportH - listMin).coerceAtLeast(viewportH * 0.5f)
+                    if (!isTv) {
+                        Column(Modifier.fillMaxSize()) {
+                            val headerMod = if (tight) Modifier.fillMaxWidth().heightIn(max = maxPinned).verticalScroll(rememberScrollState())
+                            else Modifier.fillMaxWidth()
+                            Column(
+                                headerMod.padding(start = 12.dp, end = 12.dp, top = 2.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                homeTop()
+                                listHeader()
+                            }
+                            LazyColumn(
+                                state = homeList,
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 3.dp, bottom = 24.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                serverItems()
+                            }
                         }
-                        LazyColumn(
-                            state = homeList,
-                            modifier = Modifier.weight(0.56f).fillMaxHeight(),
-                            contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp),
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
-                        ) {
-                            item(key = "home-list-head") { listHeader() }
-                            serverItems()
+                    } else {
+                        // TV: left = banner + URL test + power (already its own column), right = pinned chips + scrolling list
+                        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 2.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Column(Modifier.weight(0.44f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Spacer(Modifier.height(6.dp))
+                                homeTop()
+                            }
+                            Column(Modifier.weight(0.56f).fillMaxHeight()) {
+                                val headMod = if (tight) Modifier.fillMaxWidth().heightIn(max = viewportH * 0.45f).verticalScroll(rememberScrollState())
+                                else Modifier.fillMaxWidth()
+                                Column(headMod, verticalArrangement = Arrangement.spacedBy(3.dp)) { listHeader() }
+                                LazyColumn(
+                                    state = homeList,
+                                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                                    contentPadding = PaddingValues(top = 3.dp, bottom = 24.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                                ) {
+                                    serverItems()
+                                }
+                            }
                         }
                     }
                 }
@@ -1556,6 +1585,7 @@ internal fun SubCard(
     scanningUnreachable: Boolean = false,
     onAutoDeleteUnreachable: (Boolean) -> Unit = {},
     extraMenu: (@Composable (close: () -> Unit) -> Unit)? = null,
+    barStyle: net.antibs.client.data.TrafficBarStyle = net.antibs.client.data.TrafficBarStyle(),
 ) {
     var menu by remember { mutableStateOf(ShotHooks.subMenuOpen) }
     val traffic = UiLogic.traffic(sub)
@@ -1633,7 +1663,7 @@ internal fun SubCard(
             }
             if (sub.lastError.isNotEmpty()) Text(sub.lastError, fontSize = 12.sp, color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
             // No «Трафик» label: "used/total" is drawn on the (thicker) bar itself.
-            TrafficBar(UiLogic.trafficBarLabel(traffic), UiLogic.trafficRemaining(traffic.usedMb, traffic.limitMb)) // 2.0.44: shows what is left
+            TrafficBar(UiLogic.trafficBarLabel(traffic), UiLogic.trafficRemaining(traffic.usedMb, traffic.limitMb), barStyle) // 2.0.44: shows what is left
             // One compact line under the traffic bar: real hosts (no auto-select/balancer rows) · expiry date.
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -1653,53 +1683,59 @@ internal fun SubCard(
     }
 }
 
-internal val TRAFFIC_BAR_H = 14.dp
+internal val TRAFFIC_BAR_H = TrafficBarStyle.HEIGHT_DEFAULT.dp
 
 @Composable
-internal fun TrafficBar(label: String, progress: Float) {
+internal fun TrafficBar(label: String, progress: Float, style: net.antibs.client.data.TrafficBarStyle = net.antibs.client.data.TrafficBarStyle()) {
     val p = progress.coerceIn(0f, 1f)
     val animated by animateFloatAsState(targetValue = p, label = "traffic")
-    val fillBrush = when {
-        // 2.0.44: [progress] is the share LEFT — warn when ≤ 30 % remain, red when ≤ 10 %
-        p <= 0.1f -> Brush.horizontalGradient(listOf(AntiBSColors.Warn, AntiBSColors.Err))
-        p <= 0.3f -> Brush.horizontalGradient(listOf(AntiBSColors.Blue, AntiBSColors.Warn))
-        else -> Brush.horizontalGradient(listOf(AntiBSColors.Blue, AntiBSColors.Purple))
-    }
+    val barH = TrafficBarLogic.heightDp(style).dp
+    val fillBrush = TrafficBarLogic.fillBrush(style, p, Accent.current)
+    val inside = TrafficBarLogic.labelInside(style.heightDp)
+    val font = TrafficBarLogic.labelSize(style.heightDp)
     val barShape = RoundedCornerShape(99.dp)
-    // 2.2.0: lower bar (18 → 14 dp) with a slightly smaller label
-    val labelStyle = TabularNums.copy(fontSize = 9.5.sp, lineHeight = 10.sp, fontWeight = FontWeight.SemiBold,
+    val labelStyle = TabularNums.copy(fontSize = font, lineHeight = (font.value + 0.5f).sp, fontWeight = FontWeight.SemiBold,
         lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center, androidx.compose.ui.text.style.LineHeightStyle.Trim.Both))
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(TRAFFIC_BAR_H)
+            .height(barH)
             .clip(barShape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)),
         contentAlignment = Alignment.CenterStart,
     ) {
-        // Text over the empty track (theme colour)…
-        Text(label, style = labelStyle, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.fillMaxWidth())
+        if (inside) {
+            // Text over the empty track (theme colour)…
+            Text(label, style = labelStyle, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.fillMaxWidth())
+        }
         if (animated > 0f) {
             Box(
                 Modifier
                     .fillMaxWidth(animated.coerceIn(0.03f, 1f))
-                    .height(TRAFFIC_BAR_H)
+                    .height(barH)
                     .clip(barShape)
                     .background(fillBrush),
             )
-            // …and the same text in white, clipped to the filled part, so it stays readable in both themes.
-            val frac = animated.coerceIn(0.03f, 1f)
-            Text(
-                label,
-                style = labelStyle,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                modifier = Modifier.fillMaxWidth().drawWithContent {
-                    clipRect(right = size.width * frac) { this@drawWithContent.drawContent() }
-                },
-            )
+            if (inside) {
+                // …and the same text in white, clipped to the filled part, so it stays readable in both themes.
+                val frac = animated.coerceIn(0.03f, 1f)
+                Text(
+                    label,
+                    style = labelStyle,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth().drawWithContent {
+                        clipRect(right = size.width * frac) { this@drawWithContent.drawContent() }
+                    },
+                )
+            }
         }
+    }
+    if (!inside) {
+        Text(label, style = labelStyle, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.fillMaxWidth())
+    }
     }
 }
 
@@ -2131,6 +2167,7 @@ private fun SettingsDetail(page: Page, vm: AppViewModel, ui: UiSettings, onBack:
         Page.Protocols -> ProtocolsPage(onBack)
         Page.Hwid -> HwidPage(vm, st, onBack)
         Page.PowerButton -> PowerButtonPage(vm, onBack)
+        Page.TrafficBar -> TrafficBarPage(vm, onBack)
         else -> SettingsScaffold("Настройки", onBack) { TextButton(onClick = onBack) { Text("Назад") } }
     }
 }
@@ -2334,6 +2371,7 @@ internal fun settingsIcon(title: String): androidx.compose.ui.graphics.vector.Im
         has("тем", "оформлен", "стиль", "интерфейс") -> Icons.Filled.Palette
         has("вибрац") -> Icons.Filled.Vibration
         has("кнопка питан", "живые эффект", "дыхание", "свечение") -> Icons.Filled.Power
+        has("полоса трафик", "шкала трафик") -> Icons.Filled.DataUsage
         has("сессия", "session") -> Icons.Filled.Public
         has("тест скорост", "единиц", "скорост") -> Icons.Filled.Speed
         has("пинг", "url тест") -> Icons.Filled.NetworkCheck

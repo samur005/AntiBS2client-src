@@ -117,7 +117,7 @@ internal fun PowerButtonPage(vm: AppViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun SwatchRow(
+internal fun SwatchRow(
     selected: String,
     extras: List<Pair<String, Color>>,
     onPick: (String) -> Unit,

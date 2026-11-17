@@ -75,6 +75,54 @@ data class PowerButtonStyle(
     }
 }
 
+/** 2.2.1: subscription-card traffic bar (height, colour, gradient). Defaults match the 2.2.0 look. */
+@Serializable
+data class TrafficBarStyle(
+    /** Track height in dp, 2–16. Default 14 (2.2.0). */
+    val heightDp: Int = HEIGHT_DEFAULT,
+    /** auto = remaining-based palette; accent = app accent; else an [Accent] preset key. */
+    val color: String = COLOR_AUTO,
+    /** auto = current remaining-based gradient; on = colour → colour2; off = solid. */
+    val gradient: String = GRADIENT_AUTO,
+    /** Second colour when [gradient] is on; auto = a paired contrast colour. */
+    val color2: String = COLOR_AUTO,
+) {
+    companion object {
+        const val HEIGHT_MIN = 2
+        const val HEIGHT_MAX = 16
+        const val HEIGHT_DEFAULT = 14
+        const val COLOR_AUTO = "auto"
+        const val COLOR_ACCENT = "accent"
+        const val GRADIENT_OFF = "off"
+        const val GRADIENT_ON = "on"
+        const val GRADIENT_AUTO = "auto"
+
+        val gradientOptions: List<Pair<String, String>> = listOf(
+            GRADIENT_OFF to "Нет",
+            GRADIENT_AUTO to "Авто",
+            GRADIENT_ON to "Вкл",
+        )
+
+        private val colorKeys = setOf("blue", "purple", "pink", "red", "orange", "amber", "green", "teal")
+
+        fun normalizeHeight(v: Int): Int = v.coerceIn(HEIGHT_MIN, HEIGHT_MAX)
+
+        fun normalizeColor(v: String?): String {
+            val s = v?.trim()?.lowercase().orEmpty()
+            if (s == COLOR_AUTO || s == COLOR_ACCENT || s in colorKeys) return s
+            return COLOR_AUTO
+        }
+
+        fun normalizeGradient(v: String?): String {
+            val s = v?.trim()?.lowercase().orEmpty()
+            return if (s in setOf(GRADIENT_OFF, GRADIENT_ON, GRADIENT_AUTO)) s else GRADIENT_AUTO
+        }
+
+        fun gradientLabel(v: String?): String =
+            gradientOptions.firstOrNull { it.first == normalizeGradient(v) }?.second ?: "Авто"
+    }
+}
+
 @Serializable
 data class AdvancedSettings(
     /** 1.0.55: «Единицы скорости» on the speed card: "bytes" (КБ/с, default, also for old installs) or "bits" (кбит/с). */
@@ -195,6 +243,8 @@ data class AdvancedSettings(
     val homeUrlTest: Boolean = true,
     /** 2.0.42: Home «Выкл / Вкл» power button appearance. */
     val powerButton: PowerButtonStyle = PowerButtonStyle(),
+    /** 2.2.1: subscription-card traffic progress bar appearance. */
+    val trafficBar: TrafficBarStyle = TrafficBarStyle(),
 ) {
     val perAppSelected: List<String> get() = if (perAppMode == "bypass") perAppBypass else perAppInclude
 
