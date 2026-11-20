@@ -167,7 +167,7 @@ object ProtocolSupport {
         ProtocolRow("ShadowsocksR", ENGINE_MIHOMO),
         ProtocolRow("TrustTunnel", ENGINE_MIHOMO),
         ProtocolRow("ShadowQUIC", ENGINE_MIHOMO),
-        ProtocolRow("AmneziaWG 1.x / 2.0 (amneziawg://, vpn://)", ENGINE_MIHOMO),
+        ProtocolRow("AmneziaWG 1.5 / 2.0 / 3.0 / 3.1 (.conf, amneziawg://, vpn://)", ENGINE_MIHOMO),
     )
 }
 
@@ -205,6 +205,11 @@ data class XrayProfile(
     val localAddress: String? = null,
     val reserved: String? = null,
     val mtu: Int? = null,
+    /** Imported WG/AWG peer restrictions and keepalive (null = legacy share-link defaults). */
+    val wgAllowedIps: List<String>? = null,
+    val wgKeepAlive: Int? = null,
+    /** Saved for export/inspection; the application's DNS/routing settings remain authoritative. */
+    val wgDns: List<String> = emptyList(),
     // hysteria2
     val obfsPassword: String? = null,
     val portHopping: String? = null,

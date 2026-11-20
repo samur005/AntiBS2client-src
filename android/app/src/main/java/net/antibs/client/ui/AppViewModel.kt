@@ -666,8 +666,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return n
     }
 
-    fun importRaw(text: String) {
-        when (val r = ImportText.classify(text, ProtocolSupport.MANUAL_SUB_ID)) {
+    fun importRaw(text: String, fileName: String? = null) {
+        when (val r = ImportText.classify(text, ProtocolSupport.MANUAL_SUB_ID, fileName)) {
             is ImportOutcome.SubscriptionUrl -> addSubscription(r.url)
             is ImportOutcome.Servers -> {
                 store.addManualServers(r.entries)

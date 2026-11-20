@@ -8,9 +8,28 @@ sealed class ImportOutcome {
 }
 
 object ImportText {
-    fun classify(raw: String, subscriptionId: String? = null): ImportOutcome {
+    /** SAF documents may advertise application/octet-stream, so accept any MIME but bound reads before parsing. */
+    fun readConfigFile(input: java.io.InputStream): String {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        while (true) {
+            val n = input.read(buffer)
+            if (n < 0) break
+            require(out.size() + n <= 1024 * 1024) { "Конфигурация больше 1 МиБ" }
+            out.write(buffer, 0, n)
+        }
+        return Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(out.toByteArray())).toString()
+    }
+
+    fun classify(raw: String, subscriptionId: String? = null, fileName: String? = null): ImportOutcome {
         val text = raw.trim().removePrefix("\uFEFF")
         if (text.isEmpty()) return ImportOutcome.Failed("Пусто")
+        if (WireGuardImport.looksLike(text)) {
+            val p = try { WireGuardImport.profile(text, fileName) } catch (e: IllegalArgumentException) {
+                return ImportOutcome.Failed(e.message ?: "WG/AWG: неверная конфигурация")
+            } catch (_: IllegalStateException) { return ImportOutcome.Failed("WG/AWG: неполная или неподдерживаемая конфигурация") }
+            return ImportOutcome.Servers(listOf(ServerEntry(LinkParser.stableId("wg", (subscriptionId ?: "") + text), EngineKind.XRAY, p.remarks, subscriptionId, xray = p)))
+        }
         // 1.0.41: a pasted / shared .ovpn file
         if (OpenVpnConfig.looksLike(text)) {
             val s = OpenVpnConfig.summary(text)
