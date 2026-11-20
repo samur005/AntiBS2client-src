@@ -146,11 +146,20 @@ object MihomoConfigBuilder {
                     if (v4 == null && v6 == null) throw IllegalStateException("AmneziaWG: не указан адрес интерфейса")
                     v4?.let { put("ip", it) }
                     v6?.let { put("ipv6", it) }
-                    putJsonArray("allowed-ips") { add("0.0.0.0/0"); add("::/0") }
-                    p.mtu?.takeIf { it in 1100..1500 }?.let { put("mtu", it) }
+                    putJsonArray("allowed-ips") { (p.wgAllowedIps ?: listOf("0.0.0.0/0", "::/0")).forEach { add(it) } }
+                    p.wgKeepAlive?.let { put("persistent-keepalive", it) }
+                    p.mtu?.takeIf { it in 576..65535 }?.let { put("mtu", it) }
                     put("udp", true)
                     val o = p.awg.orEmpty()
+                    WireGuardImport.validateAwg(o)
                     if (o.isNotEmpty()) putJsonObject("amnezia-wg-option") {
+                        if (WireGuardImport.isV3(o)) put("version", 3)
+                        for (k in listOf("j1", "j2", "j3")) o[k]?.let { put(k, it) }
+                        o["itime"]?.toLongOrNull()?.let { put("itime", it) }
+                        for ((src, dst) in WireGuardImport.awgV3) o[src]?.let {
+                            if (src in listOf("randomtrailers", "disablecookies")) put(dst, it.equals("true", true) || it == "1")
+                            else put(dst, it)
+                        }
                         for (k in listOf("jc", "jmin", "jmax", "s1", "s2", "s3", "s4")) o[k]?.trim()?.toIntOrNull()?.let { put(k, it) }
                         for (k in listOf("h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5")) o[k]?.trim()?.ifEmpty { null }?.let { put(k, it) }
                     }

@@ -1,5 +1,8 @@
 package net.antibs.client.ui
 
+import kotlinx.coroutines.launch
+
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.NetworkCheck
@@ -89,9 +92,28 @@ fun AddServersSheet(
     var text by remember { mutableStateOf("") }
     var form by remember { mutableStateOf<String?>(null) }
     var pendingImport by remember { mutableStateOf<String?>(null) }
+    var importName by remember { mutableStateOf<String?>(null) }
+    val importScope = androidx.compose.runtime.rememberCoroutineScope()
     val clip = LocalClipboardManager.current
     val ctx = LocalContext.current
     val isTvSheet = LocalIsTv.current
+
+    val fileLauncher = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importScope.launch {
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    val name = runCatching { ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                        if (it.moveToFirst()) it.getString(0) else null
+                    } }.getOrNull()
+                    val raw = ctx.contentResolver.openInputStream(uri)?.use { net.antibs.client.data.ImportText.readConfigFile(it) }
+                        ?: error("Не удалось открыть файл")
+                    raw to name
+                }
+            }
+            result.onSuccess { (raw, name) -> text = raw; importName = name; pendingImport = raw }
+                .onFailure { vm.message("Не удалось прочитать конфигурацию (до 1 МиБ, UTF-8)") }
+        }
+    }
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents ?: return@rememberLauncherForActivityResult
@@ -115,9 +137,9 @@ fun AddServersSheet(
             Spacer(Modifier.height(14.dp))
             // 1.0.27: import tiles + «Получить подписку» block (same card language as the protocol grid); 1.0.51: Telegram bot only.
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ImportTile(Modifier.weight(1f), Icons.Filled.ContentPaste, androidx.compose.ui.graphics.Color(0xFF4C8DFF), "Из буфера", "Вставить ссылки") {
+                ImportTile(Modifier.weight(1f), Icons.Filled.ContentPaste, androidx.compose.ui.graphics.Color(0xFF4C8DFF), "Из буфера", "Ссылки / WG / AWG") {
                     val t = clip.getText()?.text.orEmpty()
-                    if (t.isBlank()) vm.message("Буфер пуст") else text = t
+                    if (t.isBlank()) vm.message("Буфер пуст") else { text = t; importName = null }
                 }
                 // 2.0.13: TV — «Принять с телефона» tile in the row (no camera tile there)
                 if (isTvSheet) TvHooks.receiveFromPhone?.let { recv ->
@@ -131,6 +153,12 @@ fun AddServersSheet(
                             // 1.0.11: own full-screen scanner (dimmed overlay, scan line, torch, «QR из галереи»).
                             .setCaptureActivity(QrScanActivity::class.java),
                     )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth()) {
+                ImportTile(Modifier.weight(1f), Icons.Filled.InsertDriveFile, androidx.compose.ui.graphics.Color(0xFF5D8E67), "Из файла", "WG / AWG .conf, OpenVPN, ссылки") {
+                    fileLauncher.launch(arrayOf("*/*"))
                 }
             }
             // 2.0.13: phone — full-width «Принять с устройства» (works with no subscriptions)
@@ -154,7 +182,7 @@ fun AddServersSheet(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp),
                 placeholder = {
                     Text(
-                        "vless://, hy2://, tuic://, olcrtc://, ssr://, snell://… или URL подписки",
+                        "vless://, hy2://, tuic://, olcrtc://, ssr://, snell://… или URL подписки; конфигурация WG/AWG [Interface]…",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp,
                     )
@@ -204,13 +232,15 @@ fun AddServersSheet(
         }
     }
     pendingImport?.let { raw ->
-        val outcome = remember(raw) { net.antibs.client.data.ImportText.classify(raw, net.antibs.client.data.ProtocolSupport.MANUAL_SUB_ID) }
+        val outcome = remember(raw, importName) { net.antibs.client.data.ImportText.classify(raw, net.antibs.client.data.ProtocolSupport.MANUAL_SUB_ID, importName) }
         val summary = when (outcome) {
             is net.antibs.client.data.ImportOutcome.SubscriptionUrl -> {
                 val host = runCatching { java.net.URI(outcome.url).host }.getOrNull().orEmpty().ifBlank { "…" }
                 "Подписка:\n$host\n\nURL сам не открывается — подтвердите импорт."
             }
-            is net.antibs.client.data.ImportOutcome.Servers -> "Серверов к добавлению: ${outcome.entries.size}"
+            is net.antibs.client.data.ImportOutcome.Servers -> "Серверов к добавлению: ${outcome.entries.size}" +
+                if (outcome.entries.any { it.xray?.protocol in listOf("wireguard", "amneziawg") })
+                    "\n\nWG/AWG: один Peer; AllowedIPs сохраняются. DNS и маршрутизация — из настроек приложения. ListenPort/Table/SaveConfig не применяются; скрипты не выполняются." else ""
             is net.antibs.client.data.ImportOutcome.Failed -> "Не распознано:\n${outcome.message}"
         }
         androidx.compose.material3.AlertDialog(
@@ -221,7 +251,7 @@ fun AddServersSheet(
                 TextButton(
                     enabled = outcome !is net.antibs.client.data.ImportOutcome.Failed,
                     onClick = {
-                        vm.importRaw(raw)
+                        vm.importRaw(raw, importName)
                         pendingImport = null
                         onDismiss()
                     },
@@ -571,6 +601,7 @@ private fun ManualFormDialog(
                                 if (protocol == "wireguard") OutlinedTextField(reserved, { reserved = it }, label = { Text("reserved (напр. 1,2,3; необязательно)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                                 if (protocol == "amneziawg") {
                                     Text("Параметры обфускации (из конфига сервера: Jc, Jmin, Jmax, S1–S4, H1–H4, I1–I5). H1–H4 — число или диапазон AWG 2.0.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Расширенные параметры AWG 1.5 и 3.0/3.1: импортируйте .conf из файла или буфера.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     (net.antibs.client.data.ManualForms.AWG_INT_KEYS + net.antibs.client.data.ManualForms.AWG_STR_KEYS).chunked(2).forEach { pair ->
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             pair.forEach { k ->
