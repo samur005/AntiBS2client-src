@@ -125,7 +125,7 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         if (a.logging) NavRow("Уровень логов Xray", levelLabel(a.logLevel), dropdown = true) { dialog = "level" }
                     }
                     SettingsCard("Инструменты") {
-                        NavRow("Тест скорости", subtitle = "Скорость и задержка через текущий сервер") { open("SpeedTest") }
+                        NavRow("Сессия", subtitle = "IP, провайдер, страна и тест скорости через текущий сервер") { open("SpeedTest") }
                         NavRow("Логи", if (a.logging) levelLabel(a.logLevel) else "Логирование Xray выключено") { open("Logs") }
                         NavRow("Экспорт настроек", subtitle = "Настройки, маршрутизация, подписки и ручные серверы (без HWID)") { exportFile() }
                         NavRow("Импорт настроек", subtitle = "Добавляет недостающие подписки/серверы и заменяет настройки") { importFile() }
@@ -151,6 +151,10 @@ internal fun SettingsHome(vm: AppViewModel, ui: UiSettings, onBack: () -> Unit, 
                         SwitchRow("Компактный список серверов", ui.compactServers) { vm.setCompact(it) }
                         SwitchRow("Подписки развёрнуты", ui.subsExpanded, subtitle = "Группы подписок открыты при запуске") { vm.setSubsExpanded(it) }
                         SwitchRow("Скрывать пустую группу «Серверы»", a.hideEmptyManual) { vm.setHideEmptyManual(it) }
+                    }
+                    SettingsCard("Главный экран") {
+                        NavRow("Кнопка питания", PowerButtonLogic.colorLabel(a.powerButton.color) + " · " + net.antibs.client.data.PowerButtonStyle.effectLabel(a.powerButton.effect), subtitle = "Цвет, текст, живые эффекты, анимация") { open("PowerButton") }
+                        NavRow("Полоса трафика", "${a.trafficBar.heightDp} dp · " + TrafficBarLogic.colorLabel(a.trafficBar.color) + " · " + TrafficBarLogic.gradientLabel(a.trafficBar.gradient), subtitle = "Высота, цвет и градиент полосы на карточке подписки") { open("TrafficBar") }
                     }
                 }
 

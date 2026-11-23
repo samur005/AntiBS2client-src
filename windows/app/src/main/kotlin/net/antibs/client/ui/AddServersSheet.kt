@@ -34,6 +34,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.InsertDriveFile
+import net.antibs.client.data.ImportText
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -89,6 +91,20 @@ fun AddServersSheet(
         if (raw == null) vm.message("QR-код на изображении не найден") else text = if (text.isBlank()) raw else text.trimEnd() + "\n" + raw
     }
 
+    fun importConfFile() {
+        val f = Desk.openFile("Импорт конфигурации (.conf, .ovpn, ссылки)") ?: return
+        val body = runCatching { f.inputStream().use { ImportText.readConfigFile(it) } }.getOrElse {
+            vm.message(it.message ?: "Не удалось прочитать файл")
+            return
+        }
+        if (body.isBlank()) {
+            vm.message("Файл пуст")
+            return
+        }
+        vm.importRaw(body, f.name)
+        onDismiss()
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheet,
@@ -106,9 +122,12 @@ fun AddServersSheet(
             Spacer(Modifier.height(14.dp))
             // 1.0.27: import tiles + «Получить подписку» block (same card language as the protocol grid); 1.0.51: Telegram bot only.
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ImportTile(Modifier.weight(1f), Icons.Filled.ContentPaste, androidx.compose.ui.graphics.Color(0xFF4C8DFF), "Из буфера", "Вставить ссылки") {
+                ImportTile(Modifier.weight(1f), Icons.Filled.ContentPaste, androidx.compose.ui.graphics.Color(0xFF4C8DFF), "Из буфера", "WG / AWG .conf, ссылки") {
                     val t = clip.getText()?.text.orEmpty()
                     if (t.isBlank()) vm.message("Буфер пуст") else text = t
+                }
+                ImportTile(Modifier.weight(1f), Icons.Filled.InsertDriveFile, androidx.compose.ui.graphics.Color(0xFF5D8E67), "Из файла", "WG / AWG .conf, OpenVPN, ссылки") {
+                    importConfFile()
                 }
                 ImportTile(Modifier.weight(1f), Icons.Filled.QrCodeScanner, androidx.compose.ui.graphics.Color(0xFF1FA89A), "QR из файла", "Картинка с кодом") {
                     scanFile()
@@ -128,7 +147,7 @@ fun AddServersSheet(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp),
                 placeholder = {
                     Text(
-                        "vless://, hy2://, tuic://, olcrtc://, ssr://, snell://… или URL подписки",
+                        "vless://, wg/awg .conf, hy2://, tuic://… или URL подписки",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp,
                     )

@@ -83,7 +83,7 @@ private fun phaseName(p: SpeedTest.Phase?) = when (p) {
 
 /** 1.0.21: «Тест скорости» — Cloudflare speed test through the tunnel and/or bypassing it, with history. */
 @Composable
-internal fun SpeedTestPage(vm: AppViewModel, onBack: () -> Unit) {
+private fun LegacySpeedTestPage(vm: AppViewModel, onBack: () -> Unit) {
     val s by vm.speed.collectAsState()
     val history by vm.speedHistory.collectAsState()
     val vpn by VpnState.status.collectAsState()

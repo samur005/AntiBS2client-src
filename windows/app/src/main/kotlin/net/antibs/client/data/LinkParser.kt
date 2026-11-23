@@ -748,7 +748,7 @@ object LinkParser {
         )
     }
 
-    private val AWG_KEYS = listOf("jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5")
+    private val AWG_KEYS = WireGuardImport.awgKeys.toList() + "version"
 
     /** amneziawg://PRIVATE_KEY@host:port?publickey=…&presharedkey=…&address=…&mtu=…&jc=…&h1=…#name */
     fun parseAmneziaWg(link: String): XrayProfile? {

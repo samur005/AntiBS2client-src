@@ -254,7 +254,8 @@ object XrayConfigBuilder {
                             if (!p.preSharedKey.isNullOrEmpty()) put("preSharedKey", p.preSharedKey)
                             val host = if (p.server.contains(':')) "[${p.server}]" else p.server
                             put("endpoint", "$host:${p.port}")
-                            putJsonArray("allowedIPs") { add("0.0.0.0/0"); add("::/0") }
+                            putJsonArray("allowedIPs") { (p.wgAllowedIps ?: listOf("0.0.0.0/0", "::/0")).forEach { add(it) } }
+                            p.wgKeepAlive?.let { put("keepAlive", it) }
                         })
                     }
                     p.mtu?.let { put("mtu", it) }

@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -189,7 +190,27 @@ internal fun LazyListScope.trafficPresetItems(vm: AppViewModel, st: AppState, rf
 
 // ───── desktop: Android 2.0.x server styles are not ported; classic colours only ─────
 internal object LocalAppStyle { val current: Unit @Composable get() = Unit }
-internal class DeskSsColors(val accent: androidx.compose.ui.graphics.Color, val muted: androidx.compose.ui.graphics.Color, val onCard: androidx.compose.ui.graphics.Color)
+internal class DeskSsColors(
+    val accent: androidx.compose.ui.graphics.Color,
+    val muted: androidx.compose.ui.graphics.Color,
+    val onCard: androidx.compose.ui.graphics.Color,
+    val dark: Boolean,
+    val card: androidx.compose.ui.graphics.Color,
+    val cardBorder: androidx.compose.ui.graphics.Color,
+    val chipOff: androidx.compose.ui.graphics.Color,
+)
 @Composable
-internal fun ssColors(@Suppress("UNUSED_PARAMETER") style: Unit) = DeskSsColors(Accent.current, MaterialTheme.colorScheme.onSurfaceVariant, MaterialTheme.colorScheme.onSurface)
+internal fun ssColors(@Suppress("UNUSED_PARAMETER") style: Unit): DeskSsColors {
+    val cs = MaterialTheme.colorScheme
+    val dark = cs.background.luminance() < 0.5f
+    return DeskSsColors(
+        accent = Accent.current,
+        muted = cs.onSurfaceVariant,
+        onCard = cs.onSurface,
+        dark = dark,
+        card = cs.surface,
+        cardBorder = cs.outline.copy(alpha = if (dark) 0.45f else 0.55f),
+        chipOff = if (dark) androidx.compose.ui.graphics.Color(0xFF2A3140) else androidx.compose.ui.graphics.Color(0xFFE6E8EC),
+    )
+}
 internal fun ssShape(@Suppress("UNUSED_PARAMETER") style: Unit, r: androidx.compose.ui.unit.Dp) = androidx.compose.foundation.shape.RoundedCornerShape(r)

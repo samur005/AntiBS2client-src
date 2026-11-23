@@ -300,6 +300,55 @@ object UiLogic {
         else -> "ВЫКЛ"
     }
 
+
+    /** 2.0.35: segmented power card — «Вкл» is selected while connected or connecting. */
+    fun powerSelectedOn(state: ConnState): Boolean =
+        state == ConnState.CONNECTED || state == ConnState.CONNECTING
+
+    fun powerBusy(state: ConnState): Boolean =
+        state == ConnState.CONNECTING || state == ConnState.DISCONNECTING
+
+    /** Timer to the right of the segments: live session, «…» while connecting, zeros when off. */
+    fun powerTimerText(state: ConnState, sinceMs: Long, nowMs: Long): String = when (state) {
+        ConnState.CONNECTED -> elapsedLabel(if (sinceMs > 0) (nowMs - sinceMs) / 1000 else 0)
+        ConnState.CONNECTING -> "…"
+        else -> "00:00:00"
+    }
+
+    fun powerContentDescription(state: ConnState, problem: Boolean, timer: String): String = when (state) {
+        ConnState.CONNECTED ->
+            if (problem) "Отключить VPN, нет сети, сессия $timer"
+            else "Отключить VPN, подключено $timer"
+        ConnState.CONNECTING -> "Подключение VPN"
+        ConnState.DISCONNECTING -> "Отключение VPN"
+        ConnState.ERROR -> "Ошибка VPN, подключить снова"
+        else -> "Подключить VPN"
+    }
+
+    /** Swipe right turns on, swipe left turns off, once the drag passes [thresholdPx]. */
+    fun powerSwipeToggles(on: Boolean, dxPx: Float, thresholdPx: Float): Boolean =
+        if (on) dxPx <= -thresholdPx else dxPx >= thresholdPx
+
+    fun powerShowError(
+        state: ConnState,
+        problem: Boolean = false,
+        tunnelPing: TunnelPing = TunnelPing.UNKNOWN,
+    ): Boolean {
+        if (state == ConnState.ERROR || problem) return true
+        if (!powerSelectedOn(state)) return false
+        return state == ConnState.CONNECTED && tunnelPing == TunnelPing.FAIL
+    }
+
+    /** 2.0.36: segmented «Вкл» fill — orange while connecting, green when connected and healthy, red on problems, else off. */
+    enum class PowerThumb { OFF, ORANGE, GREEN, RED }
+
+    fun powerThumb(state: ConnState, problem: Boolean = false, tunnelPing: TunnelPing = TunnelPing.UNKNOWN): PowerThumb = when {
+        powerShowError(state, problem, tunnelPing) -> PowerThumb.RED
+        state == ConnState.CONNECTED -> PowerThumb.GREEN
+        state == ConnState.CONNECTING -> PowerThumb.ORANGE
+        else -> PowerThumb.OFF
+    }
+
     const val ORPHAN_GROUP = "__orphans__"
 
     data class HostGroup(

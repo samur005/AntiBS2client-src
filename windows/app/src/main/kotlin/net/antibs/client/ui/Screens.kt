@@ -42,6 +42,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -170,7 +171,7 @@ private enum class Page {
     // 1.0.8: no bottom navigation. Main is the only root; Routing and Logs live under Settings.
     Main, Routing, Settings, Logs,
     // detail pages
-    RoutingEdit, SpeedTest, Interface, PerApp, Fragment, Noise, Mux, Inbounds, Vpn, Excluded, Subs, Ping, Protocols, Hwid,
+    RoutingEdit, SpeedTest, Interface, PowerButton, TrafficBar, PerApp, Fragment, Noise, Mux, Inbounds, Vpn, Excluded, Subs, Ping, Protocols, Hwid,
     AdBlock, GeoFiles, NetScan,
     // 1.0.50 settings sub-screens
     SetCores, SetNet, SetSubAuto,
@@ -184,6 +185,7 @@ private fun parentOf(p: Page): Page = when (p) {
     Page.RoutingEdit -> Page.Routing
     Page.Excluded -> Page.Settings
     Page.AdBlock, Page.GeoFiles -> Page.Routing
+    Page.PowerButton, Page.TrafficBar -> Page.Interface
     else -> Page.Settings
 }
 
@@ -210,7 +212,9 @@ fun AppRoot(vm: AppViewModel) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             when (page) {
                 Page.Main -> MainScreen(vm, ui, onOpenSettings = { open(Page.Settings) }, onOpenSpeedTest = { open(Page.SpeedTest) })
-                Page.SpeedTest -> SpeedTestPage(vm, onBack = { back() })
+                Page.SpeedTest -> SessionPage(vm, onBack = { back() })
+                Page.PowerButton -> PowerButtonPage(vm, onBack = { back() })
+                Page.TrafficBar -> TrafficBarPage(vm, onBack = { back() })
                 Page.Settings, Page.Vpn, Page.Interface, Page.SetCores, Page.SetNet, Page.SetSubAuto ->
                     SettingsHome(vm, ui, onBack = { back() }, open = { open(Page.valueOf(it)) }, section = page.name)
                 Page.Routing -> RoutingListPage(vm, st, onOpenProfile = { routingId = it; open(Page.RoutingEdit) }, onBack = { back() }, onOpenPage = { open(Page.valueOf(it)) })
@@ -399,26 +403,30 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
         }
         // 2.0.32: «Тест скорости» is a bottom-bar tab (same page, no back arrow inside the tab)
         if (shown == MainTab.Speed) {
-            androidx.compose.runtime.CompositionLocalProvider(LocalInTabs provides true) { SpeedTestPage(vm, onBack = { tabName = MainTab.Home.name }) }
+            androidx.compose.runtime.CompositionLocalProvider(LocalInTabs provides true) { SessionPage(vm, onBack = { tabName = MainTab.Home.name }) }
             return@AnimatedContent
         }
         // Pull-to-refresh = refresh all subscriptions + ping hosts.
+        // 2.2.3: only the subscriptions/servers list scrolls. The connection banner, power
+        // button and list header stay pinned. On a short window the pinned block can scroll
+        // internally so the list still has room.
         PullToRefreshBox(
             isRefreshing = refreshing.isNotEmpty(),
             onRefresh = { vm.refreshAll() },
             modifier = Modifier.fillMaxSize(),
         ) {
-            LazyColumn(
-                state = homeList,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                item(key = "home-top") {
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                run {
-                    // 1.0.31: the host line always stays; only the speeds/graphs section shows as soon as the VPN
-                    // connects (or is connecting) and hides 5 s after it goes off (reconnect within 5 s cancels).
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val viewportH = maxHeight
+                val tight = viewportH < 560.dp
+                val listMin = 160.dp
+                val maxPinned = (viewportH - listMin).coerceAtLeast(viewportH * 0.5f)
+                Column(Modifier.fillMaxSize()) {
+                    val headerMod = if (tight) Modifier.fillMaxWidth().heightIn(max = maxPinned).verticalScroll(rememberScrollState())
+                    else Modifier.fillMaxWidth()
+                    Column(
+                        headerMod.padding(start = 12.dp, end = 12.dp, top = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
                     ConnectionCard(
                         flag = run {
                             val live = (connected || vpn.state == ConnState.CONNECTING) && vpn.serverName.isNotEmpty()
@@ -447,12 +455,9 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         onLongPress = onOpenSpeedTest,
                         statsVisible = speedCardVisible,
                     )
-                }
-                run {
                     Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
-                        PowerToggle(state = vpn.state, since = vpn.since, onClick = ::toggle)
+                        PowerToggle(state = vpn.state, since = vpn.since, problem = UiLogic.powerShowError(vpn.state, tunnelPing = tunnelPing), onClick = ::toggle, haptics = false, prefs = st.adv.powerButton)
                     }
-                }
                 if (vpn.state == ConnState.ERROR || (vpn.state == ConnState.CONNECTING && vpn.message.isNotEmpty())) {
                     run {
                         Text(
@@ -466,14 +471,17 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                 if (captcha != null) {
                     run { CaptchaCard(captcha!!) }
                 }
-                    }
-                }
-                item(key = "home-list-head") {
                     Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 6.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Подписки и серверы", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
                         TextButton(onClick = { vm.pingAll() }, enabled = pinging.isEmpty()) { Text(if (pinging.isEmpty()) "Проверить все" else "Проверка…", fontSize = 13.sp) }
                     }
-                }
+                    }
+                    LazyColumn(
+                        state = homeList,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 3.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
                 run {
                 if (pingBatch.isNotEmpty()) item(key = "ping-counter") { Box(Modifier.animateItem()) { PingCounterPill(pingBatch, pinging, pings, onClose = { vm.clearPingBatch() }, onStop = { vm.stopPingBatch() }, stopped = pingStopped) } }
                 if (st.subscriptions.isEmpty() && st.servers.isEmpty()) {
@@ -502,6 +510,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                                     onRestoreHidden = { vm.restoreHiddenHosts(sub.id) },
                                     onDeleteUnreachable = { vm.askDeleteUnreachable(sub.id) },
                                     scanningUnreachable = sub.id in unreachableScan,
+                                    trafficBarStyle = st.adv.trafficBar,
                                     onCopy = {
                                         copyText(ctx, sub.url)
                                         vm.message("Ссылка скопирована")
@@ -525,6 +534,8 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
                         }
                     }
                 }
+                    }
+                }
             }
         }
         }
@@ -535,7 +546,7 @@ private fun MainScreen(vm: AppViewModel, ui: UiSettings, onOpenSettings: () -> U
 
 /** 1.0.42: bottom tabs, left → right. 2.0.32: «Серверы» removed (the list lives on «Главная»), + «Тест скорости».
  *  («Сеть» is Android-only: the Windows build has no network tools screen.) */
-internal enum class MainTab(val title: String) { Shop("Магазин"), Home("Главная"), Speed("Тест скорости") }
+internal enum class MainTab(val title: String) { Shop("Магазин"), Home("Главная"), Speed("Сессия") }
 
 /** 2.0.32: banner VPN traffic colours — ↓ incoming blue, ↑ outgoing red (text, arrows and graph). */
 internal val VpnDownColor = AntiBSColors.VpnGraph
@@ -1009,6 +1020,7 @@ private fun SubCard(
     onRestoreHidden: () -> Unit = {},
     onDeleteUnreachable: () -> Unit = {},
     scanningUnreachable: Boolean = false,
+    trafficBarStyle: net.antibs.client.data.TrafficBarStyle = net.antibs.client.data.TrafficBarStyle(),
 ) {
     var menu by remember { mutableStateOf(false) }
     val traffic = UiLogic.traffic(sub)
@@ -1078,7 +1090,7 @@ private fun SubCard(
             }
             if (sub.lastError.isNotEmpty()) Text(sub.lastError, fontSize = 12.sp, color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
             // No «Трафик» label: "used/total" is drawn on the (thicker) bar itself.
-            TrafficBar(UiLogic.trafficBarLabel(traffic), UiLogic.trafficProgress(traffic.usedMb, traffic.limitMb))
+            TrafficBar(UiLogic.trafficBarLabel(traffic), UiLogic.trafficProgress(traffic.usedMb, traffic.limitMb), trafficBarStyle)
             // One compact line under the traffic bar: real hosts (no auto-select/balancer rows) · expiry date.
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -1099,47 +1111,56 @@ private fun SubCard(
 }
 
 @Composable
-private fun TrafficBar(label: String, progress: Float) {
+internal fun TrafficBar(label: String, progress: Float, style: net.antibs.client.data.TrafficBarStyle = net.antibs.client.data.TrafficBarStyle()) {
     val p = progress.coerceIn(0f, 1f)
     val animated by animateFloatAsState(targetValue = p, label = "traffic")
-    val fillBrush = when {
-        p >= 0.9f -> Brush.horizontalGradient(listOf(AntiBSColors.Warn, AntiBSColors.Err))
-        p >= 0.7f -> Brush.horizontalGradient(listOf(AntiBSColors.Blue, AntiBSColors.Warn))
-        else -> Brush.horizontalGradient(listOf(AntiBSColors.Blue, AntiBSColors.Purple))
-    }
+    val barH = TrafficBarLogic.heightDp(style).dp
+    val fillBrush = TrafficBarLogic.fillBrush(style, p, Accent.current)
+    val inside = TrafficBarLogic.labelInside(style.heightDp)
+    val font = TrafficBarLogic.labelSize(style.heightDp)
     val barShape = RoundedCornerShape(99.dp)
-    val labelStyle = TabularNums.copy(fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.SemiBold)
+    val labelStyle = TabularNums.copy(fontSize = font, lineHeight = (font.value + 0.5f).sp, fontWeight = FontWeight.SemiBold,
+        lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center, androidx.compose.ui.text.style.LineHeightStyle.Trim.Both))
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(18.dp)
+            .height(barH)
             .clip(barShape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)),
         contentAlignment = Alignment.CenterStart,
     ) {
-        // Text over the empty track (theme colour)…
-        Text(label, style = labelStyle, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.fillMaxWidth())
+        if (inside) {
+            // Text over the empty track (theme colour)…
+            Text(label, style = labelStyle, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.fillMaxWidth())
+        }
         if (animated > 0f) {
             Box(
                 Modifier
                     .fillMaxWidth(animated.coerceIn(0.03f, 1f))
-                    .height(18.dp)
+                    .height(barH)
                     .clip(barShape)
                     .background(fillBrush),
             )
-            // …and the same text in white, clipped to the filled part, so it stays readable in both themes.
-            val frac = animated.coerceIn(0.03f, 1f)
-            Text(
-                label,
-                style = labelStyle,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                modifier = Modifier.fillMaxWidth().drawWithContent {
-                    clipRect(right = size.width * frac) { this@drawWithContent.drawContent() }
-                },
-            )
+            if (inside) {
+                // …and the same text in white, clipped to the filled part, so it stays readable in both themes.
+                val frac = animated.coerceIn(0.03f, 1f)
+                Text(
+                    label,
+                    style = labelStyle,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth().drawWithContent {
+                        clipRect(right = size.width * frac) { this@drawWithContent.drawContent() }
+                    },
+                )
+            }
         }
+    }
+    if (!inside) {
+        Text(label, style = labelStyle, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.fillMaxWidth())
+    }
     }
 }
 
@@ -1247,230 +1268,6 @@ internal fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
  * per frame) and the infinite transitions exist only while they are visible. Off = static gray,
  * connecting/disconnecting = pulsing track + spinner, error = brief red tint.
  */
-@Composable
-private fun PowerToggle(state: ConnState, since: Long, onClick: () -> Unit) {
-    val connected = state == ConnState.CONNECTED
-    val connecting = state == ConnState.CONNECTING
-    val disconnecting = state == ConnState.DISCONNECTING
-    val on = connected || connecting
-    val busy = connecting || disconnecting
-    val trackW = 168.dp
-    val trackH = 76.dp
-    val pad = 6.dp
-    val thumb = trackH - pad * 2
-    val shape = RoundedCornerShape(50)
-    val pos by animateFloatAsState(
-        if (on) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
-        label = "thumb",
-    )
-    val accent by animateFloatAsState(if (on) 1f else 0f, animationSpec = tween(320), label = "accent")
-    val alive by animateFloatAsState(if (connected) 1f else 0f, animationSpec = tween(600), label = "alive")
-    val elevation by animateDpAsState(if (connected) 10.dp else 3.dp, animationSpec = tween(400), label = "elev")
-
-    // Busy pulse (connecting / disconnecting) — only runs while busy.
-    val wave: State<Float> = if (busy) {
-        rememberInfiniteTransition(label = "busy").animateFloat(0.5f, 1f, infiniteRepeatable(tween(850), RepeatMode.Reverse), label = "wave")
-    } else remember { mutableFloatStateOf(1f) }
-    // «Alive» clocks — only run while connected.
-    val flow: State<Float>
-    val breath: State<Float>
-    val ripple: State<Float>
-    val shimmer: State<Float>
-    if (connected) {
-        val t = rememberInfiniteTransition(label = "alive")
-        flow = t.animateFloat(0f, 1f, infiniteRepeatable(tween(4200, easing = LinearEasing)), label = "flow")
-        breath = t.animateFloat(0f, 1f, infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breath")
-        ripple = t.animateFloat(0f, 1f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "ripple")
-        shimmer = t.animateFloat(0f, 1f, infiniteRepeatable(tween(3600, easing = LinearEasing)), label = "shimmer")
-    } else {
-        flow = remember { mutableFloatStateOf(0f) }
-        breath = remember { mutableFloatStateOf(0f) }
-        ripple = remember { mutableFloatStateOf(0f) }
-        shimmer = remember { mutableFloatStateOf(0f) }
-    }
-
-    // Brief red tint when the connection fails.
-    val errTint = remember { Animatable(0f) }
-    LaunchedEffect(state) {
-        if (state == ConnState.ERROR) {
-            errTint.animateTo(0.85f, tween(160))
-            delay(700)
-            errTint.animateTo(0f, tween(900))
-        } else errTint.snapTo(0f)
-    }
-
-    // Session clock: ticks on whole seconds only while connected.
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(connected, since) {
-        while (connected) {
-            now = System.currentTimeMillis()
-            delay(1000 - (now - since).mod(1000L).coerceIn(0, 999) + 5)
-        }
-    }
-    val caption = UiLogic.toggleCaption(state, since, now)
-
-    val desc = if (on) "Отключить VPN" else "Подключить VPN"
-    val haloColor = AntiBSColors.Blue
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier
-                .size(width = trackW, height = trackH)
-                // Halo is drawn before the clip, so it may extend past the pill.
-                .drawBehind {
-                    val a = alive
-                    if (a <= 0f) return@drawBehind
-                    val b = breath.value
-                    val r = size.height / 2f
-                    val step = 2.6.dp.toPx() * (0.75f + 0.5f * b)
-                    for (k in 4 downTo 1) {
-                        val grow = step * k
-                        drawRoundRect(
-                            color = haloColor.copy(alpha = a * (0.05f + 0.06f * b) * (5 - k) / 4f),
-                            topLeft = Offset(-grow, -grow),
-                            size = Size(size.width + grow * 2, size.height + grow * 2),
-                            cornerRadius = CornerRadius(r + grow, r + grow),
-                        )
-                    }
-                    // One soft outline ring expanding outward and fading.
-                    val rp = ripple.value
-                    val g = 12.dp.toPx() * rp
-                    drawRoundRect(
-                        color = haloColor.copy(alpha = a * 0.45f * (1f - rp) * (1f - rp)),
-                        topLeft = Offset(-g, -g),
-                        size = Size(size.width + g * 2, size.height + g * 2),
-                        cornerRadius = CornerRadius(r + g, r + g),
-                        style = Stroke(width = 1.5.dp.toPx()),
-                    )
-                }
-                .shadow(elevation, shape, ambientColor = AntiBSColors.Blue, spotColor = AntiBSColors.Blue)
-                .clip(shape)
-                .background(AntiBSColors.FabStopped)
-                .toggleable(value = on, enabled = !busy, role = Role.Switch, onValueChange = { onClick() })
-                .semantics { contentDescription = if (connected) "$desc, подключено $caption" else desc },
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            // Static accent (pulses while busy).
-            Box(Modifier.matchParentSize().graphicsLayer { alpha = accent * (if (busy) wave.value else 1f) }.background(AntiBSColors.fabBrush))
-            // Alive layer: flowing gradient, shimmer, sparks, ripple rings from the knob.
-            Canvas(Modifier.matchParentSize()) {
-                val a = alive
-                if (a <= 0f) return@Canvas
-                val w = size.width
-                val h = size.height
-                val f = flow.value
-                val span = w * 0.9f
-                val shift = f * span * 2f
-                drawRect(
-                    Brush.linearGradient(
-                        FlowColors,
-                        start = Offset(shift - span * 2f, 0f),
-                        end = Offset(shift - span, 0f),
-                        tileMode = TileMode.Mirror,
-                    ),
-                    alpha = a,
-                )
-                // Shimmer: a soft diagonal light band sweeping left→right, then a pause.
-                val sp = shimmer.value * 1.7f
-                if (sp < 1f) {
-                    val cx = -0.35f * w + sp * 1.7f * w
-                    val bw = w * 0.22f
-                    drawRect(
-                        Brush.linearGradient(
-                            listOf(Color.Transparent, Color.White.copy(alpha = 0.26f * a), Color.Transparent),
-                            start = Offset(cx - bw, 0f),
-                            end = Offset(cx + bw, h * 0.6f),
-                        ),
-                    )
-                }
-                // Ripple rings emanating from the knob centre.
-                val kx = w - pad.toPx() - thumb.toPx() / 2f
-                val ky = h / 2f
-                val base = thumb.toPx() / 2f
-                val rp = ripple.value
-                for (k in 0 until 2) {
-                    val p = (rp + k * 0.5f) % 1f
-                    drawCircle(
-                        Color.White.copy(alpha = a * 0.42f * (1f - p) * (1f - p)),
-                        radius = base + p * 34.dp.toPx(),
-                        center = Offset(kx, ky),
-                        style = Stroke(width = (1.8f - p).dp.toPx()),
-                    )
-                }
-                // Sparks drifting from the knob towards the caption, with a slight wave.
-                for (i in Sparks.indices) {
-                    val (sx, sy, spd) = Sparks[i]
-                    val p = (sx + f * spd) % 1f
-                    val x = (w - base * 2f) * (1f - p)
-                    val y = h * (0.18f + 0.64f * sy) + sin((p * 6.283f * 1.5f) + i) * 2.dp.toPx()
-                    val fade = sin(p * PI.toFloat())
-                    drawCircle(Color.White.copy(alpha = a * 0.55f * fade), radius = (0.9f + 1.1f * sy).dp.toPx(), center = Offset(x, y))
-                }
-            }
-            // Brief red tint on error.
-            Box(Modifier.matchParentSize().graphicsLayer { alpha = errTint.value }.background(AntiBSColors.Err))
-            // Track caption (timer when connected) centred in the free part of the track.
-            val captionMod = if (on) Modifier.padding(start = pad + 4.dp, end = thumb + pad * 2) else Modifier.padding(start = thumb + pad * 2, end = pad + 4.dp)
-            Box(Modifier.matchParentSize().then(captionMod), contentAlignment = Alignment.Center) {
-                Text(
-                    caption,
-                    style = TabularNums.copy(lineHeight = 20.sp),
-                    color = Color.White.copy(alpha = 0.95f),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = if (connected) 16.sp else 15.sp,
-                    letterSpacing = if (connected) 0.5.sp else 1.sp,
-                    maxLines = 1,
-                    softWrap = false,
-                )
-            }
-            Box(
-                Modifier
-                    .padding(pad)
-                    .offset { IntOffset(((trackW - pad * 2 - thumb).toPx() * pos).roundToInt(), 0) }
-                    .size(thumb)
-                    .graphicsLayer {
-                        val s = 1f + 0.04f * breath.value * alive
-                        scaleX = s; scaleY = s
-                    }
-                    .shadow(4.dp, CircleShape)
-                    .clip(CircleShape)
-                    .background(Color.White),
-                contentAlignment = Alignment.Center,
-            ) {
-                val tint = if (on) AntiBSColors.Blue else AntiBSColors.FabStopped
-                if (busy) CircularProgressIndicator(color = tint, modifier = Modifier.size(30.dp), strokeWidth = 3.dp)
-                else Icon(Icons.Filled.PowerSettingsNew, null, tint = tint, modifier = Modifier.size(34.dp))
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            when (state) {
-                ConnState.CONNECTED -> "Подключено"
-                ConnState.CONNECTING -> "Подключение…"
-                ConnState.DISCONNECTING -> "Отключение…"
-                ConnState.ERROR -> "Ошибка подключения"
-                else -> "Не подключено"
-            },
-            color = when (state) {
-                ConnState.CONNECTED -> AntiBSColors.Ok
-                ConnState.ERROR -> AntiBSColors.Err
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-        )
-    }
-}
-
-/** Blue → violet → purple loop used by the flowing «alive» track (mirrored, so it tiles seamlessly). */
-private val FlowColors = listOf(Color(0xFF3D7EFF), Color(0xFF4C8DFF), Color(0xFF6A5CFF), Color(0xFF9B4DFF), Color(0xFF6A5CFF))
-
-/** Deterministic spark seeds: start phase, vertical lane, speed (laps per flow cycle). */
-private val Sparks = listOf(
-    Triple(0.05f, 0.20f, 1f), Triple(0.31f, 0.75f, 2f), Triple(0.58f, 0.40f, 1f), Triple(0.83f, 0.90f, 2f),
-    Triple(0.17f, 0.55f, 2f), Triple(0.44f, 0.05f, 1f), Triple(0.71f, 0.65f, 1f), Triple(0.93f, 0.30f, 2f),
-)
-
 @Composable
 private fun CaptchaCard(uri: String) {
     var open by remember { mutableStateOf<String?>(null) }

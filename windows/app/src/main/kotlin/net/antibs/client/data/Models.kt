@@ -193,6 +193,11 @@ data class XrayProfile(
     val localAddress: String? = null,
     val reserved: String? = null,
     val mtu: Int? = null,
+    /** Imported WG/AWG peer restrictions and keepalive (null = legacy share-link defaults). */
+    val wgAllowedIps: List<String>? = null,
+    val wgKeepAlive: Int? = null,
+    /** Saved for export/inspection; the application's DNS/routing settings remain authoritative. */
+    val wgDns: List<String> = emptyList(),
     // hysteria2
     val obfsPassword: String? = null,
     val portHopping: String? = null,

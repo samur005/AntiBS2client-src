@@ -197,3 +197,9 @@ fun AntiBSTheme(
 
 @Composable
 fun isDark(mode: ThemeMode): Boolean = ThemeResolver.isDark(mode, isSystemInDarkTheme())
+
+/** sp that does not grow with the user font scale — for text inside fixed-size elements (power-button track). */
+@Composable
+fun fixedSp(v: Float): androidx.compose.ui.unit.TextUnit =
+    androidx.compose.ui.unit.TextUnit(v / androidx.compose.ui.platform.LocalDensity.current.fontScale, androidx.compose.ui.unit.TextUnitType.Sp)
+
