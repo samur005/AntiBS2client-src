@@ -1,6 +1,7 @@
 package net.antibs.client.ui
 
 import net.antibs.client.data.TrafficBarStyle
+import net.antibs.client.data.LinkParser
 
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.ColumnScope
@@ -27,8 +28,11 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.asPaddingValues
 import net.antibs.client.data.AppLang
+import net.antibs.client.data.LinkParser
 import net.antibs.client.data.I18n
+import net.antibs.client.data.LinkParser
 import net.antibs.client.data.ProtocolSupport
+import net.antibs.client.data.LinkParser
 
 import android.app.Activity
 import android.content.ClipData
@@ -200,6 +204,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import net.antibs.client.BuildConfig
 import net.antibs.client.data.Subscription
+import net.antibs.client.data.LinkParser
 import net.antibs.client.engine.ConnState
 import net.antibs.client.engine.ThemeMode
 import net.antibs.client.engine.UiSettings
@@ -1606,10 +1611,14 @@ internal fun SubCard(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Text(UiLogic.flag(subTitle(sub)), fontSize = 15.sp)
-                Spacer(Modifier.width(6.dp))
+                val titleText = subTitle(sub)
+                val flag = LinkParser.flagOf(titleText)
+                if (flag != null) {
+                    Text(flag, fontSize = 15.sp)
+                    Spacer(Modifier.width(6.dp))
+                }
                 Text(
-                    subTitle(sub),
+                    titleText,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
