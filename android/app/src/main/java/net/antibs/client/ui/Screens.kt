@@ -1608,11 +1608,6 @@ internal fun SubCard(
                     )
                 }
                 val titleText = subTitle(sub)
-                val flag = LinkParser.flagOf(titleText)
-                if (flag != null) {
-                    Text(flag, fontSize = 15.sp)
-                    Spacer(Modifier.width(6.dp))
-                }
                 Text(
                     titleText,
                     color = MaterialTheme.colorScheme.onSurface,
