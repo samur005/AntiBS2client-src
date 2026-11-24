@@ -1608,15 +1608,17 @@ internal fun SubCard(
                     )
                 }
                 val titleText = subTitle(sub)
-                Text(
-                    titleText,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).clickable(onClick = onToggle),
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        titleText,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
+                    )
+                }
                 if (realServers > 0) SubPingIcon(pinging, onPing)
                 if (sub.kind != "manual") {
                     if (refreshing) Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) }
