@@ -35,6 +35,7 @@ windows/engines-dl/
 windows/launcher/*.exe
 windows/launcher/*.syso
 android/native/AndroidLibXrayLite/assets/*.dat
+!android/app/src/main/assets/*.dat
 
 # Misc
 node_modules/
