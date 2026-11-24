@@ -1618,7 +1618,7 @@ internal fun SubCard(
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).clickable(onClick = onToggle),
                 )
