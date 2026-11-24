@@ -45,10 +45,19 @@ object SubscriptionParser {
         return h
     }
 
+    /** HttpURLConnection hands header bytes over as ISO-8859-1: restore UTF-8 text sent raw (emoji, Cyrillic). */
+    fun fixCharset(v: String): String {
+        if (v.none { it.code in 0x80..0xFF }) return v
+        if (v.any { it.code > 0xFF }) return v
+        val bytes = v.toByteArray(Charsets.ISO_8859_1)
+        val out = String(bytes, Charsets.UTF_8)
+        return if (out.contains('�')) v else out
+    }
+
     /** profile-title may be plain (optionally %-encoded) or "base64:<b64>" */
     fun parseProfileTitle(header: String?): String? {
         if (header.isNullOrBlank()) return null
-        val h = header.trim()
+        val h = fixCharset(header.trim())
         val v = if (h.startsWith("base64:", ignoreCase = true)) LinkParser.b64Decode(h.substring(7))?.trim() else LinkParser.pctDecode(h).trim()
         return v?.ifBlank { null }
     }
