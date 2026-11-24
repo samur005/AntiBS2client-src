@@ -37,12 +37,16 @@ jobs:
 
       - name: Fetch ZeroTier Java SDK sources
         run: |
-          mkdir -p android/zerotier/src/main/java/com/zerotier/sdk
-          curl -fsSL "https://api.github.com/repos/zerotier/ZeroTierOne/contents/java/src/com/zerotier/sdk?ref=dev" |             python3 -c "import sys,json; [print(i['download_url']) for i in json.load(sys.stdin) if i['name'].endswith('.java')]" |             while read url; do
-              fname=$(basename "$url")
-              curl -fsSL "$url" -o "android/zerotier/src/main/java/com/zerotier/sdk/$fname"
-            done
-          ls android/zerotier/src/main/java/com/zerotier/sdk/ | head -5
+          mkdir -p android/zerotier/src/main/java/com/zerotier/sdk/util
+          curl -fsSL "https://api.github.com/repos/zerotier/ZeroTierOne/contents/java/src/com/zerotier/sdk?ref=dev" | python3 -c "import sys,json; [print(i['download_url']) for i in json.load(sys.stdin) if i.get('name','').endswith('.java')]" | while read url; do
+            fname=$(basename "$url")
+            curl -fsSL "$url" -o "android/zerotier/src/main/java/com/zerotier/sdk/$fname"
+          done
+          curl -fsSL "https://api.github.com/repos/zerotier/ZeroTierOne/contents/java/src/com/zerotier/sdk/util?ref=dev" | python3 -c "import sys,json; [print(i['download_url']) for i in json.load(sys.stdin) if i.get('name','').endswith('.java')]" | while read url; do
+            fname=$(basename "$url")
+            curl -fsSL "$url" -o "android/zerotier/src/main/java/com/zerotier/sdk/util/$fname"
+          done
+          echo "Fetched $(find android/zerotier/src/main/java/com/zerotier/sdk -name '*.java' | wc -l) Java files"
 
       - name: Build release APK
         working-directory: android
