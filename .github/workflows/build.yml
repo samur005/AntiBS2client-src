@@ -35,6 +35,15 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
 
+      - name: Fetch ZeroTier Java SDK sources
+        run: |
+          mkdir -p android/zerotier/src/main/java/com/zerotier/sdk
+          curl -fsSL "https://api.github.com/repos/zerotier/ZeroTierOne/contents/java/src/com/zerotier/sdk?ref=dev" |             python3 -c "import sys,json; [print(i['download_url']) for i in json.load(sys.stdin) if i['name'].endswith('.java')]" |             while read url; do
+              fname=$(basename "$url")
+              curl -fsSL "$url" -o "android/zerotier/src/main/java/com/zerotier/sdk/$fname"
+            done
+          ls android/zerotier/src/main/java/com/zerotier/sdk/ | head -5
+
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
